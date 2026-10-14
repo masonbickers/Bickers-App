@@ -16,8 +16,8 @@
   <header class="brand"><a href="https://www.bickers.co.uk" aria-label="Bickers Action home"><img src="/logo.png" width="220" height="80" alt="Bickers Action"></a></header>
   <main id="main" tabindex="-1">
     <div class="eyebrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Account security</div>
-    <h1 id="heading">Checking your link</h1>
-    <p id="description" class="description">Please wait while we check your password reset link.</p>
+    <h1 id="heading">Reset your password</h1>
+    <p id="description" class="description">Loading secure account recovery…</p>
     <div id="status" class="status" role="status" aria-live="polite"></div>
     <div id="error" class="error" role="alert" hidden></div>
     <form id="reset-form" hidden novalidate>
@@ -27,11 +27,22 @@
     </form>
     <form id="request-form" hidden novalidate>
       <div class="field"><label for="email">Work email</label><input id="email" name="email" type="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="you@bickers.co.uk"></div>
-      <button class="primary" type="submit" id="request-submit">Send reset link <span aria-hidden="true">→</span></button>
+      <button class="primary" type="submit" id="request-submit">Send reset code <span aria-hidden="true">→</span></button>
+    </form>
+    <form id="code-form" hidden novalidate>
+      <div class="field"><label for="code">Email reset code</label><input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="32" required aria-describedby="code-hint"><p id="code-hint" class="hint">Enter the code here in the browser where you requested it.</p></div>
+      <button class="primary" type="submit">Verify reset code →</button>
+      <button class="secondary" id="restart" type="button">Request another code</button>
+    </form>
+    <form id="challenge-form" hidden novalidate>
+      <div class="field"><label for="factor">Verification method</label><select id="factor" name="factor"></select></div>
+      <div class="field"><label for="factor-code">Verification code</label><input id="factor-code" name="factor-code" type="text" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="128" required></div>
+      <button class="primary" type="submit">Complete verification →</button>
+      <button class="secondary" id="prepare-factor" type="button">Retry verification method</button>
     </form>
     <button id="retry" type="button" class="primary" hidden>Try again <span aria-hidden="true">↻</span></button>
-    <div id="success" class="success" hidden><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><p>You’re ready to go.<br>Return to the Bickers app and sign in with your new password.</p><a class="primary" href="bickersapp://login">Open the Bickers app <span aria-hidden="true">↗</span></a><p class="hint">On a computer? Open the app on your phone to sign in.</p></div>
-    <p id="security-note" class="security-note">Keep your Bickers account secure. Never share your password or reset link with anyone.</p>
+    <div id="success" class="success" hidden><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><p>Your new password is ready for the Bickers app and booking website. Your existing access permissions still apply.</p><button class="primary" id="open-app" type="button">Open the Bickers app ↗</button><button class="secondary" id="open-web" type="button">Continue to booking website →</button></div>
+    <p id="security-note" class="security-note">Never share your password or verification codes. Bickers will never ask you to send them to us.</p>
     <noscript><p>JavaScript is needed to reset your password securely. Please enable it and reload this page.</p></noscript>
   </main>
   <footer><span>Bickers Action</span><span aria-hidden="true">·</span><a href="https://www.bickers.co.uk">bickers.co.uk</a></footer>

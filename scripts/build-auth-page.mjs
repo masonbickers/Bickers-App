@@ -1,12 +1,15 @@
-import { readFile, mkdir, copyFile, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, copyFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { build } from 'esbuild';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = path.join(root, 'firebase/auth-page');
-const output = path.join(source, 'dist');
+const visual = process.argv.includes('--visual');
+const output = path.join(source, visual ? 'dist-visual' : 'dist');
+await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 
 // Read the actual app theme/tokens at build time; don't maintain another palette.
@@ -34,6 +37,16 @@ const fonts = ['body', 'bodySmall', 'bodyLarge', 'metadata', 'formLabel', 'butto
   return `--${kebab(name)}-size:${value.fontSize}px;--${kebab(name)}-line:${value.lineHeight}px;--${kebab(name)}-weight:${value.fontWeight};`;
 }).join('');
 await writeFile(path.join(output, 'tokens.css'), `/* Generated from the app's shared theme and design tokens. */\n:root{${colorVars('light')}${geometry}${fonts}--field-radius:${shared.componentRadius.field}px;--control-radius:${shared.componentRadius.control}px;}\n@media(prefers-color-scheme:dark){:root{${colorVars('dark')}}}\n`);
-for (const name of ['index.html', 'styles.css', 'page.mjs', 'view.mjs', 'reset-flow.mjs', 'config.mjs']) await copyFile(path.join(source, name), path.join(output, name));
+if (visual) await writeFile(path.join(output, 'tokens.css'), `:root{${colorVars('light')}${geometry}${fonts}--field-radius:${shared.componentRadius.field}px;--control-radius:${shared.componentRadius.control}px;}\n:root[data-preview-theme=dark]{color-scheme:dark;${colorVars('dark')}}\n`);
+for (const name of ['index.html', 'styles.css', 'reset-flow.mjs', 'config.mjs']) await copyFile(path.join(source, name), path.join(output, name));
+if (visual) {
+  const { firebaseWebConfig } = await import('../firebase/auth-page/config.mjs');
+  await writeFile(path.join(output, 'config.mjs'), `export const firebaseWebConfig = Object.freeze(${JSON.stringify(firebaseWebConfig)});\n`);
+}
+await mkdir(path.join(output, 'legacy'), { recursive: true });
+for (const name of ['index.html', 'page.mjs', 'view.mjs']) await copyFile(path.join(source, 'legacy', name), path.join(output, 'legacy', name));
+await build({ entryPoints: [path.join(source, visual ? 'visual-fixture.mjs' : 'page.mjs')], outfile: path.join(output, 'page.mjs'),
+  bundle: true, format: 'esm', platform: 'browser', target: ['es2022'], minify: true, legalComments: 'eof',
+});
 await copyFile(path.join(root, 'assets/images/bickers-action-logo.png'), path.join(output, 'logo.png'));
 console.log(`Auth page built: ${output}`);

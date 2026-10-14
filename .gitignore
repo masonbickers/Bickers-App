@@ -69,3 +69,5 @@ package-lock 2.json
 /dist-clerk-auth/
 
 /dist-clerk-native/
+
+/firebase/auth-page/dist-visual/
