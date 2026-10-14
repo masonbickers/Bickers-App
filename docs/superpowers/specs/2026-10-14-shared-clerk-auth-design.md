@@ -1,7 +1,7 @@
 # Shared Clerk authentication for Bickers
 
 Date: 14 October 2026
-Status: Owner approved the written design on 14 October 2026. Production and approved DNS preparation are complete; application implementation and live cutover have not started.
+Status: Owner approved the written design on 14 October 2026. Shared-auth implementation is staged in isolated branches, independently reviewed and corrected. Controlled production pilot, signed-device/recovery acceptance and live cutover remain incomplete; see docs/releases/clerk-auth-rollout.md for current evidence and gates.
 
 ## Outcome and agreed scope
 
@@ -9,7 +9,7 @@ Use one Clerk production instance for staff sign-in to the mobile app and bookin
 
 Success means an approved employee can use the same account on both clients, reset its password through the branded page, and retain existing records and access. Revoked, disabled, unapproved or incorrectly linked identities must remain blocked. A user who has mobile access but no office access must not gain office access through a shared credential.
 
-## Current evidence
+## Evidence at design approval
 
 - Mobile login uses Firebase email/password, followed by `/auth/sync-employee-auth` on the Render API.
 - `providers/AuthProvider.tsx` routes all non-password Firebase providers into a legacy password transition. This currently blocks Clerk custom sessions.
