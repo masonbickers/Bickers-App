@@ -108,7 +108,9 @@
           "organization": "aurex-design",
           "project": "react-native"
         }
-      ]
+      ],
+      "@clerk/expo",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

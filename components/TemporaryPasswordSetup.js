@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { View } from "react-native";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import PageShell from "./layout/PageShell";
 import { AppButton, AppText, Banner, FormField } from "./ui/AppPrimitives";
 import { useAuth } from "../providers/AuthProvider";
@@ -9,7 +9,7 @@ import { appPasswordSetupRequest, syncEmployeeAuth } from "../lib/authApi";
 import { designTokens as t } from "../lib/design/tokens";
 
 export default function TemporaryPasswordSetup() {
-  const { securityTransition: setup, setTransitionBusy, reloadSession } = useAuth();
+  const { signOutAccount, securityTransition: setup, setTransitionBusy, reloadSession } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [visible, setVisible] = useState(false);
@@ -63,7 +63,7 @@ export default function TemporaryPasswordSetup() {
         {error ? <Banner tone="danger" title="Unable to continue">{error}</Banner> : null}
         <AppButton label={busy ? "Please wait…" : saved ? "Continue signing in" : "Save password and continue"} onPress={finish} disabled={busy} fullWidth />
       </>}
-      <AppButton label="Use a different sign-in" variant="ghost" disabled={busy} onPress={async () => { await signOut(auth); await reloadSession(); }} />
+      <AppButton label="Use a different sign-in" variant="ghost" disabled={busy} onPress={async () => { await signOutAccount(); await reloadSession(); }} />
     </View>
   </PageShell>;
 }

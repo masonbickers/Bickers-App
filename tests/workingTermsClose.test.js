@@ -7,7 +7,7 @@ const body = source.match(/const handleClose = async \(\) => \{([\s\S]*?)\n  \};
 
 function closeHandler({ accepted, canGoBack = true, submitting = false }) {
   const calls = [];
-  const close = new Function("workingTermsAccepted", "closing", "submitting", "router", "returnToApp", "setClosing", "AsyncStorage", "global", "signOut", "auth", "reloadSession", "Alert", `return async () => {${body}}`)(
+  const close = new Function("workingTermsAccepted", "closing", "submitting", "router", "returnToApp", "setClosing", "AsyncStorage", "global", "signOutAccount", "auth", "reloadSession", "Alert", `return async () => {${body}}`)(
     accepted, false, submitting,
     { canGoBack: () => canGoBack, back: () => calls.push("back"), replace: (path) => calls.push(path) },
     () => calls.push("home"), () => {},

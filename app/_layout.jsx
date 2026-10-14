@@ -50,6 +50,7 @@ import {
 } from "../lib/timesheetNotification";
 import { useReceiptSync } from "../hooks/useReceiptSync";
 import { getReceiptNotificationHref, isReceiptNotification } from "../lib/receipts/navigation";
+import { ClerkFirebaseProvider } from "../providers/ClerkFirebaseProvider";
 import { AuthProvider, useAuth } from "../providers/AuthProvider";
 import { DataCacheProvider } from "../providers/DataCacheProvider";
 import { NotificationPreferencesProvider } from "../providers/NotificationPreferencesProvider";
@@ -437,6 +438,7 @@ function RootLayout() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <WebMetadata />
+      <ClerkFirebaseProvider>
       <AuthProvider>
         <ThemeProvider>
           <DataCacheProvider>
@@ -448,6 +450,7 @@ function RootLayout() {
           </DataCacheProvider>
         </ThemeProvider>
       </AuthProvider>
+      </ClerkFirebaseProvider>
     </SafeAreaProvider>
   );
 }

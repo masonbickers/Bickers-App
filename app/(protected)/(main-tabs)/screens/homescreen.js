@@ -29,7 +29,6 @@ import { getDownloadURL,
   ref,
   uploadBytesResumable } from "firebase/storage";
 
-import { signOut } from "firebase/auth";
 import { auth,
   db,
   storage } from "../../../../firebaseConfig";
@@ -470,7 +469,7 @@ const isRecceDay = (job, dateISO) =>
 export default function HomeScreen() {
   const router = useRouter();
 
-  const { user, employee, reloadSession } = useAuth();
+  const { signOutAccount, user, employee, reloadSession } = useAuth();
   const { invalidate } = useDataCache();
   const { colors, colorScheme } = useTheme();
   const reduceMotion = useReducedMotion();
@@ -649,7 +648,7 @@ export default function HomeScreen() {
       ]);
 
       global.employee = null;
-      await signOut(auth);
+      await signOutAccount();
       await reloadSession();
       router.replace("/(auth)/login");
     } catch (error) {

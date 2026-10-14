@@ -7,7 +7,8 @@ import cors from "cors";
 import crypto from "node:crypto";
 import dotenv from "dotenv";
 import express from "express";
-import { identityAuthMetadata } from '../lib/identitySession.js';
+import { identityAuthMetadata } from './identitySession.js';
+import { preserveClerkSyncAuthorization } from './employeeAuthSession.js';
 import admin from "firebase-admin";
 import { createWorkingTermsResolver } from "./workingTermsIdentity.js";
 import { createReceiptProxy, receiptUpdateRequired } from "./receiptProxy.js";
@@ -677,12 +678,31 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
       return res.status(403).json({ error: "The approved employee identity could not be verified." });
     }
 
-    const sessionData = buildSessionData(
+    const legacySessionData = buildSessionData(
       employee,
       normaliseCode(employee.userCode || ""),
       emailStr
     );
+    const { sessionData, userPatch, employeePatch } = preserveClerkSyncAuthorization({
+      token: decoded, user: userData, sessionData: legacySessionData,
+      userPatch: {
+        email: decoded.email || employee.email || "",
+        employeeId: employee.id,
+        authUid: decoded.uid,
+        uid: decoded.uid,
+        role: legacySessionData.role,
+        companyId: legacySessionData.companyId,
+        isEnabled: userData.isEnabled !== false,
+        mobileAccessStatus: "active",
+        displayName: employee.name || decoded.name || "",
+        appAccess: legacySessionData.appAccess,
+        defaultWorkspace: employee.defaultWorkspace || null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    });
     const batch = db.batch();
+    if (employeePatch) batch.update(db.collection("employees").doc(employee.id), employeePatch);
+    else {
     batch.set(
       db.collection("employees").doc(employee.id),
       {
@@ -706,22 +726,10 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
       },
       { merge: true }
     );
+    }
     batch.set(
       db.collection("users").doc(decoded.uid),
-      {
-        email: decoded.email || employee.email || "",
-        employeeId: employee.id,
-        authUid: decoded.uid,
-        uid: decoded.uid,
-        role: sessionData.role,
-        companyId: sessionData.companyId,
-        isEnabled: userData.isEnabled !== false,
-        mobileAccessStatus: "active",
-        displayName: employee.name || decoded.name || "",
-        appAccess: sessionData.appAccess,
-        defaultWorkspace: employee.defaultWorkspace || null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
+      userPatch,
       { merge: true }
     );
     await batch.commit();

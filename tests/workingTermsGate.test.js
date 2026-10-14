@@ -76,7 +76,7 @@ test("users are routed to an explicit signature flow before app access", () => {
   assert.match(termsScreenSource, /returnToApp\(\)/);
   assert.match(termsScreenSource, /label="Return to app"/);
   assert.match(termsScreenSource, /label: workingTermsAccepted \? "Close Working Terms" : "Close and return to login"/);
-  assert.match(termsScreenSource, /await signOut\(auth\)/);
+  assert.match(termsScreenSource, /await signOutAccount\(\)/);
   assert.match(termsScreenSource, /router\.replace\("\/\(auth\)\/login"\)/);
 });
 

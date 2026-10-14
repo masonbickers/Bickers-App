@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { confirmPasswordReset, verifyPasswordResetCode, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { confirmPasswordReset, verifyPasswordResetCode, signInWithEmailAndPassword } from "firebase/auth";
 import PageShell from "./layout/PageShell";
 import { AppButton, AppText, Banner, FormField, FormStep } from "./ui/AppPrimitives";
 import { auth } from "../firebaseConfig";
@@ -10,7 +10,7 @@ import { useAuth } from "../providers/AuthProvider";
 import { designTokens as t } from "../lib/design/tokens";
 
 export default function SecureAccount() {
-  const { securityTransition: setup, setTransitionBusy, reloadSession } = useAuth();
+  const { signOutAccount, securityTransition: setup, setTransitionBusy, reloadSession } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [resetLink, setResetLink] = useState("");
@@ -129,7 +129,7 @@ export default function SecureAccount() {
         {error ? <Banner title="Unable to continue" tone="danger" icon="alert-circle">{error}</Banner> : null}
         {!setup?.checking ? <AppButton label="Retry account check" disabled={busy} onPress={() => run(reloadSession)} /> : null}
       </>}
-      <AppButton label="Use a different sign-in" variant="ghost" disabled={busy} onPress={() => run(async () => { await signOut(auth); await reloadSession(); })} />
+      <AppButton label="Use a different sign-in" variant="ghost" disabled={busy} onPress={() => run(async () => { await signOutAccount(); await reloadSession(); })} />
     </View>
   </PageShell>;
 }

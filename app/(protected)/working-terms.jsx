@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { signOut } from "firebase/auth";
 import {
   Alert,
   StyleSheet,
@@ -8,7 +7,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 
-import { auth } from "../../firebaseConfig";
 import PageShell from "../../components/layout/PageShell";
 import {
   AppButton,
@@ -60,7 +58,7 @@ function formatAcceptanceDate(value) {
 }
 
 export default function WorkingTermsPage() {
-  const {
+  const { signOutAccount,
     user,
     employee,
     reloadSession,
@@ -160,7 +158,7 @@ export default function WorkingTermsPage() {
         "timesheetDefaultType",
       ]);
       global.employee = null;
-      await signOut(auth);
+      await signOutAccount();
       await reloadSession();
       router.replace("/(auth)/login");
     } catch (error) {

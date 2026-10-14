@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { classifyIdentitySession } from '../lib/identitySession.js';
+import { classifyIdentitySession } from './identitySession.js';
 
 const fields = new Set(('companyId vehicleId vehicleName registration manufacturer model serviceType recordType serviceDate serviceDateOnly serviceTime completedDate odometer workSummary repairSummary repairReason partsUsed extraNotes signedBy completedBy nextServiceDate nextService serviceFormNumber serviceFormNumberValue checks checkRatings checkNA checkNotes wheelInspection monitorReport serviceDefectActions checkPhotoURIs checkPhotoURLs photoURIs photoURLs workshopRequestId workshopWorkType').split(' '));
 const serviceTypes = new Set(['Full service', 'Interim service', 'Interim / minor service', 'Oil & filter change', 'Inspection only', 'Other', 'General repair']);

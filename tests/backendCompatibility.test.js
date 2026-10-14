@@ -123,12 +123,13 @@ test("mobile login requires an admin-approved Firebase password account", () => 
 });
 
 test("work email input follows the keyboard caps state without rewriting letters", () => {
+  const loginFormSource = readFileSync(new URL("../components/auth/BickersLoginForm.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(loginSource, /correctInvertedSimulatorCaps/);
   assert.doesNotMatch(loginSource, /Device\.isDevice/);
-  assert.match(loginSource, /onChangeText=\{setEmployeeEmail\}/);
+  assert.match(loginFormSource, /onChangeText=\{setEmployeeEmail\}/);
   assert.doesNotMatch(loginSource, /setEmployeeEmail\(String\(value \|\| ""\)\.toLowerCase\(\)\)/);
-  assert.match(loginSource, /autoCapitalize:\s*"none"/);
-  assert.match(loginSource, /autoCorrect:\s*false/);
+  assert.match(loginFormSource, /autoCapitalize:\s*"none"/);
+  assert.match(loginFormSource, /autoCorrect:\s*false/);
 });
 
 test("password sign-in stays on login until the account check and session reload finish", () => {
@@ -141,7 +142,7 @@ test("password sign-in stays on login until the account check and session reload
   assert.doesNotMatch(loginSource, /router\.replace/);
   const gate = authProviderSource.slice(authProviderSource.indexOf("const isAuthed = useMemo"));
   assert.match(gate, /mobileAccessOK && !securityTransition && !signInPending/);
-  assert.match(gate, /\[user, employee, securityTransition, signInPending\]/);
+  assert.match(gate, /\[clerk\.enabled, clerk\.ready, clerk\.uid, user, employee, securityTransition, signInPending\]/);
 });
 
 test("logout cannot restore the employee session before Firebase signs out", () => {
@@ -151,7 +152,8 @@ test("logout cannot restore the employee session before Firebase signs out", () 
     const logoutBlock = source.slice(source.indexOf("const handleLogout"));
     assert.match(logoutBlock, /"employeeUserCode"/);
     assert.match(logoutBlock, /"userCode"/);
-    assert.ok(logoutBlock.indexOf("signOut(auth)") < logoutBlock.indexOf("reloadSession()"));
+    assert.ok(logoutBlock.indexOf("signOutAccount()") >= 0);
+    assert.ok(logoutBlock.indexOf("signOutAccount()") < logoutBlock.indexOf("reloadSession()"));
   }
 });
 

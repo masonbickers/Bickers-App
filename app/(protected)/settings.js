@@ -31,6 +31,7 @@ import {
   registerForPushNotificationsAsync,
   requestNotificationPermission,
 } from "../../lib/notifications";
+import { useClerkFirebase } from "../../providers/ClerkFirebaseProvider";
 import { useAuth } from "../../providers/AuthProvider";
 import { useNotificationPreferences } from "../../providers/NotificationPreferencesProvider";
 import { useTheme } from "../../providers/ThemeProvider";
@@ -49,6 +50,11 @@ function getCurrentAppVersion() {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const clerk = useClerkFirebase();
+  const openSharedPassword = async () => {
+    try { await clerk.openRecovery(); }
+    catch (error) { Alert.alert("Password recovery", error.message); }
+  };
   const { user, employee } = useAuth();
   const {
     maintenanceRemindersEnabled: maintenanceReminderEnabled,
@@ -119,7 +125,7 @@ export default function SettingsPage() {
         const userData = userSnap?.exists?.() ? userSnap.data() : {};
         const employeeData = employeeSnap?.exists?.() ? employeeSnap.data() : {};
         const authData = employeeData?.auth || {};
-        const passwordEnabled =
+        const passwordEnabled = clerk.enabled ? clerk.passwordEnabled :
           hasPasswordProvider ||
           authData?.passwordEnabled === true ||
           userData?.auth?.passwordEnabled === true;
@@ -137,7 +143,7 @@ export default function SettingsPage() {
         }));
       }
     },
-    [employee?.employeeId, user]
+    [clerk.enabled, clerk.passwordEnabled, employee?.employeeId, user]
   );
 
   useEffect(() => {
@@ -178,6 +184,7 @@ export default function SettingsPage() {
   };
 
   const handleSendPasswordSetupEmail = async () => {
+    if (clerk.enabled) { void openSharedPassword(); return; }
     const email = String(user?.email || auth.currentUser?.email || employee?.email || "")
       .trim()
       .toLowerCase();
@@ -245,6 +252,7 @@ export default function SettingsPage() {
   };
 
   const handleChangePassword = () => {
+    if (clerk.enabled) { void openSharedPassword(); return; }
     const email = passwordEmail();
     if (!email) {
       Alert.alert("No email found", "Please log out and sign in again.");
@@ -262,6 +270,7 @@ export default function SettingsPage() {
   };
 
   const handleForgotCurrentPassword = async () => {
+    if (clerk.enabled) { void openSharedPassword(); return; }
     const email = passwordEmail();
     if (!email) {
       Alert.alert("No email found", "Please log out and sign in again.");
@@ -280,6 +289,7 @@ export default function SettingsPage() {
   };
 
   const handleSubmitPasswordChange = async () => {
+    if (clerk.enabled) { void openSharedPassword(); return; }
     const firebaseUser = user || auth.currentUser;
     const email = passwordEmail();
     const currentPassword = String(passwordForm.currentPassword || "");
@@ -363,7 +373,7 @@ export default function SettingsPage() {
         {
           label: "Change Password",
           icon: "lock",
-          subLabel: "Update your login credentials",
+          subLabel: clerk.enabled ? "Manage the password shared with the booking website" : "Update your login credentials",
           onPress: handleChangePassword,
         },
       ],

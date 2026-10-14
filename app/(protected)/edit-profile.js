@@ -4,7 +4,6 @@ import { useNavigation, usePreventRemove } from "@react-navigation/native";
 import { profilePhoneError } from "../../lib/profilePhone";
 import {
   useRouter } from "expo-router";
-import { signOut } from "firebase/auth";
 import { doc,
   getDoc,
   updateDoc } from "firebase/firestore";
@@ -19,7 +18,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 
-import { auth, db } from "../../firebaseConfig";
+import { db } from "../../firebaseConfig";
 import { useAuth } from "../../providers/AuthProvider";
 import { useDataCache } from "../../providers/DataCacheProvider";
 import { useTheme } from "../../providers/ThemeProvider";
@@ -31,7 +30,7 @@ import PageShell from "../../components/layout/PageShell";
 export default function ProfilePage() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { user, employee, loading: authLoading, reloadSession } = useAuth();
+  const { signOutAccount, user, employee, loading: authLoading, reloadSession } = useAuth();
   const { invalidate } = useDataCache();
   const { colors } = useTheme();
 
@@ -166,7 +165,7 @@ export default function ProfilePage() {
       ]);
 
       global.employee = null;
-      await signOut(auth);
+      await signOutAccount();
       if (reloadSession) await reloadSession();
       router.replace("/(auth)/login");
     } catch (err) {

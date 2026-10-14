@@ -1,3 +1,5 @@
+import PageShell from "../../components/layout/PageShell";
+import BickersLoginForm from "../../components/auth/BickersLoginForm";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   sendPasswordResetEmail,
@@ -5,16 +7,11 @@ import {
   signOut,
 } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
 
-import PageShell from "../../components/layout/PageShell";
-import BrandArtwork from "../../components/renderers/BrandArtwork";
-import { AppButton, AppText as Text, Banner, FormField } from "../../components/ui/AppPrimitives";
 import { auth } from "../../firebaseConfig";
 import { syncEmployeeAuth, warmAuthService } from "../../lib/authApi";
-import { designTokens as t } from "../../lib/design/tokens";
 import { getLoginFeedback } from "../../lib/loginFeedback";
-import { openPrivacyPolicy } from "../../lib/privacyPolicy";
+import { useClerkFirebase } from "../../providers/ClerkFirebaseProvider";
 import { useAuth } from "../../providers/AuthProvider";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,6 +37,8 @@ const SESSION_KEYS = [
 ];
 
 export default function LoginPage() {
+  const clerk = useClerkFirebase();
+  const [code, setCode] = useState("");
   const [employeeEmail, setEmployeeEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -94,7 +93,7 @@ export default function LoginPage() {
   };
 
   const handleLogin = async () => {
-    if (loading || resetting) return;
+    if (loading || resetting || clerk.flowState.busy) return;
     setNotification(null);
 
     const email = String(employeeEmail || "").trim().toLowerCase();
@@ -110,6 +109,11 @@ export default function LoginPage() {
     setLoading(true);
     setSignInPending(true);
     try {
+      if (clerk.enabled) {
+        await clerk.startPasswordSignIn?.(email, password);
+        setPassword("");
+        return;
+      }
       const credential = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await credential.user.getIdToken(true);
       const synced = await syncEmployeeAuth({ idToken });
@@ -129,7 +133,12 @@ export default function LoginPage() {
   };
 
   const handlePasswordReset = async () => {
-    if (resetting || loading) return;
+    if (resetting || loading || clerk.flowState.busy) return;
+    if (clerk.enabled) {
+      try { await clerk.openRecovery?.(); }
+      catch (error) { notify("Password recovery", error.message); }
+      return;
+    }
     setNotification(null);
 
     const email = String(employeeEmail || "").trim().toLowerCase();
@@ -153,116 +162,5 @@ export default function LoginPage() {
     }
   };
 
-  return (
-    <PageShell mode="form" width="full">
-      <View style={styles.scrollContainer}>
-        <BrandArtwork variant="login" />
-
-        <Text variant="titleSmall" align="center" layoutStyle={styles.title}>
-          Welcome to Bickers Action
-        </Text>
-
-        <View style={styles.section}>
-          <Text variant="sectionTitle" align="center" layoutStyle={styles.sectionTitle}>
-            Sign In
-          </Text>
-
-          <FormField
-            label="Work email"
-            placeholder="Work email"
-            value={employeeEmail}
-            onChangeText={setEmployeeEmail}
-            inputProps={{
-              autoCapitalize: "none",
-              autoCorrect: false,
-              spellCheck: false,
-              autoComplete: "email",
-              textContentType: "emailAddress",
-              keyboardType: "email-address",
-            }}
-          />
-          <FormField
-            label="Password"
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            rightAction={{
-              label: passwordVisible ? "Hide password" : "Show password",
-              icon: passwordVisible ? "eye-off" : "eye",
-              onPress: () => setPasswordVisible((visible) => !visible),
-            }}
-            inputProps={{
-              autoCapitalize: "none",
-              autoCorrect: false,
-              autoComplete: "password",
-              textContentType: "password",
-              secureTextEntry: !passwordVisible,
-              onSubmitEditing: handleLogin,
-            }}
-          />
-
-          {notification ? (
-            <Banner
-              title={notification.title}
-              tone={notification.tone}
-              icon={notification.tone === "danger" ? "alert-circle" : "info"}
-              onDismiss={() => setNotification(null)}
-            >
-              {notification.message}
-            </Banner>
-          ) : null}
-
-          <AppButton
-            label={loading ? "Signing in..." : "Sign In"}
-            pill
-            onPress={handleLogin}
-            loading={loading}
-            disabled={resetting}
-            fullWidth
-          />
-          <AppButton
-            label={resetting ? "Please wait..." : "Forgot password?"}
-            variant="ghost"
-            onPress={handlePasswordReset}
-            disabled={loading || resetting}
-            fullWidth
-          />
-
-          <Text tone="secondary" align="center" layoutStyle={styles.helperText}>
-            Access must be approved by a Bickers administrator before you can sign in.
-          </Text>
-          <AppButton
-            label="Privacy policy"
-            variant="ghost"
-            onPress={openPrivacyPolicy}
-            fullWidth
-          />
-        </View>
-      </View>
-    </PageShell>
-  );
+  return <PageShell mode="form" width="full"><BickersLoginForm {...{ clerk, employeeEmail, setEmployeeEmail, password, setPassword, passwordVisible, setPasswordVisible, code, setCode, loading, resetting, notification, setNotification, handleLogin, handlePasswordReset }} /></PageShell>;
 }
-
-const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: t.spacing["2xl"],
-    paddingVertical: t.spacing["2xl"],
-  },
-  title: {
-    marginBottom: t.spacing.xl,
-  },
-  section: {
-    width: "100%",
-    maxWidth: 420,
-    gap: t.spacing.md,
-  },
-  sectionTitle: {
-    marginBottom: t.spacing.sm,
-  },
-  helperText: {
-    marginTop: t.spacing.xs,
-  },
-});

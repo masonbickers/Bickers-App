@@ -22,6 +22,8 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useClerkFirebase } from "./ClerkFirebaseProvider";
+import { resolveMobileClerkAccess } from "../lib/mobileClerkAccess";
 import { resolveWorkspaceAccess } from "../lib/access";
 import { loadWorkingTermsAcceptance } from "../lib/workingTermsApi";
 import { auth, db } from "../firebaseConfig";
@@ -71,6 +73,7 @@ type Ctx = {
   isAuthed: boolean;
   employee: EmployeeSession | null;
   reloadSession: () => Promise<void>;
+  signOutAccount: () => Promise<void>;
   setSignInPending: (pending: boolean) => void;
   workingTermsAccepted: boolean;
   workingTermsAcceptance: Record<string, any> | null;
@@ -90,6 +93,7 @@ const AuthCtx = createContext<Ctx>({
   isAuthed: false,
   employee: null,
   reloadSession: async () => {},
+  signOutAccount: async () => {},
   setSignInPending: () => {},
   workingTermsAccepted: false,
   workingTermsAcceptance: null,
@@ -221,15 +225,18 @@ async function persistRecoveredSession(session: EmployeeSession) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const clerk = useClerkFirebase();
+  const clerkRef = useRef(clerk);
+  clerkRef.current = clerk;
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [signInPending, setSignInPending] = useState(false);
 
   const [employee, setEmployee] = useState<EmployeeSession | null>(null);
   useEffect(() => {
-    bindSyncIdentity(employee);
+    bindSyncIdentity(!clerk.enabled || clerk.ready ? employee : null);
     return () => bindSyncIdentity(null);
-  }, [employee]);
+  }, [clerk.enabled, clerk.ready, employee]);
   const [sessionReady, setSessionReady] = useState(false);
   const [securityTransition, setSecurityTransition] = useState<Record<string, any> | null>(null);
   const transitionBusy = useRef(false);
@@ -257,8 +264,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loadSession = useCallback(async (firebaseUser: User | null) => {
     if (transitionBusy.current) return;
     const generation = ++sessionGeneration.current;
+    const sameAccount = () => generation === sessionGeneration.current
+      && auth.currentUser?.uid === firebaseUser?.uid && !transitionBusy.current;
+    const isCurrent = () => sameAccount() && (!clerkRef.current.enabled || !firebaseUser
+      || clerkRef.current.isReady() && clerkRef.current.uid === firebaseUser.uid);
+    let verifiedClerk = null;
+    if (clerkRef.current.enabled && !clerkRef.current.isReady()) {
+      setEmployee(null);
+      setWorkingTermsAcceptance(null);
+      setSecurityTransition(null);
+      if (sameAccount()) setSessionReady(true);
+      return;
+    }
     try {
       if (firebaseUser && !firebaseUser.isAnonymous) {
+        if (clerkRef.current.enabled) {
+          verifiedClerk = await resolveMobileClerkAccess({
+            uid: firebaseUser.uid,
+            getTokenResult: () => firebaseUser.getIdTokenResult(),
+            readUser: async () => {
+              const snap = await getDocFromServer(doc(db, "users", firebaseUser.uid));
+              return snap.exists() ? snap.data() : null;
+            },
+            readEmployee: async (employeeId: string) => {
+              const snap = await getDocFromServer(doc(db, "employees", employeeId));
+              return snap.exists() ? { ...snap.data(), id: snap.id } : null;
+            },
+            isCurrent,
+          });
+          if (!verifiedClerk || !isCurrent()) return;
+        } else {
         try {
           const token = await firebaseUser.getIdTokenResult();
           if (generation !== sessionGeneration.current || transitionBusy.current) return;
@@ -301,6 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSecurityTransition({ error: "We could not verify your saved session. Retry or sign in with your work email and password." });
           return;
         }
+        }
       }
       setSecurityTransition(null);
       const entries = await AsyncStorage.multiGet([
@@ -322,23 +358,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "timesheetDefaultType",
       ]);
 
+      if (!isCurrent()) return;
       const m = Object.fromEntries(entries);
-      const userProfile = await loadUserProfile(firebaseUser);
+      const userProfile = verifiedClerk?.profile || await loadUserProfile(firebaseUser);
+      if (!isCurrent()) return;
       let termsAcceptance = null;
       setWorkingTermsError(null);
       try {
         termsAcceptance = await loadWorkingTermsAcceptance(firebaseUser);
       } catch (error) {
+        if (!isCurrent()) return;
         setWorkingTermsError(error instanceof Error ? error.message : "We could not check your existing Working Terms. Please try again.");
         termsAcceptance = null;
       }
+      if (!isCurrent()) return;
       setWorkingTermsAcceptance(termsAcceptance);
       const storedEmployeeId = String(m.employeeId || "").trim();
       const profileEmployeeId = String(userProfile?.employeeId || "").trim();
       const authoritativeEmployeeId = profileEmployeeId || storedEmployeeId;
-      const employeeProfile = authoritativeEmployeeId
+      const employeeProfile = verifiedClerk?.employee || (authoritativeEmployeeId
         ? await loadEmployeeProfile(authoritativeEmployeeId)
-        : await findEmployeeForPersistedUser(firebaseUser, userProfile);
+        : await findEmployeeForPersistedUser(firebaseUser, userProfile));
+      if (!isCurrent()) return;
       const employeeSource = employeeProfile || {};
       const profileAccess =
         userProfile?.appAccess && typeof userProfile.appAccess === "object"
@@ -464,7 +505,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         };
 
-        if (generation !== sessionGeneration.current || transitionBusy.current) return;
+        if (!isCurrent()) return;
         setEmployee(nextEmployee);
         if (!storedEmployeeId && employeeSource?.id) {
           persistRecoveredSession(nextEmployee).catch(() => {});
@@ -473,6 +514,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setEmployee(null);
       }
     } catch {
+      if (!sameAccount()) return;
       setEmployee(null);
       setWorkingTermsAcceptance(null);
     } finally {
@@ -483,10 +525,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!authReady) return;
     if (transitionBusy.current) return;
+    bindSyncIdentity(null);
+    setEmployee(null);
     setSessionReady(false);
     setWorkingTermsAcceptance(null);
     loadSession(user);
-  }, [authReady, loadSession, user]);
+  }, [authReady, clerk.enabled, clerk.ready, clerk.revision, loadSession, user]);
 
   const reloadSession = async () => {
     setSessionReady(false);
@@ -518,10 +562,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const tenantOK = !!employee?.companyId;
     const enabledOK = employee?.isEnabled !== false;
     const mobileAccessOK = employee?.mobileAccessStatus === "active";
-    return firebaseUserOK && employeeOK && tenantOK && enabledOK && mobileAccessOK && !securityTransition && !signInPending;
-  }, [user, employee, securityTransition, signInPending]);
+    const clerkOK = !clerk.enabled || clerk.ready && clerk.uid === user?.uid;
+    return clerkOK && firebaseUserOK && employeeOK && tenantOK && enabledOK && mobileAccessOK && !securityTransition && !signInPending;
+  }, [clerk.enabled, clerk.ready, clerk.uid, user, employee, securityTransition, signInPending]);
 
-  const loading = !(authReady && sessionReady);
+  const loading = !(authReady && sessionReady) || clerk.loading
+    || (clerk.enabled && !!clerk.hasClerkSession && !clerk.ready && !clerk.error);
 
   return (
     <AuthCtx.Provider
@@ -531,6 +577,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthed,
         employee,
         reloadSession,
+        signOutAccount: clerk.signOutAccount,
         setSignInPending,
         workingTermsAccepted: !!workingTermsAcceptance,
         workingTermsAcceptance,

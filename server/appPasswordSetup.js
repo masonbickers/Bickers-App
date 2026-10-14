@@ -1,6 +1,6 @@
 // Provider identity is checked after Firebase verification. Global revocation and
 // recovery proof remain enforced by the session service before business handlers.
-import { classifyIdentitySession, isTrustedClerkIdentity } from '../lib/identitySession.js';
+import { classifyIdentitySession, isTrustedClerkIdentity } from './identitySession.js';
 export function trustedClerkSession(token, user = {}) {
   return isTrustedClerkIdentity(token, user);
 }

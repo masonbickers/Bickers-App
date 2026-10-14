@@ -173,7 +173,7 @@ async function setupScreen(hasPassword = false) {
       syncEmployeeAuth: async () => { events.push("sync"); },
     },
     "../lib/passwordTransition": { finishPasswordTransition },
-    "../providers/AuthProvider": { useAuth: () => ({ securityTransition: setup, setTransitionBusy() {}, reloadSession: async () => { events.push("reload"); } }) },
+    "../providers/AuthProvider": { useAuth: () => ({ signOutAccount: async () => { events.push("signout"); }, securityTransition: setup, setTransitionBusy() {}, reloadSession: async () => { events.push("reload"); } }) },
     "../lib/design/tokens": { designTokens: { spacing: { md: 16 } } },
   };
   const exports = {};

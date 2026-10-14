@@ -18,7 +18,6 @@ import {
   EmailAuthProvider,
   reauthenticateWithCredential,
   sendPasswordResetEmail,
-  signOut,
   updatePassword,
 } from "firebase/auth";
 import ChangePasswordModal from "../../../components/ChangePasswordModal";
@@ -34,7 +33,7 @@ import SettingsPage from "../settings";
 
 export default function ServiceSettingsPage() {
   const router = useRouter();
-  const { reloadSession, user, employee } = useAuth();
+  const { signOutAccount, reloadSession, user, employee } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const {
     maintenanceRemindersEnabled: maintenanceReminderEnabled,
@@ -279,7 +278,7 @@ export default function ServiceSettingsPage() {
       ]);
 
       global.employee = null;
-      await signOut(auth);
+      await signOutAccount();
       await reloadSession();
       router.replace("/(auth)/login");
     } catch (error) {

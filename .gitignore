@@ -61,3 +61,11 @@ node_modules 2/
 app.json.bak
 package-lock 2.json
 /tmp/app-store-readiness-backup-*/
+
+# Also ignore temporary read-only dependency symlinks in isolated workspaces.
+/node_modules
+/server/node_modules
+
+/dist-clerk-auth/
+
+/dist-clerk-native/

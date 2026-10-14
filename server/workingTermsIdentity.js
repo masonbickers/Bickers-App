@@ -1,5 +1,5 @@
 // Resolve an existing signature, never copy, rewrite or manufacture one.
-import { classifyIdentitySession } from '../lib/identitySession.js';
+import { classifyIdentitySession } from './identitySession.js';
 const CURRENT_VERSION = "1.1";
 const TITLE = "Bickers Action Working Terms";
 const EFFECTIVE_DATE = "19/08/2026";

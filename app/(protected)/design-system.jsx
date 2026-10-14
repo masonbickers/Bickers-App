@@ -1,3 +1,4 @@
+import ClerkAuthVisualFixture from "../../components/dev/ClerkAuthVisualFixture";
 import VehiclePrepRuntimeFixture from "../../components/dev/VehiclePrepRuntimeFixture";
 import { useLocalSearchParams } from "expo-router";
 
@@ -17,6 +18,7 @@ export default function DesignSystemShowcase() {
   const requestedTheme = Array.isArray(params.theme) ? params.theme[0] : params.theme;
   const scenario = EMPLOYEE_SCENARIOS.has(requested) ? requested : "components";
   const forcedTheme = requestedTheme === "dark" ? "dark" : "light";
+  if (requested === "clerk-auth" && process.env.EXPO_PUBLIC_VISUAL_TEST_MODE === "1") return <ThemeProvider forcedTheme={forcedTheme}><ClerkAuthVisualFixture state={params.state} /></ThemeProvider>;
   if (requested === "shared-prep-runtime" && process.env.EXPO_PUBLIC_VISUAL_TEST_MODE === "1") return <ThemeProvider forcedTheme={forcedTheme}><VehiclePrepRuntimeFixture /></ThemeProvider>;
 
   if (requested === "native-ui-pilot") return <ThemeProvider forcedTheme={forcedTheme}><PageShell appearance="grouped" header={{ variant: "compact", title: "Native UI pilot" }}><NativeUIPilotFixture key={String(params.run || "default")} refreshOnly={params.control === "refresh"} /></PageShell></ThemeProvider>;
