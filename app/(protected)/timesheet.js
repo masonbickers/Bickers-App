@@ -1,21 +1,31 @@
+import { routeColors } from "../../lib/design/routePresentation/timesheet-js.js";
+import { styles } from "../../lib/design/screenStyles/timesheet-js.js";
+import { SettingsGroup, SettingsRow, AppText as Text } from "../../components/ui/AppPrimitives";
+import NativeActionButton from "../../components/ui/NativeActionButton";
+import NativeSettingsSheet from "../../components/ui/NativeSettingsSheet";
+import NativeSegmentedControl from "../../components/ui/NativeSegmentedControl";
+import NativeTimeSelect from "../../components/ui/NativeTimeSelect";
+import { StackActions, useNavigation } from "@react-navigation/native";
+import { timesheetBackCount } from "../../lib/timesheetNavigation";
 // app/(protected)/timesheet-overview.js
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
-import { doc, updateDoc } from "firebase/firestore";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useRouter } from "expo-router";
+import { doc,
+  updateDoc } from "firebase/firestore";
+import { useCallback,
+  useEffect,
+  useMemo,
+  useState } from "react";
 import {
   Alert,
-  FlatList,
-  Modal,
-  RefreshControl,
-  ScrollView,
+  Platform,
+  useWindowDimensions,
   StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AsyncContentState, EmptyState } from "../../components/AsyncState";
 import { db } from "../../firebaseConfig";
@@ -24,10 +34,12 @@ import {
   useEmployeeTimesheets,
   useTimesheetQueries,
 } from "../../hooks/useOperationalData";
-import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatDateDDMMYYYY } from "../../lib/dateFormat";
 import { useAuth } from "../../providers/AuthProvider";
-import { useTheme } from "../../providers/ThemeProvider"; // 👈 theme
+import { useTheme } from "../../providers/ThemeProvider";
+import { withAlpha } from "../../lib/design/color";
+import { designTokens as t } from "../../lib/design/tokens";
+import PageShell from "../../components/layout/PageShell"; // 👈 theme
 
 /* helpers */
 const DEFAULT_YARD_START = "08:00";
@@ -97,25 +109,25 @@ function isTimesheetApproved(ts) {
   );
 }
 
-function withAlpha(hex, alpha) {
-  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
-  const raw = String(hex || "").replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return `rgba(255,255,255,${safeAlpha})`;
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${safeAlpha})`;
-}
-
 function timesheetWeekKey(timesheet) {
   return timesheet?.weekStart || timesheet?.weekISO || "";
 }
 
 export default function TimesheetOverview() {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const autofillSheet = Platform.OS === "ios" && width < t.layout.tabletBreakpoint;
   const router = useRouter();
+  const navigation = useNavigation();
+  const goBack = useCallback(() => {
+    const state = navigation.getState();
+    const count = timesheetBackCount(state);
+    if (count > 1) navigation.dispatch({ ...StackActions.pop(count), target: state.key });
+    else if (router.canGoBack()) router.back();
+    else router.replace("/me");
+  }, [navigation, router]);
   const { employee, isAuthed, loading, reloadSession } = useAuth();
   const { colors } = useTheme(); // 🎨
-  const responsive = useResponsiveLayout();
   const employeesResource = useEmployees();
   const timesheetsResource = useEmployeeTimesheets();
   const queriesResource = useTimesheetQueries();
@@ -453,22 +465,22 @@ export default function TimesheetOverview() {
 
     if (status === "approved") {
       bgStyle = styles.pillApproved;
-      textColor = "#022c22";
+      textColor = routeColors.hex_022c22_8bgm6t;
       iconName = "check-circle";
       label = "Approved";
     } else if (status === "submitted") {
       bgStyle = styles.pillSubmitted;
-      textColor = "#052e16";
+      textColor = routeColors.hex_052e16_89ayk3;
       iconName = "check-circle";
       label = "Submitted";
     } else if (status === "draft") {
       bgStyle = styles.pillDraft;
-      textColor = "#1e293b";
+      textColor = routeColors.hex_1e293b_95wh3c;
       iconName = "edit-3";
       label = "Draft saved";
     } else {
       bgStyle = styles.pillNotFilled;
-      textColor = "#7c2d12";
+      textColor = routeColors.hex_7c2d12_7wqog7;
       iconName = "alert-circle";
       label = "Not filled";
     }
@@ -479,96 +491,40 @@ export default function TimesheetOverview() {
           name={iconName}
           size={14}
           color={textColor}
-          style={{ marginRight: 6 }}
+          style={{ marginRight: t.spacing.xxs }}
         />
         <Text style={[styles.pillText, { color: textColor }]}>{label}</Text>
       </View>
     );
   };
 
-  const renderWeekCard = (weekKey, label, status, hasQuery = false) => (
-    <TouchableOpacity
+  const renderWeekCard = (weekKey, label, status, hasQuery = false, divider = false) => (
+    <SettingsRow
+      titleVariant="bodyLargeStrong"
+      subtitleVariant="metadata"
+      titleTone="primary"
       key={weekKey}
-      activeOpacity={0.85}
-      style={[
-        styles.weekCard,
-        {
-          backgroundColor: colors.surfaceAlt,
-          borderColor: colors.border,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-        },
-        status === "submitted" && styles.submittedCard,
-        status === "approved" && styles.approvedCard,
-      ]}
+      title={label}
+      subtitle={hasQuery ? "Monday → Sunday · Manager query pending" : "Monday → Sunday"}
+      trailing={<WeekStatusPill status={status} />}
+      divider={divider}
       onPress={() => router.push(`/week/${weekKey}`)}
-      accessibilityRole="button"
       accessibilityLabel={`${label}, ${status === "approved" ? "approved" : status === "submitted" ? "submitted" : "not filled"}${hasQuery ? ", manager query pending" : ""}`}
-      accessibilityHint="Opens this week’s timesheet"
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.weekLabel, { color: colors.text }]}>{label}</Text>
-        <Text style={[styles.weekSubLabel, { color: colors.textMuted }]}>
-          Monday → Sunday
-        </Text>
-
-        {hasQuery && (
-          <View style={styles.queryRow}>
-            <Icon name="alert-circle" size={13} color="#f97316" />
-            <Text style={styles.queryRowText}>Manager query pending</Text>
-          </View>
-        )}
-      </View>
-      <View style={{ alignItems: "flex-end" }}>
-        <WeekStatusPill status={status} />
-        <Icon
-          name="chevron-right"
-          size={20}
-          color={colors.textMuted}
-          style={{ marginTop: 6 }}
-        />
-      </View>
-    </TouchableOpacity>
+    />
   );
 
   // follow me.js: render nothing while auth resolving or unauthenticated
   if (loading || !isAuthed) return null;
 
   return (
-    <SafeAreaView
-      edges={["top", "left", "right"]}
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
-      {/* Hero */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroContent}>
-          <View style={styles.heroTopRow}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              activeOpacity={0.85}
-              style={[
-                styles.backBtn,
-                {
-                  backgroundColor: withAlpha(colors.surfaceAlt, 0.75),
-                  borderColor: withAlpha(colors.border, 0.75),
-                },
-              ]}
-            >
-              <Icon name="arrow-left" size={15} color={colors.text} />
-            </TouchableOpacity>
-
-            <View style={styles.heroTitleWrap}>
-              <Text style={[styles.heroEyebrow, { color: colors.textMuted }]}>
-                Payroll
-              </Text>
-              <Text style={[styles.heroTitle, { color: colors.text }]}>Timesheets</Text>
-            </View>
-
-            <View style={styles.heroSpacer} />
-          </View>
-
-          <View style={styles.heroMetaRow}>
+    <PageShell
+      appearance="grouped"
+      header={{
+        variant: "compact",
+        eyebrow: "Payroll",
+        title: "Timesheets",
+        onBack: goBack,
+        metadata: <View style={styles.heroMetaRow}>
             <View
               style={[
                 styles.heroMetaChip,
@@ -579,7 +535,7 @@ export default function TimesheetOverview() {
               ]}
             >
               <Icon name="calendar" size={12} color={colors.textMuted} />
-              <Text style={[styles.heroMetaText, { color: colors.text }]}>
+              <Text tone={"primary"} style={[styles.heroMetaText]}>
                 This month: {thisMonthCompleteCount}/{weekOptions.length}
               </Text>
             </View>
@@ -594,178 +550,116 @@ export default function TimesheetOverview() {
               ]}
             >
               <Icon name="archive" size={12} color={colors.textMuted} />
-              <Text style={[styles.heroMetaText, { color: colors.text }]}>
+              <Text tone={"primary"} style={[styles.heroMetaText]}>
                 Submitted: {submittedSheets.length}
               </Text>
             </View>
-          </View>
-        </View>
-      </View>
+          </View>,
+      }}
+      refresh={{ refreshing, onRefresh }}
+    >
 
-      <View
-        style={[
-          styles.defaultsCard,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
-      >
-        <View style={styles.defaultsHeaderCompact}>
-          <View style={styles.defaultsHeader}>
-            <Icon name="sliders" size={14} color={colors.textMuted} />
-            <Text style={[styles.defaultsTitle, { color: colors.text }]}>
-              Timesheet Autofill
-            </Text>
-          </View>
 
-          <TouchableOpacity
-            style={[
-              styles.defaultsEditButton,
-              {
-                backgroundColor: colors.surfaceAlt,
-                borderColor: colors.border,
-                opacity: settingsBusy ? 0.6 : 1,
-              },
-            ]}
-            onPress={() => setSettingsOpen(true)}
-            disabled={settingsBusy}
-            accessibilityRole="button"
-            accessibilityLabel="Edit timesheet autofill settings"
-            accessibilityState={{ disabled: settingsBusy }}
-          >
-            <Icon name="edit-3" size={13} color={colors.text} />
-            <Text style={[styles.defaultsEditText, { color: colors.text }]}>
-              Edit
-            </Text>
-          </TouchableOpacity>
-        </View>
+      <SettingsGroup outlined>
+        <SettingsRow
+          titleVariant="bodyLargeStrong"
+          subtitleVariant="metadata"
+          titleTone="primary"
+          title="Timesheet Autofill"
+          subtitle={settingsBusy ? "Loading defaults…" : `${autofillType === "office" ? "Office" : autofillType === "workshop" ? "Workshop" : "Yard"} · ${autofillStartTime}–${autofillEndTime}`}
+          onPress={() => setSettingsOpen(true)}
+          disabled={settingsBusy}
+          accessibilityLabel="Edit timesheet autofill settings"
+        />
+      </SettingsGroup>
+      <Text variant="metadata" tone="secondary" layoutStyle={styles.settingsHelp}>
+        Choose the default work type and times used for new entries.
+      </Text>
 
-        {settingsBusy ? (
-          <View style={{ marginTop: 8 }}>
-            <ShimmerLine />
-          </View>
-        ) : (
-          <>
-            <Text style={[styles.defaultsSummary, { color: colors.text }]}>
-              {autofillType === "office" ? "Office" : autofillType === "workshop" ? "Workshop" : "Yard"} • {autofillStartTime}-{autofillEndTime}
-            </Text>
-            <Text style={[styles.defaultsHelp, { color: colors.textMuted }]}>
-              Tap Edit to change your default type and times.
-            </Text>
-          </>
-        )}
-      </View>
-
-      <Modal
+      <NativeSettingsSheet
         visible={settingsOpen}
-        transparent
-        animationType="fade"
+        title="Autofill Settings"
+        appearance="grouped"
+        presentation={autofillSheet ? "sheet" : "dialog"}
+        actionsLayoutStyle={[styles.autofillModalActions, autofillSheet && { paddingBottom: Math.max(t.spacing.md, insets.bottom) }]}
         onRequestClose={() => setSettingsOpen(false)}
-        accessibilityViewIsModal
-        onAccessibilityEscape={() => setSettingsOpen(false)}
+        busy={settingsSaving}
+        actions={
+          <>
+            <NativeActionButton label="Cancel" role="cancel" variant="secondary" onPress={() => setSettingsOpen(false)} disabled={settingsSaving} />
+            <NativeActionButton
+              label={settingsSaving ? "Saving..." : "Save"}
+              variant="glassPrimary"
+              loading={settingsSaving}
+              onPress={async () => {
+                const ok = await saveAutofillDefaults();
+                if (ok) setSettingsOpen(false);
+              }}
+            />
+          </>
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalCard,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.modalHead}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Autofill Settings
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.modalCloseIcon,
-                  { borderColor: colors.border, backgroundColor: colors.surfaceAlt },
-                ]}
-                onPress={() => setSettingsOpen(false)}
-                disabled={settingsSaving}
-                accessibilityRole="button"
-                accessibilityLabel="Close autofill settings"
-                accessibilityState={{ disabled: settingsSaving }}
-              >
-                <Icon name="x" size={14} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.defaultsHelp, { color: colors.textMuted }]}>
+            <Text variant="settingsDetail" tone="secondary">
               Choose one default type and set its times.
             </Text>
 
-            <View style={styles.typeRow}>
-              {["yard", "office", "workshop"].map((type) => {
-                const active = autofillType === type;
-                return (
-                  <TouchableOpacity
-                    key={type}
-                    style={[
-                      styles.typeButton,
-                      {
-                        borderColor: active ? colors.accent : colors.border,
-                        backgroundColor: active ? colors.accentSoft : colors.surfaceAlt,
-                        opacity: settingsSaving ? 0.6 : 1,
-                      },
-                    ]}
-                    onPress={() => {
-                      if (settingsSaving) return;
-                      setAutofillType(type);
-                      if (type === "office") {
-                        setAutofillStartTime(
-                          normaliseTimeValue(
-                            employee?.officeStartTime || employee?.timesheetDefaults?.officeStart
-                          ) || DEFAULT_OFFICE_START
-                        );
-                        setAutofillEndTime(
-                          normaliseTimeValue(
-                            employee?.officeEndTime || employee?.timesheetDefaults?.officeEnd
-                          ) || DEFAULT_OFFICE_END
-                        );
-                      } else if (type === "workshop") {
-                        setAutofillStartTime(
-                          normaliseTimeValue(
-                            employee?.workshopStartTime || employee?.timesheetDefaults?.workshopStart
-                          ) || DEFAULT_YARD_START
-                        );
-                        setAutofillEndTime(
-                          normaliseTimeValue(
-                            employee?.workshopEndTime || employee?.timesheetDefaults?.workshopEnd
-                          ) || DEFAULT_YARD_END
-                        );
-                      } else {
-                        setAutofillStartTime(
-                          normaliseTimeValue(
-                            employee?.yardStartTime || employee?.timesheetDefaults?.yardStart
-                          ) || DEFAULT_YARD_START
-                        );
-                        setAutofillEndTime(
-                          normaliseTimeValue(
-                            employee?.yardEndTime || employee?.timesheetDefaults?.yardEnd
-                          ) || DEFAULT_YARD_END
-                        );
-                      }
-                    }}
-                    disabled={settingsSaving}
-                    accessibilityRole="radio"
-                    accessibilityLabel={`${type === "office" ? "Office" : type === "workshop" ? "Workshop" : "Yard"} autofill type`}
-                    accessibilityState={{ checked: active, disabled: settingsSaving }}
-                  >
-                    <Text style={[styles.typeButtonText, { color: colors.text }]}>
-                      {type === "office" ? "Office" : type === "workshop" ? "Workshop" : "Yard"}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <NativeSegmentedControl
+              options={[
+                { label: "Yard", value: "yard" },
+                { label: "Office", value: "office" },
+                { label: "Workshop", value: "workshop" },
+              ]}
+              value={autofillType}
+              disabled={settingsSaving}
+              onChange={(type) => {
+                if (settingsSaving) return;
+                setAutofillType(type);
+                if (type === "office") {
+                  setAutofillStartTime(
+                    normaliseTimeValue(
+                      employee?.officeStartTime || employee?.timesheetDefaults?.officeStart
+                    ) || DEFAULT_OFFICE_START
+                  );
+                  setAutofillEndTime(
+                    normaliseTimeValue(
+                      employee?.officeEndTime || employee?.timesheetDefaults?.officeEnd
+                    ) || DEFAULT_OFFICE_END
+                  );
+                } else if (type === "workshop") {
+                  setAutofillStartTime(
+                    normaliseTimeValue(
+                      employee?.workshopStartTime || employee?.timesheetDefaults?.workshopStart
+                    ) || DEFAULT_YARD_START
+                  );
+                  setAutofillEndTime(
+                    normaliseTimeValue(
+                      employee?.workshopEndTime || employee?.timesheetDefaults?.workshopEnd
+                    ) || DEFAULT_YARD_END
+                  );
+                } else {
+                  setAutofillStartTime(
+                    normaliseTimeValue(
+                      employee?.yardStartTime || employee?.timesheetDefaults?.yardStart
+                    ) || DEFAULT_YARD_START
+                  );
+                  setAutofillEndTime(
+                    normaliseTimeValue(
+                      employee?.yardEndTime || employee?.timesheetDefaults?.yardEnd
+                    ) || DEFAULT_YARD_END
+                  );
+                }
+              }}
+            />
 
-            <View style={styles.defaultsRow}>
+            <SettingsGroup outlined>
               <TimePickerField
                 label="Start"
+                divider
                 value={autofillStartTime}
                 onSelect={setAutofillStartTime}
                 options={TIME_OPTIONS}
                 disabled={settingsSaving}
               />
-              <View style={{ width: 8 }} />
               <TimePickerField
                 label="Finish"
                 value={autofillEndTime}
@@ -773,65 +667,11 @@ export default function TimesheetOverview() {
                 options={TIME_OPTIONS}
                 disabled={settingsSaving}
               />
-            </View>
+            </SettingsGroup>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  { borderColor: colors.border, backgroundColor: colors.surfaceAlt },
-                ]}
-                onPress={() => setSettingsOpen(false)}
-                disabled={settingsSaving}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel autofill changes"
-                accessibilityState={{ disabled: settingsSaving }}
-              >
-                <Text style={[styles.modalButtonText, { color: colors.text }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: colors.accentSoft,
-                    opacity: settingsSaving ? 0.7 : 1,
-                  },
-                ]}
-                onPress={async () => {
-                  const ok = await saveAutofillDefaults();
-                  if (ok) setSettingsOpen(false);
-                }}
-                disabled={settingsSaving}
-                accessibilityRole="button"
-                accessibilityLabel="Save autofill settings"
-                accessibilityState={{ disabled: settingsSaving, busy: settingsSaving }}
-              >
-                <Text style={[styles.modalButtonText, { color: colors.text }]}>
-                  {settingsSaving ? "Saving..." : "Save"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      </NativeSettingsSheet>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.pageContent,
-          { width: "100%", maxWidth: responsive.maxContentWidth, alignSelf: "center" },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
+      <>
         <AsyncContentState
           resources={[timesheetsResource, queriesResource, employeesResource]}
           hasContent={timesheets.length > 0}
@@ -841,26 +681,26 @@ export default function TimesheetOverview() {
         {/* Legend row */}
         <View style={styles.legendRow}>
           <LegendSwatch
-            color="#22c55e"
-            border="#16a34a"
+            color={routeColors.hex_22c55e_74qlvk}
+            border={routeColors.hex_16a34a_a655dy}
             label="Approved"
             textColor={colors.text}
           />
           <LegendSwatch
-            color="#bbf7d0"
-            border="#86efac"
+            color={routeColors.hex_bbf7d0_ry6j9f}
+            border={routeColors.hex_86efac_dg95e1}
             label="Submitted"
             textColor={colors.text}
           />
           <LegendSwatch
-            color="#fee2b3"
-            border="#fed7aa"
+            color={routeColors.hex_fee2b3_pb1qcj}
+            border={routeColors.hex_fed7aa_pb14l2}
             label="Draft saved"
             textColor={colors.text}
           />
           <LegendSwatch
-            color="#fed7aa"
-            border="#fdba74"
+            color={routeColors.hex_fed7aa_pb14l2}
+            border={routeColors.hex_fdba74_pbro4k}
             label="Not filled"
             textColor={colors.text}
           />
@@ -868,20 +708,11 @@ export default function TimesheetOverview() {
 
         {/* This month (interactive list of 4 weeks) */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionHeader, { color: colors.text }]}>
+          <Text variant="sectionHeading" tone="primary" layoutStyle={styles.sectionHeading}>
             This Month
           </Text>
         </View>
-        <View
-          style={{
-            borderRadius: 14,
-            overflow: "hidden",
-            borderColor: colors.border,
-            borderWidth: 1,
-            marginBottom: 12,
-            backgroundColor: colors.surface,
-          }}
-        >
+        <SettingsGroup outlined>
           {weekOptions.map((w, idx) => {
               const existing = timesheets.find((t) => timesheetWeekKey(t) === w.key);
 
@@ -901,62 +732,40 @@ export default function TimesheetOverview() {
               const hasQuery = !!queryWeeksMap[w.key] && status !== "approved";
 
               return (
-                <View
-                  key={w.key}
-                  style={{
-                    borderBottomWidth:
-                      idx === weekOptions.length - 1
-                        ? 0
-                        : StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                  }}
-                >
-                  {renderWeekCard(w.key, w.label, status, hasQuery)}
+                <View key={w.key}>
+                  {renderWeekCard(w.key, w.label, status, hasQuery, idx < weekOptions.length - 1)}
                 </View>
               );
             })}
-        </View>
+        </SettingsGroup>
 
         {/* Past submissions list */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionHeader, { color: colors.text }]}>
+          <Text variant="sectionHeading" tone="primary" layoutStyle={styles.sectionHeading}>
             Past Submissions
           </Text>
-          <TouchableOpacity
+          <NativeActionButton
+            label="Refresh"
+            variant="secondary"
+            size="small"
+            systemImage="arrow.clockwise"
+            icon="refresh-ccw"
             onPress={onRefresh}
-            activeOpacity={0.8}
-            style={[
-              styles.refreshBtn,
-              {
-                backgroundColor: colors.surfaceAlt,
-                borderColor: colors.border,
-              },
-            ]}
-            accessibilityRole="button"
+            loading={refreshing}
             accessibilityLabel="Refresh timesheets"
-            accessibilityState={{ busy: refreshing }}
-          >
-            <Icon name="refresh-ccw" size={14} color={colors.text} />
-            <Text
-              style={[
-                styles.refreshText,
-                { color: colors.text, fontWeight: "700" },
-              ]}
-            >
-              Refresh
-            </Text>
-          </TouchableOpacity>
+          />
         </View>
 
         {submittedSheets.length === 0 ? (
-          <EmptyState
+          <SettingsGroup outlined><EmptyState
+            presentation="plain"
             icon="clock"
             title="No submitted timesheets"
             message="Submitted weeks will appear here."
             compact
-          />
+          /></SettingsGroup>
         ) : (
-          <View style={styles.pastList}>
+          <SettingsGroup outlined>
             {submittedSheets.map((item, idx) => {
               const approved = isTimesheetApproved(item);
               const status = approved ? "approved" : "submitted";
@@ -965,110 +774,40 @@ export default function TimesheetOverview() {
               const isLast = idx === submittedSheets.length - 1;
 
               return (
-                <View key={item.id} style={!isLast ? { marginBottom: 8 } : null}>
+                <View
+                  key={item.id}
+
+                >
                   {renderWeekCard(
                     weekKey,
                     formatWeekRange(new Date(weekKey)),
                     status,
-                    hasQuery
+                    hasQuery,
+                    !isLast
                   )}
                 </View>
               );
             })}
-          </View>
+          </SettingsGroup>
         )}
         </AsyncContentState>
-      </ScrollView>
-    </SafeAreaView>
+      </>
+    </PageShell>
   );
 }
 
 /* tiny components */
-function TimePickerField({ label, value, onSelect, options, disabled }) {
-  const { colors } = useTheme();
-  const [open, setOpen] = useState(false);
-
+function TimePickerField({ label, value, onSelect, options, disabled, divider }) {
   return (
-    <View style={{ flex: 1 }}>
-      <Text style={[styles.defaultsFieldLabel, { color: colors.textMuted }]}>
-        {label}
-      </Text>
-      <TouchableOpacity
-        style={[
-          styles.defaultsField,
-          {
-            backgroundColor: colors.inputBackground,
-            borderColor: colors.inputBorder,
-            opacity: disabled ? 0.65 : 1,
-          },
-        ]}
-        onPress={() => setOpen(true)}
+    <View>
+      <NativeTimeSelect
+        label={label}
+        value={value}
+        onChange={onSelect}
+        options={options}
+        divider={divider}
         disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={`${label} time, ${value || "not selected"}`}
-        accessibilityHint="Opens the time choices"
-        accessibilityState={{ disabled }}
-      >
-        <Text style={{ color: value ? colors.text : colors.textMuted }}>
-          {value || "Select"}
-        </Text>
-        <Icon name="chevron-down" size={14} color={colors.textMuted} />
-      </TouchableOpacity>
-
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-        accessibilityViewIsModal
-        onAccessibilityEscape={() => setOpen(false)}
-      >
-        <View style={styles.pickerModalOverlay}>
-          <View
-            style={[
-              styles.pickerModalCard,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <FlatList
-              data={options}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.pickerModalItem,
-                    { borderBottomColor: colors.border },
-                  ]}
-                  onPress={() => {
-                    onSelect(item);
-                    setOpen(false);
-                  }}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${label} time ${item}`}
-                  accessibilityState={{ checked: item === value }}
-                >
-                  <Text style={{ color: colors.text }}>{item}</Text>
-                </TouchableOpacity>
-              )}
-              keyboardShouldPersistTaps="handled"
-            />
-
-            <TouchableOpacity
-              style={[
-                styles.pickerModalClose,
-                { backgroundColor: colors.surfaceAlt },
-              ]}
-              onPress={() => setOpen(false)}
-              accessibilityRole="button"
-              accessibilityLabel={`Close ${label.toLowerCase()} time choices`}
-            >
-              <Text style={{ color: colors.text, fontWeight: "700" }}>
-                Close
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      />
     </View>
   );
 }
@@ -1091,323 +830,3 @@ function ShimmerLine({ width = "100%" }) {
 }
 
 /* styles */
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0b0b", padding: 12 },
-  pageContent: { paddingBottom: 0 },
-  pastList: { paddingBottom: 6 },
-
-  heroCard: {
-    position: "relative",
-    marginBottom: 8,
-  },
-  heroContent: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroTitleWrap: {
-    flex: 1,
-    paddingTop: 1,
-    alignItems: "center",
-  },
-  heroSpacer: {
-    width: 34,
-    height: 34,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  heroTitle: {
-    marginTop: 2,
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
-  heroSubTitle: {
-    marginTop: 2,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  heroMetaRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    justifyContent: "center",
-  },
-  heroMetaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  heroMetaText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  defaultsCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 10,
-  },
-  defaultsHeaderCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 2,
-  },
-  defaultsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  defaultsTitle: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  defaultsEditButton: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  defaultsEditText: {
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  defaultsSummary: {
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  defaultsHelp: {
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 1,
-    marginBottom: 2,
-  },
-  defaultsRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    marginBottom: 10,
-  },
-  defaultsFieldLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  defaultsField: {
-    borderWidth: 1,
-    borderRadius: 9,
-    minHeight: 40,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  typeRow: {
-    flexDirection: "row",
-    marginBottom: 10,
-    justifyContent: "center",
-    gap: 8,
-  },
-  typeButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    alignItems: "center",
-  },
-  typeButtonText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 18,
-  },
-  modalCard: {
-    width: "100%",
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 12,
-  },
-  modalHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  modalTitle: {
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  modalCloseIcon: {
-    borderWidth: 1,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
-  },
-  modalButton: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  modalButtonText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  legendRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 12,
-  },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1 },
-  legendText: { color: "#cfcfcf", fontSize: 11 },
-
-  sectionHeaderRow: {
-    marginTop: 2,
-    marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  sectionHeader: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#ffffff",
-    marginBottom: 0,
-  },
-
-  refreshBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#1f2937",
-    borderColor: "#374151",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  refreshText: { color: "#fff", fontSize: 12 },
-
-  weekCard: {
-    backgroundColor: "#111111",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  submittedCard: { borderLeftWidth: 3, borderLeftColor: "#22c55e" },
-  approvedCard: { borderLeftWidth: 3, borderLeftColor: "#16a34a" },
-
-  weekLabel: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  weekSubLabel: { color: "#9ca3af", fontSize: 12, marginTop: 2 },
-
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  pillApproved: { backgroundColor: "#22c55e", borderColor: "#16a34a" },
-  pillSubmitted: { backgroundColor: "#bbf7d0", borderColor: "#86efac" },
-  pillDraft: { backgroundColor: "#fee2b3", borderColor: "#fed7aa" },
-  pillNotFilled: { backgroundColor: "#fed7aa", borderColor: "#fdba74" },
-  pillText: { fontSize: 12, fontWeight: "800" },
-
-  queryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-    gap: 4,
-  },
-  queryRowText: {
-    fontSize: 11,
-    color: "#f97316",
-    fontWeight: "600",
-  },
-
-  emptyText: { color: "#9ca3af", fontStyle: "italic", marginTop: 6 },
-
-  pickerModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  pickerModalCard: {
-    width: "100%",
-    maxHeight: "62%",
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  pickerModalItem: {
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-  },
-  pickerModalClose: {
-    margin: 10,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-
-  shimmer: {
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#1f1f1f",
-    marginBottom: 10,
-  },
-});

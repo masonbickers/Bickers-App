@@ -1,29 +1,24 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { styles } from "../../../../lib/design/screenStyles/service-vehicle-timeline-id-jsx.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS } from "../../../../lib/design/semantics";
+import { useLocalSearchParams,
+  useRouter } from "expo-router";
+import { useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
   Image,
   ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { useServiceCollection } from "../../../../hooks/useServiceData";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-};
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 function toDateMaybe(value) {
   if (!value) return null;
@@ -291,41 +286,13 @@ export default function VehicleTimelineScreen() {
   const headerLabel = getVehicleLabel(vehicle, params);
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.pageTitle, { color: colors.text || COLORS.textHigh }]}>
-            Vehicle Timeline
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-            numberOfLines={1}
-          >
-            {headerLabel}
-          </Text>
-        </View>
-      </View>
+    <PageShell header={{
+      variant: "compact",
+      title: "Vehicle Timeline",
+      subtitle: headerLabel,
+      onBack: router.back,
+    }}>
+
 
       {loadingVehicle ? (
         <View style={styles.loadingContainer}>
@@ -334,43 +301,35 @@ export default function VehicleTimelineScreen() {
             color={colors.accent || COLORS.primaryAction}
           />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading timeline...
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <>
           {timeline.length === 0 ? (
-            <View
-              style={[
-                styles.emptyState,
-                {
-                  backgroundColor: colors.surfaceAlt || COLORS.card,
-                  borderColor: colors.border || COLORS.border,
-                },
-              ]}
+            <SectionCard
+              tone="subtle" layoutStyle={styles.emptyState}
             >
               <Icon
                 name="clock"
                 size={30}
                 color={colors.textMuted || COLORS.textMid}
               />
-              <Text style={[styles.emptyTitle, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.emptyTitle]}>
                 No timeline yet
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.emptySubtitle,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 Services, repairs, defects, MOT checks, prep records and photos will appear here.
               </Text>
-            </View>
+            </SectionCard>
           ) : (
             timeline.map((item, index) => (
               <TouchableOpacity
@@ -388,28 +347,20 @@ export default function VehicleTimelineScreen() {
                   {index < timeline.length - 1 && <View style={styles.railLine} />}
                 </View>
 
-                <View
-                  style={[
-                    styles.timelineCard,
-                    {
-                      backgroundColor: colors.surfaceAlt || COLORS.card,
-                      borderColor: colors.border || COLORS.border,
-                    },
-                  ]}
+                <SectionCard
+                  tone="subtle" layoutStyle={styles.timelineCard}
                 >
                   <View style={styles.timelineHeaderRow}>
                     <Text
-                      style={[
+                      tone={"primary"} style={[
                         styles.timelineTitle,
-                        { color: colors.text || COLORS.textHigh },
                       ]}
                     >
                       {item.title}
                     </Text>
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.timelineDate,
-                        { color: colors.textMuted || COLORS.textLow },
                       ]}
                     >
                       {formatDate(item.date)}
@@ -417,9 +368,8 @@ export default function VehicleTimelineScreen() {
                   </View>
                   {!!item.meta && (
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.timelineMeta,
-                        { color: colors.textMuted || COLORS.textLow },
                       ]}
                     >
                       {item.meta}
@@ -427,9 +377,8 @@ export default function VehicleTimelineScreen() {
                   )}
                   {!!item.subtitle && (
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.timelineSubtitle,
-                        { color: colors.textMuted || COLORS.textMid },
                       ]}
                     >
                       {item.subtitle}
@@ -439,134 +388,20 @@ export default function VehicleTimelineScreen() {
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
-                      style={{ marginTop: 8 }}
+                      style={{ marginTop: t.spacing.xs }}
                     >
                       {item.photos.slice(0, 8).map((uri) => (
                         <Image key={uri} source={{ uri }} style={styles.photoThumb} />
                       ))}
                     </ScrollView>
                   )}
-                </View>
+                </SectionCard>
               </TouchableOpacity>
             ))
           )}
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 36,
-  },
-  timelineRow: {
-    flexDirection: "row",
-  },
-  timelineRail: {
-    width: 38,
-    alignItems: "center",
-  },
-  iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.primaryAction,
-  },
-  railLine: {
-    flex: 1,
-    width: 2,
-    backgroundColor: COLORS.border,
-  },
-  timelineCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-  },
-  timelineHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  timelineTitle: {
-    flex: 1,
-    paddingRight: 8,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  timelineDate: {
-    maxWidth: 112,
-    fontSize: 11,
-    textAlign: "right",
-  },
-  timelineMeta: {
-    marginTop: 4,
-    fontSize: 12,
-  },
-  timelineSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  photoThumb: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  emptyState: {
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 24,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "center",
-  },
-});

@@ -1,0 +1,2282 @@
+[
+  {
+    "file": "app/(auth)/_layout.tsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(auth)/login.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(main-tabs)/_layout.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(main-tabs)/contacts.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(main-tabs)/job.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(main-tabs)/me.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(main-tabs)/screens/homescreen.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 4,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(main-tabs)/screens/schedule.js",
+    "family": "employee/auth",
+    "radii": 1,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(service-tabs)/_layout.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(service-tabs)/service/book-work.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(service-tabs)/service/home.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(service-tabs)/service/issues.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(service-tabs)/service/service-list.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/(service-tabs)/service/work.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/_layout.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/about.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/add-timesheet.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/bookings/[id].jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/design-system.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/document-viewer.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/edit-profile.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/expenses.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 2,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/fix.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/help.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/holiday-request.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/holidaypage.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/index.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/insurance.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/maintenance.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/notification/[id].js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/notifications.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/query/[id]/index.js",
+    "family": "employee/auth",
+    "radii": 6,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 11,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/recce-form.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/receipts.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/activity-history.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/advisories.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/daily-check.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/defect-form.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/defects/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/defects.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/design-system.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/equipment-list.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/index.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/inspections/index.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/inspections/inspection-form/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/minor-service/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/mot-precheck/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/repair-form.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/resolved-defects/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/service-form/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/service-form.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/service-history/[vehicleId].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/service-history.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/service-record/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/service.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/settings.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/tyre-brake-check.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/vehicle-check-form/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/vehicle-prep/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/vehicle-timeline/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/vehicles/[id].jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/service/vehicles/file-viewer.jsx",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/settings.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/spec-sheets.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/timesheet.js",
+    "family": "employee/auth",
+    "radii": 1,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/uploader.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/vehicle-check.js",
+    "family": "employee/auth",
+    "radii": 1,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 2,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/vehicle-prep/[id].jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/vehicles.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/week/[id]/index.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 16,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/work/index.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/work-diary-board.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/work-diary.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/(protected)/working-terms.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/+html.tsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/+not-found.tsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/_layout.jsx",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "app/index.js",
+    "family": "employee/auth",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/AsyncState.js",
+    "family": "components",
+    "radii": 3,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/ChangePasswordModal.js",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/DashboardSkeleton.jsx",
+    "family": "components",
+    "radii": 10,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/DataRefreshStatus.js",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/PageHeaderCard.tsx",
+    "family": "components",
+    "radii": 1,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/SecureAccount.js",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/TemporaryPasswordSetup.js",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/ThemedText.tsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 5,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/ThemedView.tsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/WebMetadata.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/WebMetadata.web.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/WorkDiaryAccessGate.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/app/BottomNavigationBar.js",
+    "family": "components",
+    "radii": 6,
+    "glass": 2,
+    "blur": 2,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/app/NativeTabLayout.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/app/OperationalPageHeader.js",
+    "family": "components",
+    "radii": 2,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/app/SyncStatusControl.js",
+    "family": "components",
+    "radii": 2,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/app/footer.js",
+    "family": "components",
+    "radii": 1,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/app/service-footer.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/DesignSystemVisualFixtures.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/LayoutStressFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/NavigationClearanceFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredContactsFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredDashboardFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredIssuesFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredLandingFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredNotificationsFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredServiceFixtures.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredSettingsFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/RestoredWorkshopFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/ServiceChecklistFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/dev/WorkshopChecklistRowsFixture.jsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/layout/PageShell.tsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/layout/RootSurface.tsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/renderers/BrandArtwork.tsx",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/ui/AppPrimitives.js",
+    "family": "components",
+    "radii": 31,
+    "glass": 5,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/ui/AppleMaterialSurface.js",
+    "family": "components",
+    "radii": 0,
+    "glass": 3,
+    "blur": 2,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/ui/AssetSelectField.js",
+    "family": "components",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "components/ui/SignatureField.js",
+    "family": "components",
+    "radii": 1,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/color.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/contrast.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/controlState.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/dashboard.ts",
+    "family": "lib/design",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/dashboardLayout.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/navigation.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/pageDensity.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/responsive.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/add-timesheet-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/expenses-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/holiday-request-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/holidaypage-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/main-tabs-contacts-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/main-tabs-job-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/main-tabs-me-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/main-tabs-screens-homescreen-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/main-tabs-screens-schedule-js.js",
+    "family": "lib/design",
+    "radii": 3,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/recce-form-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-activity-history-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-advisories-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-daily-check-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-defect-form-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-defects-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-defects-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-equipment-list-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-index-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-inspections-index-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-inspections-inspection-form-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-minor-service-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-mot-precheck-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-repair-form-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-resolved-defects-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-service-form-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-service-history-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-service-history-vehicleId-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-service-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-service-record-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-settings-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-tabs-service-book-work-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-tabs-service-home-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-tabs-service-issues-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-tabs-service-service-list-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-tabs-service-work-js.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-tyre-brake-check-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-vehicles-file-viewer-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/service-vehicles-id-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/timesheet-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/uploader-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/vehicle-check-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/vehicle-prep-id-jsx.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/week-id-index-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/work-diary-board-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/work-diary-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/routePresentation/work-index-js.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/add-timesheet-js.js",
+    "family": "lib/design",
+    "radii": 12,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 22,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/expenses-js.js",
+    "family": "lib/design",
+    "radii": 19,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 24,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/holiday-request-js.js",
+    "family": "lib/design",
+    "radii": 2,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 2,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/holidaypage-js.js",
+    "family": "lib/design",
+    "radii": 11,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 25,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/main-tabs-contacts-js.js",
+    "family": "lib/design",
+    "radii": 8,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 10,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/main-tabs-job-js.js",
+    "family": "lib/design",
+    "radii": 19,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 31,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/main-tabs-me-js.js",
+    "family": "lib/design",
+    "radii": 27,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 35,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/main-tabs-screens-homescreen-js.js",
+    "family": "lib/design",
+    "radii": 35,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 34,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/main-tabs-screens-schedule-js.js",
+    "family": "lib/design",
+    "radii": 20,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 20,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/notification-id-js.js",
+    "family": "lib/design",
+    "radii": 6,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 9,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/notifications-js.js",
+    "family": "lib/design",
+    "radii": 6,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 12,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/recce-form-js.js",
+    "family": "lib/design",
+    "radii": 8,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 12,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/receipts-js.js",
+    "family": "lib/design",
+    "radii": 3,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-activity-history-jsx.js",
+    "family": "workshop",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 14,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-advisories-jsx.js",
+    "family": "workshop",
+    "radii": 10,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 17,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-daily-check-jsx.js",
+    "family": "workshop",
+    "radii": 2,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 4,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-defect-form-jsx.js",
+    "family": "workshop",
+    "radii": 9,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 18,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-defects-id-jsx.js",
+    "family": "workshop",
+    "radii": 6,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 17,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-defects-js.js",
+    "family": "workshop",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 15,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-equipment-list-js.js",
+    "family": "workshop",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 20,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-index-js.js",
+    "family": "workshop",
+    "radii": 6,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 14,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-inspections-index-js.js",
+    "family": "workshop",
+    "radii": 3,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 9,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-inspections-inspection-form-id-jsx.js",
+    "family": "workshop",
+    "radii": 18,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 30,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-minor-service-id-jsx.js",
+    "family": "workshop",
+    "radii": 17,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 22,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-mot-precheck-id-jsx.js",
+    "family": "workshop",
+    "radii": 12,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 20,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-repair-form-jsx.js",
+    "family": "workshop",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 14,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-resolved-defects-id-jsx.js",
+    "family": "workshop",
+    "radii": 6,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 17,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-service-form-id-jsx.js",
+    "family": "workshop",
+    "radii": 26,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 37,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-service-history-js.js",
+    "family": "workshop",
+    "radii": 3,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 16,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-service-history-vehicleId-jsx.js",
+    "family": "workshop",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 16,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-service-js.js",
+    "family": "workshop",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 12,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-service-record-id-jsx.js",
+    "family": "workshop",
+    "radii": 14,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 29,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-settings-js.js",
+    "family": "workshop",
+    "radii": 4,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 7,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-tabs-service-book-work-js.js",
+    "family": "workshop",
+    "radii": 13,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 28,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-tabs-service-home-js.js",
+    "family": "workshop",
+    "radii": 6,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 18,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-tabs-service-issues-jsx.js",
+    "family": "workshop",
+    "radii": 7,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 18,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-tabs-service-service-list-js.js",
+    "family": "workshop",
+    "radii": 5,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 18,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-tabs-service-work-js.js",
+    "family": "workshop",
+    "radii": 2,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 8,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-tyre-brake-check-jsx.js",
+    "family": "workshop",
+    "radii": 2,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 4,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-vehicle-prep-id-jsx.js",
+    "family": "workshop",
+    "radii": 7,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 12,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-vehicle-timeline-id-jsx.js",
+    "family": "workshop",
+    "radii": 4,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 8,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-vehicles-file-viewer-jsx.js",
+    "family": "workshop",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 1,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/service-vehicles-id-jsx.js",
+    "family": "workshop",
+    "radii": 10,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 26,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/spec-sheets-js.js",
+    "family": "lib/design",
+    "radii": 4,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 4,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/timesheet-js.js",
+    "family": "lib/design",
+    "radii": 16,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 19,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/uploader-js.js",
+    "family": "lib/design",
+    "radii": 4,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 3,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/vehicle-check-js.js",
+    "family": "lib/design",
+    "radii": 12,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 11,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/vehicle-prep-id-jsx.js",
+    "family": "lib/design",
+    "radii": 8,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 13,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/week-id-index-js.js",
+    "family": "lib/design",
+    "radii": 31,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 36,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/work-diary-board-js.js",
+    "family": "lib/design",
+    "radii": 14,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 19,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/screenStyles/work-diary-js.js",
+    "family": "lib/design",
+    "radii": 20,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 16,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/semantics.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/staticColors.js",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "lib/design/tokens.ts",
+    "family": "lib/design",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 16,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "providers/NavigationAccessoryProvider.jsx",
+    "family": "providers",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "providers/ThemeProvider.tsx",
+    "family": "providers",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "hooks/useReducedMotion.js",
+    "family": "hooks",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  },
+  {
+    "file": "hooks/useResponsiveLayout.js",
+    "family": "hooks",
+    "radii": 0,
+    "glass": 0,
+    "blur": 0,
+    "localTypography": 0,
+    "sourceRead": true,
+    "renderedThisAudit": false
+  }
+]

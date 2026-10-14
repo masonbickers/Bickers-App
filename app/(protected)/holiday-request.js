@@ -1,39 +1,41 @@
+import { fetchEmployeeHistory } from "../../lib/hrHistoryApi";
+import { routeColors } from "../../lib/design/routePresentation/holiday-request-js.js";
+import { styles } from "../../lib/design/screenStyles/holiday-request-js.js";
+import { AppButton, AppText as Text, Banner, Checkbox, FormStep, SegmentedControl, TextArea } from "../../components/ui/AppPrimitives";
 // app/holiday-request.js
-import { useRouter } from "expo-router";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  useRouter } from "expo-router";
+import { collection,
+  doc,
+  getDocs,
+  query,
+  where,
+  setDoc } from "firebase/firestore";
+import { useEffect,
+  useMemo,
+  useState } from "react";
+import {
+  View } from "react-native";
 import { Calendar } from "react-native-calendars";
 import Icon from "react-native-vector-icons/Feather";
 
 import { db } from "../../firebaseConfig";
+import { formatISODateDDMMYYYY } from "../../lib/dateFormat";
+import { countHolidayDays, holidayDateKeysFromRange, isReviewableHolidayRange } from "../../lib/holidayRequestParity";
+import { getHolidayLeaveType } from "../../lib/holidayPresentation";
+import { holidayOwnership } from "../../lib/holidayOwnership";
 import { designTokens as t } from "../../lib/design/tokens";
 import { runOrQueueFirestoreMutation } from "../../lib/sync/firestoreQueue";
 import { useAuth } from "../../providers/AuthProvider";
 import { useDataCache } from "../../providers/DataCacheProvider";
 import { useTheme } from "../../providers/ThemeProvider";
-
-function withAlpha(hex, alpha) {
-  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
-  const raw = String(hex || "").replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return `rgba(255,255,255,${safeAlpha})`;
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${safeAlpha})`;
-}
+import { withAlpha } from "../../lib/design/color";
+import PageShell from "../../components/layout/PageShell";
 
 export default function HolidayRequestPage() {
   const router = useRouter();
   const { employee, user, isAuthed, loading } = useAuth();
+  const companyId = String(employee?.companyId || "").trim();
   const { invalidate } = useDataCache();
   const { colors } = useTheme();
 
@@ -56,6 +58,8 @@ export default function HolidayRequestPage() {
   // Existing data (for validation)
   const [holidays, setHolidays] = useState([]);
   const [holidaysLoading, setHolidaysLoading] = useState(true);
+  const [holidaysError, setHolidaysError] = useState(null);
+  const [bankHolidaySet, setBankHolidaySet] = useState(() => new Set());
 
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
@@ -64,6 +68,22 @@ export default function HolidayRequestPage() {
   const [jobConflictMsg, setJobConflictMsg] = useState("");
 
   const isSingleDay = !!startDate && (endDate ?? startDate) === startDate;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("https://www.gov.uk/bank-holidays.json", { signal: controller.signal, cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Bank holidays fetch failed: ${response.status}`);
+        return response.json();
+      })
+      .then((data) => setBankHolidaySet(new Set(
+        (data?.["england-and-wales"]?.events || []).map((event) => event.date).filter(Boolean)
+      )))
+      .catch((error) => {
+        if (error?.name !== "AbortError") console.warn("Bank holidays unavailable:", error);
+      });
+    return () => controller.abort();
+  }, []);
 
   // If user extends selection to multi-day, disable half-day automatically (UI only)
   useEffect(() => {
@@ -92,19 +112,6 @@ export default function HolidayRequestPage() {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
 
-  const isWeekend = (d) => {
-    const day = d.getDay();
-    return day === 0 || day === 6;
-  };
-
-  const eachDateInclusive = (start, end) => {
-    const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-    const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-    const out = [];
-    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) out.push(new Date(d));
-    return out;
-  };
-
   const fmt = (d) => {
     if (!d) return "—";
     return d.toLocaleDateString("en-GB", {
@@ -126,43 +133,21 @@ export default function HolidayRequestPage() {
 
   // ✅ strict paid detection (same intention as web HR page)
   const isPaidHoliday = (h = {}) => {
-    const ps = String(h.paidStatus ?? h.paid ?? h.isPaid ?? "").trim().toLowerCase();
-    const lt = String(h.leaveType ?? h.type ?? "").trim().toLowerCase();
-
-    if (h.isPaid === true || h.paid === true || h.paid === 1) return true;
-    if (ps.includes("unpaid") || lt.includes("unpaid")) return false;
-    if (ps.includes("paid")) return true;
-    if (lt.includes("paid")) return true;
-
-    // default: don't count unless explicitly paid
-    return false;
+    return getHolidayLeaveType(h) === "Paid";
   };
 
   const requestedDays = useMemo(() => {
-    if (!startDate) return 0;
-    const s = toDate(startDate);
-    const e = toDate(endDate || startDate);
-    if (!s || !e) return 0;
-
-    const days = eachDateInclusive(s, e);
-    let total = 0;
-    for (let i = 0; i < days.length; i++) {
-      const d = days[i];
-      if (isWeekend(d)) continue;
-
-      let inc = 1;
-      const single = sameYMD(s, e);
-      if (single && halfDay) inc = 0.5;
-      total += inc;
-    }
-    return Number(total.toFixed(2));
-  }, [startDate, endDate, halfDay]);
+    return countHolidayDays(startDate, endDate || startDate, {
+      bankHolidays: bankHolidaySet,
+      startHalfDay: isSingleDay && halfDay,
+    });
+  }, [startDate, endDate, halfDay, isSingleDay, bankHolidaySet]);
 
   /* ---------------- employee resolve ---------------- */
   useEffect(() => {
     let mounted = true;
     const run = async () => {
-      if (loading || !isAuthed) {
+      if (loading || !isAuthed || !companyId) {
         if (mounted) {
           setEmpRecord(null);
           setEmpLoading(false);
@@ -171,7 +156,7 @@ export default function HolidayRequestPage() {
       }
       setEmpLoading(true);
       try {
-        const snap = await getDocs(collection(db, "employees"));
+        const snap = await getDocs(query(collection(db, "employees"), where("companyId", "==", companyId)));
         const employees = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         const byCode =
@@ -197,7 +182,7 @@ export default function HolidayRequestPage() {
     return () => {
       mounted = false;
     };
-  }, [loading, isAuthed, employee?.userCode, employee?.email, user?.email]);
+  }, [companyId, loading, isAuthed, employee?.userCode, employee?.email, user?.email]);
 
   /* ---------------- load existing holidays + bookings ---------------- */
   useEffect(() => {
@@ -205,12 +190,17 @@ export default function HolidayRequestPage() {
 
     const loadHolidays = async () => {
       setHolidaysLoading(true);
+      setHolidaysError(null);
       try {
-        const snap = await getDocs(collection(db, "holidays"));
-        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (mounted) setHolidays(all);
+        const result = await fetchEmployeeHistory(user, employee, "holidays");
+        const all = result.records;
+        if (mounted) {
+          setHolidays(all);
+          if (result.withheldCount || !result.historyComplete) setHolidaysError(new Error("Some historical leave ownership needs office review before your allowance can be verified."));
+        }
       } catch (e) {
         console.warn("Failed to load holidays:", e);
+        if (mounted) setHolidaysError(e);
         if (mounted) setHolidays([]);
       } finally {
         if (mounted) setHolidaysLoading(false);
@@ -221,7 +211,7 @@ export default function HolidayRequestPage() {
       setBookingsLoading(true);
       try {
         // ✅ If your collection is not "bookings", change it here.
-        const snap = await getDocs(collection(db, "bookings"));
+        const snap = await getDocs(query(collection(db, "bookings"), where("companyId", "==", companyId)));
         const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         if (mounted) setBookings(all);
       } catch (e) {
@@ -233,7 +223,7 @@ export default function HolidayRequestPage() {
       }
     };
 
-    if (isAuthed && !loading) {
+    if (isAuthed && !loading && companyId) {
       loadHolidays();
       loadBookings();
     } else {
@@ -246,7 +236,7 @@ export default function HolidayRequestPage() {
     return () => {
       mounted = false;
     };
-  }, [isAuthed, loading]);
+  }, [companyId, isAuthed, loading, employee, user]);
 
   /* ---------------- allowance calc (paid remaining) ---------------- */
   const allowanceInfo = useMemo(() => {
@@ -254,31 +244,11 @@ export default function HolidayRequestPage() {
     const name = empRecord?.name || employee?.name || user?.displayName || user?.email || "";
 
     const daysForHoliday = (h) => {
-      const hs = toDate(h.startDate);
-      const he = toDate(h.endDate) || hs;
-      if (!hs || !he) return 0;
-
-      const days = eachDateInclusive(hs, he);
-      const single = sameYMD(hs, he);
-
-      const startIsHalf = h.startHalfDay === true || norm(h.startHalfDay) === "true";
-      const endIsHalf = h.endHalfDay === true || norm(h.endHalfDay) === "true";
-
-      let total = 0;
-      for (let i = 0; i < days.length; i++) {
-        const d = days[i];
-        if (isWeekend(d)) continue;
-
-        let inc = 1;
-        if (single) {
-          if (startIsHalf || endIsHalf) inc = 0.5;
-        } else {
-          if (i === 0 && startIsHalf) inc = 0.5;
-          if (i === days.length - 1 && endIsHalf) inc = 0.5;
-        }
-        total += inc;
-      }
-      return total;
+      return countHolidayDays(h.startDate, h.endDate || h.startDate, {
+        bankHolidays: bankHolidaySet,
+        startHalfDay: h.startHalfDay === true || norm(h.startHalfDay) === "true",
+        endHalfDay: h.endHalfDay === true || norm(h.endHalfDay) === "true",
+      });
     };
 
     // allowance: holidayAllowances[year] preferred, else legacy holidayAllowance
@@ -292,7 +262,6 @@ export default function HolidayRequestPage() {
 
     const usedPaidApproved = holidays
       .filter((h) => {
-        if (String(h.employee || "").trim() !== String(name).trim()) return false;
         const st = String(h.status || "").toLowerCase();
         if (st !== "approved") return false;
 
@@ -314,7 +283,7 @@ export default function HolidayRequestPage() {
       usedPaidApproved: Number(usedPaidApproved.toFixed(2)),
       remainingPaid,
     };
-  }, [startDate, empRecord, employee?.name, user?.displayName, user?.email, holidays]);
+  }, [startDate, empRecord, employee?.name, user?.displayName, user?.email, holidays, bankHolidaySet]);
 
   // Force unpaid if no paid left
   useEffect(() => {
@@ -529,13 +498,13 @@ export default function HolidayRequestPage() {
       m[startDate] = {
         startingDay: true,
         color: colors.accent,
-        textColor: "#fff",
+        textColor: routeColors.hex_fff_yhjmu8,
       };
     }
 
     const last = endDate || startDate;
     if (last) {
-      m[last] = { ...(m[last] || {}), endingDay: true, color: colors.accent, textColor: "#fff" };
+      m[last] = { ...(m[last] || {}), endingDay: true, color: colors.accent, textColor: routeColors.hex_fff_yhjmu8 };
     }
 
     if (startDate && last) {
@@ -543,11 +512,11 @@ export default function HolidayRequestPage() {
       const endD = new Date(last);
       while (cur <= endD) {
         const s = cur.toISOString().split("T")[0];
-        if (!m[s]) m[s] = { color: withAlpha(colors.accent, 0.45), textColor: "#fff" };
+        if (!m[s]) m[s] = { color: withAlpha(colors.accent, 0.45), textColor: routeColors.hex_fff_yhjmu8 };
         cur.setDate(cur.getDate() + 1);
       }
       if (isSingleDay && halfDay && startDate) {
-        m[startDate] = { ...(m[startDate] || {}), color: withAlpha(colors.accent, 0.8), textColor: "#fff" };
+        m[startDate] = { ...(m[startDate] || {}), color: withAlpha(colors.accent, 0.8), textColor: routeColors.hex_fff_yhjmu8 };
       }
     }
 
@@ -573,9 +542,10 @@ export default function HolidayRequestPage() {
 
   /* ---------------- submit ---------------- */
   const submitRequest = async () => {
-    if (loading || !isAuthed) return alert("Please sign in first.");
+    if (loading || !isAuthed || !companyId) return alert("Please sign in first.");
     if (empLoading) return;
     if (holidaysLoading || bookingsLoading) return alert("Loading validation data… please try again.");
+    if (holidaysError) return alert("Unable to verify your existing holiday requests. Reconnect and reload before submitting.");
 
     const name = allowanceInfo.name;
 
@@ -591,6 +561,9 @@ export default function HolidayRequestPage() {
     const eDate = new Date(endStr);
     if (isNaN(+s) || isNaN(+eDate) || s > eDate) {
       return alert("End date must be the same or after start date.");
+    }
+    if (!isReviewableHolidayRange(startStr, endStr)) {
+      return alert("Choose dates in the same calendar year so the office can review your request.");
     }
 
     // Block: holiday overlap
@@ -623,7 +596,9 @@ export default function HolidayRequestPage() {
       const holidayId = holidayRef.id;
 
       const holidayData = {
+        ...holidayOwnership(employee),
         employee: name,
+        employeeName: name,
         employeeCode: employee?.userCode || empRecord?.userCode || null,
         userCode: employee?.userCode || empRecord?.userCode || null,
         employeeEmail: employee?.email || empRecord?.email || user?.email || null,
@@ -631,6 +606,9 @@ export default function HolidayRequestPage() {
         // keep as strings (your web + HR parser supports these)
         startDate: startStr,
         endDate: endStr,
+        holidayYear: s.getFullYear(),
+        holidayDateKeys: holidayDateKeysFromRange(startStr, endStr),
+        companyId: employee?.companyId || empRecord?.companyId || null,
 
         // ✅ optional, but recommended for consistency:
         startHalfDay: single ? !!halfDay : false,
@@ -641,8 +619,10 @@ export default function HolidayRequestPage() {
         holidayReason: notes,
         paidStatus,
         isUnpaid,
+        unpaid: isUnpaid,
         isAccrued,
         paid,
+        isPaid: paid,
         leaveType,
 
         createdAt: new Date(),
@@ -683,47 +663,18 @@ export default function HolidayRequestPage() {
   /* ---------------- loading gate ---------------- */
   if (loading || empLoading) {
     return (
-      <SafeAreaView
-        edges={["top", "left", "right"]}
-        style={[styles.container, { backgroundColor: colors.background }]}
-      >
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.textMuted }}>Loading…</Text>
+      <PageShell appearance="grouped" mode="form" width="form" header={{ variant: "compact", title: "Request Holiday", onBack: router.back }}>
+        <View style={{ padding: t.spacing.md }}>
+          <Text tone={"muted"}>Loading…</Text>
         </View>
-      </SafeAreaView>
+      </PageShell>
     );
   }
 
   return (
-    <SafeAreaView
-      edges={["top", "left", "right"]}
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+    <PageShell appearance="grouped" mode="form" width="form" header={{ variant: "compact", title: "Request Holiday", onBack: router.back }}>
         <View style={styles.heroCard}>
           <View style={styles.heroContent}>
-            <View style={styles.heroTopRow}>
-              <TouchableOpacity
-                style={[
-                  styles.heroBackButton,
-                  {
-                    backgroundColor: withAlpha(colors.surfaceAlt, 0.82),
-                    borderColor: withAlpha(colors.border, 0.82),
-                  },
-                ]}
-                onPress={() => router.back()}
-                activeOpacity={0.85}
-              >
-                <Icon name="arrow-left" size={15} color={colors.text} />
-              </TouchableOpacity>
-
-              <View style={styles.heroTitleWrap}>
-                <Text style={[styles.heroTitle, { color: colors.text }]}>Request Holiday</Text>
-              </View>
-
-              <View style={styles.heroSpacer} />
-            </View>
-
             <View style={styles.heroMetaRow}>
               <View
                 style={[
@@ -735,7 +686,7 @@ export default function HolidayRequestPage() {
                 ]}
               >
                 <Icon name="clock" size={12} color={colors.textMuted} />
-                <Text style={[styles.heroMetaText, { color: colors.text }]}>
+                <Text tone={"primary"} style={[styles.heroMetaText]}>
                   {startDate ? `${requestedDays} day(s)` : "Pick dates"}
                 </Text>
               </View>
@@ -749,7 +700,7 @@ export default function HolidayRequestPage() {
                 ]}
               >
                 <Icon name="briefcase" size={12} color={colors.textMuted} />
-                <Text style={[styles.heroMetaText, { color: colors.text }]}>
+                <Text tone={"primary"} style={[styles.heroMetaText]}>
                   {paidStatus}
                 </Text>
               </View>
@@ -757,337 +708,147 @@ export default function HolidayRequestPage() {
           </View>
         </View>
 
-        {/* Calendar */}
-        <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+        <FormStep fullWidth number="1" title="Choose dates" hint="Select the first and last day of leave">
+          <View style={[styles.calendarCard, { backgroundColor: colors.groupedSurface }]}>
           <Calendar
             onDayPress={handleDayPress}
             markedDates={markedDates}
             markingType="period"
             theme={{
-              calendarBackground: colors.surfaceAlt,
+              calendarBackground: colors.groupedSurface,
               dayTextColor: colors.text,
               monthTextColor: colors.text,
               arrowColor: colors.accent,
               selectedDayBackgroundColor: colors.accent,
-              selectedDayTextColor: "#fff",
+              selectedDayTextColor: routeColors.hex_fff_yhjmu8,
               todayTextColor: colors.accent,
             }}
           />
-        </View>
+          </View>
 
-        {/* Chosen dates */}
-        <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border, gap: 4 }]}>
-          <Text style={{ color: colors.textMuted }}>
+        <View style={{ gap: t.spacing.xxs, marginTop: t.spacing.sm }}>
+          <Text tone={"muted"}>
             Start:{" "}
-            <Text style={{ color: colors.text }}>{startDate || "Not selected"}</Text>
-            {isSingleDay && halfDay ? <Text style={{ color: "#86efac" }}> ({halfDayPeriod} half)</Text> : null}
+            <Text tone={"primary"}>{startDate ? formatISODateDDMMYYYY(startDate) : "Not selected"}</Text>
+            {isSingleDay && halfDay ? <Text style={{ color: routeColors.hex_86efac_dg95e1 }}> ({halfDayPeriod} half)</Text> : null}
           </Text>
-          <Text style={{ color: colors.textMuted }}>
-            End: <Text style={{ color: colors.text }}>{endDate || startDate || "Not selected"}</Text>
+          <Text tone={"muted"}>
+            End: <Text tone={"primary"}>{endDate || startDate ? formatISODateDDMMYYYY(endDate || startDate) : "Not selected"}</Text>
           </Text>
         </View>
+        </FormStep>
 
         {/* Allowance + request size */}
         {startDate ? (
-          <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-            <Text style={{ color: colors.textMuted, fontWeight: "800", marginBottom: 6 }}>
-              Allowance check ({allowanceInfo.year})
-            </Text>
-            <Text style={{ color: colors.textMuted }}>
-              Allowance: <Text style={{ color: colors.text, fontWeight: "800" }}>{allowanceInfo.allowance}</Text>{" "}
+          <Banner title={`Allowance check (${allowanceInfo.year})`} tone="info" presentation="card" layoutStyle={styles.requestNotice}>
+            <Text tone={"muted"}>
+              Allowance: <Text tone={"primary"} variant="bodyStrong" style={null}>{allowanceInfo.allowance}</Text>{" "}
               • Used (approved paid):{" "}
-              <Text style={{ color: colors.text, fontWeight: "800" }}>{allowanceInfo.usedPaidApproved}</Text>{" "}
+              <Text tone={"primary"} variant="bodyStrong" style={null}>{allowanceInfo.usedPaidApproved}</Text>{" "}
               • Remaining paid:{" "}
-              <Text style={{ color: colors.text, fontWeight: "800" }}>{allowanceInfo.remainingPaid}</Text>
+              <Text tone={"primary"} variant="bodyStrong" style={null}>{allowanceInfo.remainingPaid}</Text>
             </Text>
-            <Text style={{ color: colors.textMuted, marginTop: 6 }}>
-              This request: <Text style={{ color: colors.text, fontWeight: "800" }}>{requestedDays}</Text> day(s) (weekdays only)
+            <Text tone={"muted"} style={{ marginTop: t.spacing.xxs }}>
+              This request: <Text tone={"primary"} variant="bodyStrong" style={null}>{requestedDays}</Text> day(s) (weekends and bank holidays excluded)
             </Text>
 
             {allowanceInfo.remainingPaid <= 0 ? (
-              <Text style={{ color: colors.danger || "#f87171", marginTop: 8, fontWeight: "800" }}>
+              <Text variant="bodyStrong" tone={"danger"} style={{ marginTop: t.spacing.xs }}>
                 No paid holiday remaining — you can only book unpaid holiday.
               </Text>
             ) : null}
-          </View>
+          </Banner>
         ) : null}
 
         {/* Conflict warnings */}
         {holidayConflictMsg ? (
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: withAlpha(colors.danger || "#dc2626", 0.08),
-                borderColor: withAlpha(colors.danger || "#dc2626", 0.45),
-              },
-            ]}
-          >
-            <Text style={{ color: colors.danger || "#f87171", fontWeight: "900" }}>Holiday conflict</Text>
-            <Text style={{ color: colors.textMuted, marginTop: 6 }}>{holidayConflictMsg}</Text>
-          </View>
+          <Banner title="Holiday conflict" tone="danger" presentation="card" layoutStyle={styles.requestNotice}>
+            <Text tone={"muted"} style={{ marginTop: t.spacing.xxs }}>{holidayConflictMsg}</Text>
+          </Banner>
         ) : null}
 
         {jobConflictMsg ? (
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: withAlpha("#d97706", 0.08),
-                borderColor: withAlpha("#d97706", 0.45),
-              },
-            ]}
-          >
-            <Text style={{ color: "#f59e0b", fontWeight: "900" }}>Job conflict</Text>
-            <Text style={{ color: colors.textMuted, marginTop: 6 }}>{jobConflictMsg}</Text>
-          </View>
+          <Banner title="Job conflict" tone="warning" presentation="card" layoutStyle={styles.requestNotice}>
+            <Text tone={"muted"} style={{ marginTop: t.spacing.xxs }}>{jobConflictMsg}</Text>
+          </Banner>
+        ) : null}
+
+        {startDate && endDate && !isReviewableHolidayRange(startDate, endDate) ? (
+          <Banner title="Choose one calendar year" tone="warning" presentation="card" layoutStyle={styles.requestNotice}>
+            <Text>The office reviews each year separately. Please make two requests.</Text>
+          </Banner>
         ) : null}
 
         {/* Leave Type – Paid / Unpaid / Accrued */}
-        <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textMuted, marginBottom: 8, fontWeight: "700" }}>Leave Type</Text>
+        <FormStep fullWidth number="2" title="Leave type" hint="Choose how this leave is recorded">
 
-          {[
-            { key: "Paid", label: paidAllowed ? "Paid holiday" : "Paid holiday (no paid remaining)", disabled: !paidAllowed },
-            { key: "Unpaid", label: "Unpaid holiday", disabled: false },
-          ].map((opt) => (
-            <TouchableOpacity
-              key={opt.key}
-              style={[styles.row, opt.disabled && styles.rowDisabled]}
-              onPress={() => !opt.disabled && setPaidStatus(opt.key)}
-              activeOpacity={0.85}
-            >
-              <Icon
-                name={paidStatus === opt.key ? "check-square" : "square"}
-                size={20}
-                color={paidStatus === opt.key ? colors.accent : colors.textMuted}
-                style={{ marginRight: 10 }}
-              />
-              <Text style={{ color: colors.text, fontSize: 16 }}>{opt.label}</Text>
-            </TouchableOpacity>
-          ))}
+          <SegmentedControl
+            pill
+            subtle
+            density="compact"
+            accessibilityLabel="Leave type"
+            selectionRole="radio"
+            value={paidStatus}
+            onChange={setPaidStatus}
+            options={[
+              { value: "Paid", label: paidAllowed ? "Paid holiday" : "Paid unavailable", disabled: !paidAllowed },
+              { value: "Unpaid", label: "Unpaid holiday" },
+            ]}
+          />
 
           {paidStatus === "Paid" && paidAllowed && requestedDays > allowanceInfo.remainingPaid ? (
-            <Text style={{ color: colors.danger || "#f87171", marginTop: 8, fontWeight: "800" }}>
+            <Text variant="bodyStrong" tone={"danger"} style={{ marginTop: t.spacing.xs }}>
               Not enough paid remaining for this request — choose Unpaid or shorten/split.
             </Text>
           ) : null}
-        </View>
-
-       
+        </FormStep>
 
         {/* Half-day (single only) */}
-        <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textMuted, marginBottom: 8, fontWeight: "700" }}>Half day</Text>
+        <FormStep fullWidth number="3" title="Half day" hint="Available for single-day requests">
 
-          <TouchableOpacity
-            style={[styles.row, !isSingleDay && styles.rowDisabled]}
-            onPress={() => isSingleDay && setHalfDay((v) => !v)}
-            activeOpacity={0.85}
-          >
-            <Icon
-              name={halfDay ? "check-square" : "square"}
-              size={20}
-              color={halfDay ? colors.accent : colors.textMuted}
-              style={{ marginRight: 10 }}
-            />
-            <Text style={[styles.rowText, { color: colors.text }]}>
-              {isSingleDay ? "Book as half day" : "Half-day only available for a single day"}
-            </Text>
-          </TouchableOpacity>
+          <Checkbox
+            checked={halfDay}
+            onChange={setHalfDay}
+            disabled={!isSingleDay}
+            label={isSingleDay ? "Book as half day" : "Half-day only available for a single day"}
+          />
 
           {isSingleDay && halfDay && (
-            <View style={styles.choiceRow}>
-              <HalfChip
-                label="AM"
-                active={halfDayPeriod === "AM"}
-                onPress={() => setHalfDayPeriod("AM")}
-                colors={colors}
-              />
-              <HalfChip
-                label="PM"
-                active={halfDayPeriod === "PM"}
-                onPress={() => setHalfDayPeriod("PM")}
-                colors={colors}
-              />
-            </View>
+            <SegmentedControl
+              pill
+              subtle
+              density="compact"
+              accessibilityLabel="Half-day period"
+              selectionRole="radio"
+              value={halfDayPeriod}
+              onChange={setHalfDayPeriod}
+              options={[{ value: "AM", label: "AM" }, { value: "PM", label: "PM" }]}
+            />
           )}
 
-          <Text style={{ color: colors.textMuted, marginTop: 8, fontSize: 12 }}>
+          <Text tone={"muted"} style={{ marginTop: t.spacing.xs, fontSize: t.typography.metadata.fontSize }}>
             Half-days are only for a single-day request.
           </Text>
-        </View>
+        </FormStep>
 
         {/* Notes */}
-        <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textMuted, marginBottom: 6 }}>Notes / Reason</Text>
-          <TextInput
+        <FormStep fullWidth number="4" title="Notes" hint="Optional context for the approver" last>
+          <TextArea
+            label="Notes / Reason"
             placeholder="Add notes or reason..."
-            placeholderTextColor="#777"
             value={notes}
             onChangeText={setNotes}
-            multiline
-            style={[
-              styles.notesInput,
-              { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border },
-            ]}
           />
-        </View>
+        </FormStep>
 
         {/* Submit */}
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            {
-              backgroundColor: colors.accent,
-              borderColor: colors.accent,
-              opacity: holidayConflict || jobConflict ? 0.6 : 1,
-            },
-          ]}
+        <AppButton
+          label={holidaysLoading || bookingsLoading ? "Loading…" : "Submit Request"}
           onPress={submitRequest}
-          activeOpacity={0.9}
-          disabled={!!holidayConflict || !!jobConflict}
-        >
-          <Text style={[styles.submitText, { color: colors.surface }]}>
-            {holidaysLoading || bookingsLoading ? "Loading…" : "Submit Request"}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+          disabled={!!holidayConflict || !!jobConflict || !!(startDate && endDate && !isReviewableHolidayRange(startDate, endDate))}
+          loading={holidaysLoading || bookingsLoading}
+          fullWidth
+        />
+    </PageShell>
   );
 }
-
-/* Small chip button for AM/PM */
-function HalfChip({ label, active, onPress, colors }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={[
-        {
-          paddingVertical: 6,
-          paddingHorizontal: 12,
-          borderRadius: 999,
-          borderWidth: 1,
-          marginRight: 8,
-        },
-        active
-          ? { backgroundColor: colors.accent, borderColor: colors.accent }
-          : { backgroundColor: colors.surface, borderColor: colors.border },
-      ]}
-    >
-      <Text style={{ color: active ? colors.surface : colors.text, fontWeight: "800", fontSize: 12 }}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0b0b" },
-
-  heroCard: {
-    marginHorizontal: 12,
-    marginTop: 10,
-    marginBottom: 8,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  heroBackButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-  },
-  heroTitleWrap: {
-    flex: 1,
-    alignItems: "center",
-    paddingHorizontal: 12,
-  },
-  heroSpacer: {
-    width: 38,
-    height: 38,
-  },
-  heroContent: {
-    paddingBottom: 4,
-    paddingTop: 2,
-  },
-  heroTitle: {
-    ...t.typography.pageTitle,
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
-  heroSubTitle: {
-    marginTop: 3,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  heroMetaRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  heroMetaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  heroMetaText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-
-  card: {
-    borderWidth: 1,
-    borderRadius: 14,
-    marginHorizontal: 12,
-    marginBottom: 12,
-    padding: 12,
-  },
-
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 8 },
-  rowText: { color: "#fff", fontSize: 16 },
-  rowDisabled: { opacity: 0.45 },
-
-  choiceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginLeft: 34,
-    marginTop: 4,
-  },
-
-  notesInput: {
-    padding: 12,
-    borderRadius: 10,
-    minHeight: 90,
-    textAlignVertical: "top",
-    borderWidth: 1,
-  },
-
-  submitButton: {
-    borderWidth: 1,
-    padding: 14,
-    borderRadius: 999,
-    alignItems: "center",
-    marginHorizontal: 12,
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  submitText: {
-    fontWeight: "800",
-    fontSize: 14,
-  },
-});

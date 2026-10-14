@@ -1,7 +1,12 @@
-import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
+import { AppText as Text } from "../../components/ui/AppPrimitives";
+import { collection, doc, getDocs, query, where, updateDoc } from "firebase/firestore";
 import { useEffect } from "react";
-import { Text, View } from "react-native";
+import {
+  View,
+} from "react-native";
 import { db } from "../../firebaseConfig";
+import { useAuth } from "../../providers/AuthProvider";
+import PageShell from "../../components/layout/PageShell";
 
 // simple function to generate random 4-digit code
 const generateCode = () => {
@@ -9,11 +14,13 @@ const generateCode = () => {
 };
 
 export default function FixEmployeesPage() {
+  const { employee, isAuthed, loading } = useAuth();
+  const companyId = String(employee?.companyId || "").trim();
   useEffect(() => {
     const runFix = async () => {
-      console.log("Adding 4-digit codes to employees...");
+      if (loading || !isAuthed || !companyId) return;
 
-      const snap = await getDocs(collection(db, "employees"));
+      const snap = await getDocs(query(collection(db, "employees"), where("companyId", "==", companyId)));
       for (const emp of snap.docs) {
         const empData = emp.data();
 
@@ -23,19 +30,19 @@ export default function FixEmployeesPage() {
           await updateDoc(doc(db, "employees", emp.id), {
             userCode: code,
           });
-          console.log(`Updated ${emp.id} → ${code}`);
         }
       }
 
-      console.log("Done ✅");
     };
 
     runFix();
-  }, []);
+  }, [companyId, isAuthed, loading]);
 
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <Text>Assigning 4-digit codes... check console</Text>
-    </View>
+    <PageShell mode="static">
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Assigning employee codes…</Text>
+      </View>
+    </PageShell>
   );
 }

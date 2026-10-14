@@ -1,40 +1,39 @@
+import AssetSelectField from "../../../../components/ui/AssetSelectField";
+import { routeColors } from "../../../../lib/design/routePresentation/service-service-form-id-jsx.js";
+import { styles } from "../../../../lib/design/screenStyles/service-service-form-id-jsx.js";
+import { AppButton, AppModal, AppText as Text, AppPressable as TouchableOpacity, FormField as SharedFormField, TextArea } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../../lib/design/semantics";
 // app/(protected)/service/service-form/[id].jsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams,
+  useNavigation,
+  useRouter } from "expo-router";
 import {
-  arrayUnion,
-  collection,
   doc,
   getDoc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-} from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-import { useEffect, useMemo, useRef, useState } from "react";
+  } from "firebase/firestore";
+import { getDownloadURL,
+  ref,
+  uploadBytesResumable } from "firebase/storage";
+import { useEffect,
+  useMemo,
+  useRef,
+  useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   Platform,
   ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { db, storage } from "../../../../firebaseConfig";
 import {
-  buildVehicleIdentityMirrorUpdate,
-  buildVehicleOdometerMirrorUpdate,
-  buildVehicleServiceDateMirrorUpdate,
   getVehicleLastService,
   getVehicleManufacturer,
   getVehicleMileage,
@@ -42,21 +41,12 @@ import {
   getVehicleRegistration,
 } from "../../../../lib/fleetSchema";
 import { useServiceCacheActions, useServiceCollectionReader } from "../../../../hooks/useServiceData";
-import { runOrQueueFirestoreMutations } from "../../../../lib/sync/firestoreQueue";
+import { submitOrQueueWorkshopRecord } from "../../../../lib/workshopSubmissionApi";
+import { useAuth } from "../../../../providers/AuthProvider";
+import { removeServiceDraft, SERVICE_DRAFTS_KEY } from "../../../../lib/serviceDrafts";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  recceAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-  lightGray: "#4a4a4a",
-};
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 const SERVICE_TYPE_OPTIONS = [
   "Full service",
@@ -67,9 +57,9 @@ const SERVICE_TYPE_OPTIONS = [
 ];
 
 const CHECK_STATUS_OPTIONS = [
-  { value: "green", label: "Green", color: "#22C55E" },
-  { value: "amber", label: "Amber", color: "#F59E0B" },
-  { value: "red", label: "Red", color: "#EF4444" },
+  { value: "green", label: "Green", color: routeColors.hex_22c55e_740if4 },
+  { value: "amber", label: "Amber", color: routeColors.hex_f59e0b_4zbh7f },
+  { value: "red", label: "Red", color: routeColors.hex_ef4444_4oizhh },
 ];
 
 const NOTE_REQUIRED_STATUSES = new Set(["amber", "red"]);
@@ -394,29 +384,6 @@ function buildServiceDefectActions(redDefects, currentActions = {}) {
   }, {});
 }
 
-function buildVehicleServiceHistoryItem({
-  completedDate,
-  serviceRecordId,
-  serviceFormNumber,
-  notes,
-  odometer,
-  partsUsed,
-}) {
-  return {
-    completedDate,
-    bookingId: null,
-    serviceRecordId,
-    serviceFormNumber,
-    provider: "",
-    bookingRef: "",
-    notes,
-    recordedAt: new Date(),
-    location: "",
-    odometer,
-    partsUsed,
-  };
-}
-
 function isDownloadUrl(uri) {
   return typeof uri === "string" && /^https?:\/\//i.test(uri);
 }
@@ -519,17 +486,19 @@ async function getNextServiceFormNumberValue(readServiceCollection, currentRecor
   return max + 1;
 }
 
-// 🔑 MUST match book-work.jsx
-const SERVICE_DRAFTS_KEY = "serviceFormDrafts_v1";
-
 export default function ServiceFormScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { id, recordId } = useLocalSearchParams();
+  const { id, recordId, workshopRequestId: routeWorkshopRequestId, vehicleId: routeRequestedVehicleId } = useLocalSearchParams();
+  const [workshopRequestId, setWorkshopRequestId] = useState(String(routeWorkshopRequestId || ""));
+  const [requestedVehicleId, setRequestedVehicleId] = useState(String(routeRequestedVehicleId || ""));
   const formId = Array.isArray(id) ? id[0] : id; // ensure string
   const editRecordId = Array.isArray(recordId) ? recordId[0] : recordId;
   const isEditingRecord = !!editRecordId;
+  const { employee } = useAuth();
   const allowLeaveRef = useRef(false);
+  const draftDeletedRef = useRef(false);
+  const pendingDraftSavesRef = useRef(new Set());
 
   const { colors } = useTheme();
   const readServiceCollection = useServiceCollectionReader();
@@ -542,8 +511,7 @@ export default function ServiceFormScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   // 🔎 VEHICLE SEARCH + SELECTION
-  const [vehicleSearch, setVehicleSearch] = useState("");
-  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(requestedVehicleId ? String(requestedVehicleId) : null);
   const [vehicleCollapsed, setVehicleCollapsed] = useState(false);
 
   // INITIAL DATE/TIME (AUTO, NON-EDITABLE)
@@ -608,22 +576,6 @@ export default function ServiceFormScreen() {
     loadVehicles();
   }, [readServiceCollection]);
 
-  const filteredVehicles = useMemo(() => {
-    if (!vehicleSearch.trim()) return vehicles;
-    const q = vehicleSearch.toLowerCase();
-    return vehicles.filter((v) => {
-      const name = String(getVehicleName(v)).toLowerCase();
-      const reg = String(getVehicleRegistration(v)).toLowerCase();
-      const manufacturer = String(getVehicleManufacturer(v)).toLowerCase();
-      const model = (v.model || "").toLowerCase();
-      return (
-        name.includes(q) ||
-        reg.includes(q) ||
-        manufacturer.includes(q) ||
-        model.includes(q)
-      );
-    });
-  }, [vehicles, vehicleSearch]);
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.id === selectedVehicleId) || null,
@@ -661,7 +613,6 @@ export default function ServiceFormScreen() {
   const hasUnsavedChanges = useMemo(
     () =>
       !!selectedVehicleId ||
-      !!vehicleSearch.trim() ||
       !!odometer.trim() ||
       serviceType !== "Full service" ||
       !!workSummary.trim() ||
@@ -692,7 +643,6 @@ export default function ServiceFormScreen() {
       serviceDefectActions,
       serviceType,
       signedBy,
-      vehicleSearch,
       wheelInspection,
       workSummary,
     ]
@@ -777,12 +727,13 @@ export default function ServiceFormScreen() {
         const allDrafts = JSON.parse(raw) || {};
         const draft = allDrafts[formId];
         if (!draft) return;
+        if (draft.workshopRequestId) setWorkshopRequestId(String(draft.workshopRequestId));
+        if (draft.requestedVehicleId) setRequestedVehicleId(String(draft.requestedVehicleId));
 
         if (draft.selectedVehicleId) {
           setSelectedVehicleId(draft.selectedVehicleId);
           setVehicleCollapsed(true);
         }
-        if (draft.vehicleSearch) setVehicleSearch(draft.vehicleSearch);
         if (draft.serviceDate) setServiceDate(formatDateForDisplay(draft.serviceDate));
         if (draft.serviceTime) setServiceTime(draft.serviceTime);
         if (draft.odometer) setOdometer(String(draft.odometer));
@@ -841,7 +792,6 @@ export default function ServiceFormScreen() {
 
         setSelectedVehicleId(record.vehicleId || null);
         setVehicleCollapsed(!!record.vehicleId);
-        setVehicleSearch(record.vehicleName || record.registration || "");
         if (date) setServiceDate(date);
         if (time) setServiceTime(time);
         if (record.odometer !== undefined && record.odometer !== null) {
@@ -890,6 +840,7 @@ export default function ServiceFormScreen() {
     const saveDraft = async () => {
       if (isEditingRecord) return;
       if (!formId) return;
+      if (draftDeletedRef.current) return;
 
       try {
         const vehicleName = getVehicleName(selectedVehicle) || "";
@@ -916,6 +867,7 @@ export default function ServiceFormScreen() {
           hasCheckPhotos;
 
         const raw = await AsyncStorage.getItem(SERVICE_DRAFTS_KEY);
+        if (draftDeletedRef.current) return;
         const allDrafts = raw ? JSON.parse(raw) || {} : {};
 
         if (!hasAnyContent) {
@@ -942,10 +894,11 @@ export default function ServiceFormScreen() {
         });
 
         const draftToSave = {
+          workshopRequestId: workshopRequestId || allDrafts[formId]?.workshopRequestId || "",
+          requestedVehicleId: requestedVehicleId || allDrafts[formId]?.requestedVehicleId || "",
           selectedVehicleId,
           vehicleName,
           registration,
-          vehicleSearch,
           odometer,
           serviceType,
           serviceDate,
@@ -975,13 +928,16 @@ export default function ServiceFormScreen() {
       }
     };
 
-    saveDraft();
+    const pendingSave = saveDraft();
+    pendingDraftSavesRef.current.add(pendingSave);
+    pendingSave.finally(() => pendingDraftSavesRef.current.delete(pendingSave));
   }, [
     formId,
     isEditingRecord,
+    workshopRequestId,
+    requestedVehicleId,
     selectedVehicleId,
     selectedVehicle,
-    vehicleSearch,
     odometer,
     serviceType,
     serviceDate,
@@ -1170,16 +1126,6 @@ export default function ServiceFormScreen() {
 
   const handleAddPhotoFromLibrary = async () => {
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "We need access to your photos to attach images."
-        );
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsMultipleSelection: false,
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -1207,16 +1153,6 @@ export default function ServiceFormScreen() {
   const handleAddCheckPhotoFromLibrary = async () => {
     if (!photoPickerLabel) return;
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "We need access to your photos to attach images."
-        );
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsMultipleSelection: false,
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -1256,36 +1192,23 @@ export default function ServiceFormScreen() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
+            draftDeletedRef.current = true;
             try {
               if (!formId) {
                 allowLeaveRef.current = true;
                 router.back();
                 return;
               }
-              const raw = await AsyncStorage.getItem(SERVICE_DRAFTS_KEY);
-              if (raw) {
-                const allDrafts = JSON.parse(raw) || {};
-                if (allDrafts[formId]) {
-                  delete allDrafts[formId];
-                  if (Object.keys(allDrafts).length === 0) {
-                    await AsyncStorage.removeItem(SERVICE_DRAFTS_KEY);
-                  } else {
-                    await AsyncStorage.setItem(
-                      SERVICE_DRAFTS_KEY,
-                      JSON.stringify(allDrafts)
-                    );
-                  }
-                }
-              }
+              await removeServiceDraft(AsyncStorage, formId, [...pendingDraftSavesRef.current]);
+              allowLeaveRef.current = true;
+              router.back();
             } catch (err) {
+              draftDeletedRef.current = false;
               console.error("Failed to delete service draft:", err);
               Alert.alert(
                 "Error",
                 "Could not delete draft. Please try again."
               );
-            } finally {
-              allowLeaveRef.current = true;
-              router.back();
             }
           },
         },
@@ -1296,11 +1219,21 @@ export default function ServiceFormScreen() {
   /* ---------------- SUBMIT ---------------- */
 
   const handleSubmit = async () => {
+    if (workshopRequestId && String(selectedVehicleId) !== String(requestedVehicleId)) {
+      Alert.alert("Wrong vehicle", "Complete this request for its selected vehicle.");
+      return;
+    }
+    if (workshopRequestId && serviceType.trim().toLowerCase() !== "full service") {
+      Alert.alert("Full service required", "This request needs a full service record.");
+      return;
+    }
     if (!validate()) return;
 
     setSubmitting(true);
     try {
       const v = selectedVehicle;
+      const companyId = employee?.companyId;
+      if (!companyId) throw new Error("Your company could not be verified. Sign in again before saving.");
       const odoNumber = odometer ? Number(odometer) : null;
       const nextServiceDate = nextServiceComputed || null;
       const serviceDateTime = `${serviceDate} ${serviceTime}`;
@@ -1311,8 +1244,8 @@ export default function ServiceFormScreen() {
 
       const serviceRecordRef = isEditingRecord
         ? doc(db, "serviceRecords", String(editRecordId))
-        : doc(collection(db, "serviceRecords"));
-      const storageBasePath = `serviceRecords/${serviceRecordRef.id}`;
+        : doc(db, "serviceRecords", String(workshopRequestId || formId));
+      const storageBasePath = `companies/${companyId}/vehicles/${selectedVehicleId}/service/${serviceRecordRef.id}`;
       const existingServiceFormNumberValue =
         parseServiceFormNumber(editingRecord?.serviceFormNumberValue) ||
         parseServiceFormNumber(editingRecord?.serviceFormNumber);
@@ -1334,14 +1267,14 @@ export default function ServiceFormScreen() {
       );
 
       const serviceDefectActionsForRecord = { ...activeServiceDefectActions };
-      const embeddedOpenDefects = [];
-      const firestoreMutations = [];
+      const submissionDefects = [];
       for (const action of Object.values(serviceDefectActionsForRecord)) {
         if (action.action !== "not_repaired" || action.defectReportId) continue;
 
-        const defectRef = doc(collection(db, "defectReports"));
+        const defectRef = doc(db, "defectReports", `${serviceRecordRef.id}-defect-${submissionDefects.length}`);
         const description = `${action.title}. ${action.description} Marked not repaired on service form.`;
         const payload = {
+          companyId,
           vehicleId: selectedVehicleId,
           vehicleName: recordVehicleName,
           registration: recordRegistration,
@@ -1358,46 +1291,21 @@ export default function ServiceFormScreen() {
           sourceDefectKey: action.key,
           photoURIs: [],
           photoURLs: [],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
 
-        firestoreMutations.push({
-          run: () => setDoc(defectRef, payload),
-          mutation: {
-            operation: "set",
-            docPath: `defectReports/${defectRef.id}`,
-            data: payload,
-            options: { merge: false },
-            entityType: "defectReport",
-            entityId: defectRef.id,
-          },
-        });
+        submissionDefects.push({ id: defectRef.id, data: payload });
         serviceDefectActionsForRecord[action.key] = {
           ...action,
           defectReportId: defectRef.id,
         };
-        embeddedOpenDefects.push({
-          description,
-          severity: "Immediate",
-          priority: "high",
-          offRoad: false,
-          reportedBy: signedBy.trim() || null,
-          notes: action.note || null,
-          status: "open",
-          location: "Service form",
-          source: "serviceForm",
-          sourceRecordId: serviceRecordRef.id,
-          sourceDefectKey: action.key,
-          defectReportId: defectRef.id,
-          photoURIs: [],
-          photoURLs: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
+
       }
 
       const record = {
+        companyId,
+        ...(workshopRequestId ? { workshopRequestId: String(workshopRequestId), workshopWorkType: "full_service" } : {}),
         vehicleId: selectedVehicleId,
         vehicleName: recordVehicleName,
         registration: recordRegistration,
@@ -1428,96 +1336,21 @@ export default function ServiceFormScreen() {
         photoURLs,
         signedBy: signedBy.trim(),
         ...(isEditingRecord
-          ? { updatedAt: serverTimestamp() }
-          : { createdAt: serverTimestamp() }),
+          ? { updatedAt: new Date().toISOString() }
+          : { createdAt: new Date().toISOString() }),
       };
 
-      firestoreMutations.push({
-        run: () =>
-          isEditingRecord
-            ? updateDoc(serviceRecordRef, record)
-            : setDoc(serviceRecordRef, record),
-        mutation: {
-          operation: isEditingRecord ? "update" : "set",
-          docPath: `serviceRecords/${serviceRecordRef.id}`,
-          data: record,
-          options: isEditingRecord ? undefined : { merge: false },
-          entityType: "serviceRecord",
-          entityId: serviceRecordRef.id,
-        },
-      });
-
-      const vehicleRef = doc(db, "vehicles", selectedVehicleId);
-      const historyNotes = [workSummary.trim(), extraNotes.trim()]
-        .filter(Boolean)
-        .join(" ");
-      const canonicalName = recordVehicleName;
-      const canonicalReg = recordRegistration;
-      const updatePayload = {
-        ...buildVehicleIdentityMirrorUpdate({
-          ...v,
-          name: canonicalName,
-          registration: canonicalReg,
-          manufacturer: getVehicleManufacturer(v) || "",
-        }),
-        ...buildVehicleServiceDateMirrorUpdate({
-          lastService: serviceDate,
-          nextService: nextServiceDate,
-        }),
-      };
-      if (!isEditingRecord) {
-        updatePayload.serviceHistory = arrayUnion(
-          buildVehicleServiceHistoryItem({
-            completedDate: serviceDate,
-            serviceRecordId: serviceRecordRef.id,
-            serviceFormNumber,
-            notes: historyNotes,
-            odometer: odoNumber,
-            partsUsed: partsUsed.trim(),
-          })
-        );
-      }
-      if (embeddedOpenDefects.length > 0) {
-        updatePayload.defects = arrayUnion(...embeddedOpenDefects);
-      }
-      if (odoNumber && !Number.isNaN(odoNumber)) {
-        Object.assign(updatePayload, buildVehicleOdometerMirrorUpdate(odoNumber));
-      }
-
-      firestoreMutations.push({
-        run: () => updateDoc(vehicleRef, updatePayload),
-        mutation: {
-          operation: "update",
-          docPath: `vehicles/${selectedVehicleId}`,
-          data: updatePayload,
-          entityType: "vehicle",
-          entityId: selectedVehicleId,
-        },
-      });
-
-      const { queued } = await runOrQueueFirestoreMutations(firestoreMutations);
-      await Promise.all([
-        upsertServiceRow("serviceRecords", { ...record, id: serviceRecordRef.id }),
-        patchServiceRow("vehicles", selectedVehicleId, updatePayload),
+      const result = await submitOrQueueWorkshopRecord({ recordId: serviceRecordRef.id, record, defects: submissionDefects, mode: isEditingRecord ? "update" : "create" });
+      const { queued } = result;
+      await Promise.allSettled([
+        upsertServiceRow("serviceRecords", { ...(result.record || record), id: serviceRecordRef.id }),
+        ...(result.vehiclePatch ? [patchServiceRow("vehicles", selectedVehicleId, result.vehiclePatch)] : []),
       ]);
 
       // 🔥 clear just this draft now it’s finished
       try {
-        const raw = await AsyncStorage.getItem(SERVICE_DRAFTS_KEY);
-        if (raw) {
-          const allDrafts = JSON.parse(raw) || {};
-          if (allDrafts[formId]) {
-            delete allDrafts[formId];
-            if (Object.keys(allDrafts).length === 0) {
-              await AsyncStorage.removeItem(SERVICE_DRAFTS_KEY);
-            } else {
-              await AsyncStorage.setItem(
-                SERVICE_DRAFTS_KEY,
-                JSON.stringify(allDrafts)
-              );
-            }
-          }
-        }
+        draftDeletedRef.current = true;
+        await removeServiceDraft(AsyncStorage, formId, [...pendingDraftSavesRef.current]);
       } catch (e) {
         console.error("Failed to remove draft after submit:", e);
       }
@@ -1545,7 +1378,7 @@ export default function ServiceFormScreen() {
       );
     } catch (err) {
       console.error("Failed to save service record:", err);
-      Alert.alert("Error", "Could not save service record. Please try again.");
+      Alert.alert("Error", err.message || "Could not save service record. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -1554,53 +1387,18 @@ export default function ServiceFormScreen() {
   /* ---------------- RENDER ---------------- */
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
+    <PageShell mode="form" width="form" header={{
+      variant: "compact",
+      title: isEditingRecord ? "Edit Service Record" : "Service Job Form",
+      subtitle: isEditingRecord
+        ? "Update missed details, check status, notes and photos."
+        : "Record full service, check status and photos.",
+      onBack: () => confirmLeave(() => router.back()),
+    }}>
       {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => confirmLeave(() => router.back())}
-          style={styles.backButton}
-        >
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.pageTitle,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-          >
-            {isEditingRecord ? "Edit Service Record" : "Service Job Form"}
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            {isEditingRecord
-              ? "Update missed details, check status, notes and photos."
-              : "Record full service, check status and photos."}
-          </Text>
-        </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+
+      <>
         {loadingRecord && (
           <View style={styles.centerRow}>
             <ActivityIndicator size="small" color={COLORS.primaryAction} />
@@ -1611,9 +1409,8 @@ export default function ServiceFormScreen() {
         {/* VEHICLE SECTION */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Vehicle
@@ -1631,9 +1428,8 @@ export default function ServiceFormScreen() {
             </TouchableOpacity>
           ) : loadingVehicles ? (
             <Text
-              style={[
+              tone={"muted"} style={[
                 styles.sectionHint,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Loading fleet…
@@ -1645,9 +1441,8 @@ export default function ServiceFormScreen() {
           {vehicleCollapsed && selectedVehicle ? (
             <>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.fieldLabel,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 Selected vehicle
@@ -1655,17 +1450,15 @@ export default function ServiceFormScreen() {
               <View style={styles.selectedVehicleRow}>
                 <View style={{ flex: 1 }}>
                   <Text
-                    style={[
+                    tone={"primary"} style={[
                       styles.vehicleName,
-                      { color: colors.text || COLORS.textHigh },
                     ]}
                   >
                     {getVehicleName(selectedVehicle) || "Unnamed vehicle"}
                   </Text>
                   <Text
-                    style={[
+                    tone={"muted"} style={[
                       styles.vehicleReg,
-                      { color: colors.textMuted || COLORS.textMid },
                     ]}
                   >
                     {getVehicleRegistration(selectedVehicle) || "—"}
@@ -1674,9 +1467,8 @@ export default function ServiceFormScreen() {
               </View>
               <View style={styles.vehicleMetaRow}>
                 <Text
-                  style={[
+                  tone={"muted"} style={[
                     styles.vehicleMeta,
-                    { color: colors.textMuted || COLORS.textMid },
                   ]}
                 >
                   Current mileage:{" "}
@@ -1685,9 +1477,8 @@ export default function ServiceFormScreen() {
                     : "—"}
                 </Text>
                 <Text
-                  style={[
+                  tone={"muted"} style={[
                     styles.vehicleMeta,
-                    { color: colors.textMuted || COLORS.textMid },
                   ]}
                 >
                   Last service: {formatDateForDisplay(getVehicleLastService(selectedVehicle)) || "—"}
@@ -1696,108 +1487,14 @@ export default function ServiceFormScreen() {
             </>
           ) : (
             <>
-              <Text
-                style={[
-                  styles.fieldLabel,
-                  { color: colors.textMuted || COLORS.textMid },
-                ]}
-              >
-                Search vehicle
-              </Text>
-              <View
-                style={[
-                  styles.searchBox,
-                  {
-                    backgroundColor: colors.inputBackground || "#FFFFFF",
-                    borderColor: colors.inputBorder || colors.border || COLORS.border,
-                  },
-                ]}
-              >
-                <Icon
-                  name="search"
-                  size={18}
-                  color={colors.textMuted || COLORS.textMid}
-                  style={{ marginRight: 6 }}
-                />
-                <TextInput
-                  style={[styles.searchInput, { color: colors.text || COLORS.textHigh }]}
-                  placeholder="Name, reg, manufacturer or model…"
-                  placeholderTextColor={colors.textMuted || COLORS.textLow}
-                  value={vehicleSearch}
-                  onChangeText={setVehicleSearch}
-                />
-              </View>
-
-              {loadingVehicles ? (
-                <View style={styles.centerRow}>
-                  <ActivityIndicator size="small" color={COLORS.primaryAction} />
-                </View>
-              ) : filteredVehicles.length === 0 ? (
-                <View style={styles.centerRow}>
-                  <Text style={styles.emptyText}>
-                    No vehicles match this search.
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ maxHeight: 180, marginTop: 8 }}
-                  nestedScrollEnabled
-                >
-                  {filteredVehicles.map((v) => {
-                    const name = getVehicleName(v) || "Unnamed vehicle";
-                    const reg = getVehicleRegistration(v);
-                    const manufacturer = getVehicleManufacturer(v);
-                    const isActive = v.id === selectedVehicleId;
-
-                    return (
-                      <TouchableOpacity
-                        key={v.id}
-                        style={[
-                          styles.vehicleRow,
-                          isActive && styles.vehicleRowActive,
-                        ]}
-                        onPress={() => handleSelectVehicle(v.id)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.vehicleName,
-                              {
-                                color: isActive
-                                  ? COLORS.primaryAction
-                                  : colors.text || COLORS.textHigh,
-                              },
-                            ]}
-                          >
-                            {name}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.vehicleReg,
-                              { color: colors.textMuted || COLORS.textMid },
-                            ]}
-                          >
-                            {reg}
-                            {manufacturer || v.model
-                              ? ` · ${manufacturer || ""}${
-                                  manufacturer && v.model ? " " : ""
-                                }${v.model || ""}`
-                              : ""}
-                          </Text>
-                        </View>
-                        {isActive && (
-                          <Icon
-                            name="check-circle"
-                            size={20}
-                            color={COLORS.primaryAction}
-                          />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
+              <AssetSelectField
+                hideLabel
+                records={vehicles}
+                value={selectedVehicleId}
+                onChange={handleSelectVehicle}
+                loading={loadingVehicles}
+                testID="service-vehicle-select"
+              />
             </>
           )}
         </View>
@@ -1805,9 +1502,8 @@ export default function ServiceFormScreen() {
         {/* SERVICE DETAILS */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Service details
@@ -1817,9 +1513,8 @@ export default function ServiceFormScreen() {
         <View style={styles.flatSectionContent}>
           <View style={styles.fieldGroup}>
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.fieldLabel,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Service date (auto)
@@ -1828,12 +1523,12 @@ export default function ServiceFormScreen() {
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>
                 {serviceDate}
               </Text>
             </View>
@@ -1841,9 +1536,8 @@ export default function ServiceFormScreen() {
 
           <View style={styles.fieldGroup}>
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.fieldLabel,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Service time (auto)
@@ -1852,12 +1546,12 @@ export default function ServiceFormScreen() {
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>
                 {serviceTime}
               </Text>
             </View>
@@ -1873,9 +1567,8 @@ export default function ServiceFormScreen() {
 
           <View style={styles.fieldGroup}>
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.fieldLabel,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Service type
@@ -1884,14 +1577,14 @@ export default function ServiceFormScreen() {
               style={[
                 styles.dropdownHeader,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
               onPress={() => setServiceTypeOpen((prev) => !prev)}
               activeOpacity={0.8}
             >
-              <Text style={[styles.dropdownText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.dropdownText]}>
                 {serviceType}
               </Text>
               <Icon
@@ -1905,7 +1598,7 @@ export default function ServiceFormScreen() {
                 style={[
                   styles.dropdownList,
                   {
-                    backgroundColor: colors.inputBackground || "#FFFFFF",
+                    backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                     borderColor: colors.border || COLORS.border,
                   },
                 ]}
@@ -1943,9 +1636,8 @@ export default function ServiceFormScreen() {
 
           <View style={styles.fieldGroup}>
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.fieldLabel,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Next service due (auto)
@@ -1954,12 +1646,12 @@ export default function ServiceFormScreen() {
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>
                 {nextServiceComputed ||
                   "Calculated from service date (+12 months)"}
               </Text>
@@ -2027,9 +1719,8 @@ export default function ServiceFormScreen() {
         {/* WORKSHOP NOTES */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Workshop notes
@@ -2061,6 +1752,7 @@ export default function ServiceFormScreen() {
           />
           <FormField
             label="Extra notes (optional)"
+            autoGrow
             placeholder="Anything else useful for future jobs."
             value={extraNotes}
             onChangeText={setExtraNotes}
@@ -2071,17 +1763,15 @@ export default function ServiceFormScreen() {
         {/* SIGN-OFF */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Sign-off
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.sectionHint,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Required to complete service.
@@ -2103,8 +1793,8 @@ export default function ServiceFormScreen() {
             value={signedBy}
             onChangeText={setSignedBy}
           />
-          <View style={{ marginTop: 6 }}>
-            <Text style={[styles.signatureInfo, { color: colors.textMuted || COLORS.textMid }]}>
+          <View style={{ marginTop: t.spacing.xxs }}>
+            <Text tone={"muted"} style={[styles.signatureInfo]}>
               By entering your name you confirm the checks above have been
               carried out to the best of your ability.
             </Text>
@@ -2114,17 +1804,15 @@ export default function ServiceFormScreen() {
         {/* PHOTOS / ATTACHMENTS (OVERALL) */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Photos / attachments (overall)
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.sectionHint,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             General photos not tied to a single check.
@@ -2150,7 +1838,7 @@ export default function ServiceFormScreen() {
                 name="image"
                 size={18}
                 color={COLORS.textHigh}
-                style={{ marginRight: 6 }}
+                style={{ marginRight: t.spacing.xxs }}
               />
               <Text style={styles.photoAddText}>Add from library</Text>
             </TouchableOpacity>
@@ -2160,7 +1848,7 @@ export default function ServiceFormScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ marginTop: 10 }}
+              style={{ marginTop: t.spacing.xs }}
             >
               {photos.map((p) => (
                 <View key={p.uri} style={styles.photoThumbWrapper}>
@@ -2201,7 +1889,7 @@ export default function ServiceFormScreen() {
                 name="save"
                 size={18}
                 color={COLORS.textHigh}
-                style={{ marginRight: 6 }}
+                style={{ marginRight: t.spacing.xxs }}
               />
               <Text style={styles.submitText}>
                 {isEditingRecord ? "Save changes" : "Save service & update vehicle"}
@@ -2220,61 +1908,37 @@ export default function ServiceFormScreen() {
             name="trash-2"
             size={18}
             color={COLORS.textHigh}
-            style={{ marginRight: 6 }}
+            style={{ marginRight: t.spacing.xxs }}
           />
           <Text style={styles.deleteText}>Delete service form</Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </>
 
       {/* PER-CHECK PHOTO PICKER MODAL */}
-      <Modal
+      <AppModal
         visible={photoPickerVisible}
-        transparent
-        animationType="fade"
+        title="Add photo for check"
         onRequestClose={() => {
           setPhotoPickerVisible(false);
           setPhotoPickerLabel(null);
         }}
+        presentation="adaptive"
+        actions={
+          <AppButton
+            label="Cancel"
+            variant="secondary"
+            onPress={() => {
+              setPhotoPickerVisible(false);
+              setPhotoPickerLabel(null);
+            }}
+          />
+        }
       >
-        <TouchableOpacity
-          style={styles.modalBackdrop}
-          activeOpacity={1}
-          onPress={() => {
-            setPhotoPickerVisible(false);
-            setPhotoPickerLabel(null);
-          }}
-        >
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Add photo for check</Text>
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={handleAddCheckPhotoFromLibrary}
-            >
-              <Icon
-                name="image"
-                size={18}
-                color={COLORS.textHigh}
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.modalOptionText}>Add from library</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalOption, { borderTopWidth: 0, marginTop: 4 }]}
-              onPress={() => {
-                setPhotoPickerVisible(false);
-                setPhotoPickerLabel(null);
-              }}
-            >
-              <Text style={[styles.modalOptionText, { color: COLORS.textMid }]}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </SafeAreaView>
+        <AppButton label="Add from library" icon="image" variant="secondary" onPress={handleAddCheckPhotoFromLibrary} />
+      </AppModal>
+    </PageShell>
   );
 }
 
@@ -2286,37 +1950,22 @@ function FormField({
   onChangeText,
   placeholder,
   multiline = false,
+  autoGrow = false,
   keyboardType = "default",
 }) {
-  const { colors } = useTheme();
-
   return (
     <View style={styles.fieldGroup}>
-      <Text
-        style={[
-          styles.fieldLabel,
-          { color: colors.textMuted || COLORS.textMid },
-        ]}
-      >
-        {label}
-      </Text>
-      <TextInput
-        style={[
-          styles.input,
-          {
-            backgroundColor: colors.inputBackground || "#FFFFFF",
-            borderColor: colors.inputBorder || colors.border || COLORS.border,
-            color: colors.text || COLORS.textHigh,
-          },
-          multiline && styles.inputMultiline,
-        ]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted || COLORS.textLow}
-        value={value}
-        onChangeText={onChangeText}
-        multiline={multiline}
-        keyboardType={keyboardType}
-      />
+      {multiline ? (
+        <TextArea label={label} autoGrow={autoGrow} placeholder={placeholder} value={value} onChangeText={onChangeText} />
+      ) : (
+        <SharedFormField
+          label={label}
+          placeholder={placeholder}
+          value={value}
+          onChangeText={onChangeText}
+          inputProps={{ keyboardType }}
+        />
+      )}
     </View>
   );
 }
@@ -2342,7 +1991,7 @@ function WheelFootprintSection({ wheelInspection, updateWheelInspection }) {
           <View style={styles.wheelBadge}>
             <Text style={styles.wheelBadgeText}>{wheel.shortLabel}</Text>
           </View>
-          <Text style={[styles.wheelTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.wheelTitle]}>
             {wheel.label}
           </Text>
         </View>
@@ -2367,20 +2016,12 @@ function WheelFootprintSection({ wheelInspection, updateWheelInspection }) {
           status={getBrakeWearStatus(item.brakeWear)}
           onChangeText={(text) => updateWheelInspection(wheel.key, "brakeWear", text)}
         />
-        <TextInput
-          style={[
-            styles.wheelNoteInput,
-            {
-              backgroundColor: colors.inputBackground || COLORS.inputBg,
-              borderColor: colors.inputBorder || COLORS.lightGray,
-              color: colors.text || COLORS.textHigh,
-            },
-          ]}
+        <TextArea
+          label={`${wheel.label} wheel note`}
+          autoGrow
           value={item.note}
           onChangeText={(text) => updateWheelInspection(wheel.key, "note", text)}
           placeholder="Wheel note..."
-          placeholderTextColor={colors.textMuted || COLORS.textLow}
-          multiline
         />
       </View>
     );
@@ -2390,17 +2031,15 @@ function WheelFootprintSection({ wheelInspection, updateWheelInspection }) {
     <>
       <View style={styles.sectionHeaderRow}>
         <Text
-          style={[
+          tone={"primary"} style={[
             styles.sectionTitle,
-            { color: colors.text || COLORS.textHigh },
           ]}
         >
           Tyres & brakes footprint
         </Text>
         <Text
-          style={[
+          tone={"muted"} style={[
             styles.sectionHint,
-            { color: colors.textMuted || COLORS.textMid },
           ]}
         >
           Record tread depth, tyre pressure and brake wear at each wheel.
@@ -2439,40 +2078,18 @@ function WheelFootprintSection({ wheelInspection, updateWheelInspection }) {
 }
 
 function WheelMetricInput({ label, suffix, value, status, onChangeText }) {
-  const { colors } = useTheme();
   const statusOption = getCheckStatusOption(status);
 
   return (
     <View style={styles.wheelMetricRow}>
-      <View style={styles.wheelMetricHeader}>
-        <Text style={[styles.wheelMetricLabel, { color: colors.textMuted || COLORS.textLow }]}>
-          {label}
-        </Text>
-        {statusOption ? (
-          <View style={[styles.wheelStatusDot, { backgroundColor: statusOption.color }]} />
-        ) : null}
-      </View>
-      <View
-        style={[
-          styles.wheelMetricInputWrap,
-          {
-            backgroundColor: colors.inputBackground || COLORS.inputBg,
-            borderColor: statusOption?.color || colors.inputBorder || COLORS.lightGray,
-          },
-        ]}
-      >
-        <TextInput
-          style={[styles.wheelMetricInput, { color: colors.text || COLORS.textHigh }]}
+        <SharedFormField
+          label={label}
+          hint={statusOption ? `${suffix} · ${statusOption.label}` : suffix}
           value={value}
           onChangeText={onChangeText}
-          keyboardType="decimal-pad"
           placeholder="--"
-          placeholderTextColor={colors.textMuted || COLORS.textLow}
+          inputProps={{ keyboardType: "decimal-pad" }}
         />
-        <Text style={[styles.wheelMetricSuffix, { color: colors.textMuted || COLORS.textLow }]}>
-          {suffix}
-        </Text>
-      </View>
     </View>
   );
 }
@@ -2485,17 +2102,15 @@ function MonitorReportSection({ monitorItems }) {
     <>
       <View style={styles.sectionHeaderRow}>
         <Text
-          style={[
+          tone={"primary"} style={[
             styles.sectionTitle,
-            { color: colors.text || COLORS.textHigh },
           ]}
         >
           Monitor report
         </Text>
         <Text
-          style={[
+          tone={"muted"} style={[
             styles.sectionHint,
-            { color: colors.textMuted || COLORS.textMid },
           ]}
         >
           Amber checklist, tyre or brake items to monitor.
@@ -2507,7 +2122,7 @@ function MonitorReportSection({ monitorItems }) {
           styles.card,
           {
             backgroundColor: colors.surfaceAlt || COLORS.card,
-            borderColor: "#F59E0B",
+            borderColor: routeColors.hex_f59e0b_4zbh7f,
           },
         ]}
       >
@@ -2517,13 +2132,12 @@ function MonitorReportSection({ monitorItems }) {
               <Text style={styles.monitorReportBadgeText}>M</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.monitorReportTitle, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.monitorReportTitle]}>
                 {item.title}
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.monitorReportDetails,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 {item.details}
@@ -2545,17 +2159,15 @@ function RedDefectReportSection({ redDefects, actions, updateAction }) {
     <>
       <View style={styles.sectionHeaderRow}>
         <Text
-          style={[
+          tone={"primary"} style={[
             styles.sectionTitle,
-            { color: colors.text || COLORS.textHigh },
           ]}
         >
           Defect report
         </Text>
         <Text
-          style={[
+          tone={"muted"} style={[
             styles.sectionHint,
-            { color: colors.textMuted || COLORS.textMid },
           ]}
         >
           {hasWheelDefects
@@ -2583,13 +2195,12 @@ function RedDefectReportSection({ redDefects, actions, updateAction }) {
                   <Icon name="alert-triangle" size={15} color={COLORS.textHigh} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.redDefectTitle, { color: colors.text || COLORS.textHigh }]}>
+                  <Text tone={"primary"} style={[styles.redDefectTitle]}>
                     {defect.title}
                   </Text>
                   <Text
-                    style={[
+                    tone={"muted"} style={[
                       styles.redDefectMeta,
-                      { color: colors.textMuted || COLORS.textMid },
                     ]}
                   >
                     {defect.value}
@@ -2609,7 +2220,7 @@ function RedDefectReportSection({ redDefects, actions, updateAction }) {
                         {
                           borderColor: active ? COLORS.primaryAction : COLORS.lightGray,
                           backgroundColor: active
-                            ? "rgba(237,28,37,0.16)"
+                            ? getServiceStatusColors("danger").background
                             : "transparent",
                         },
                       ]}
@@ -2621,7 +2232,7 @@ function RedDefectReportSection({ redDefects, actions, updateAction }) {
                           styles.defectActionText,
                           {
                             color: active
-                              ? COLORS.primaryAction
+                              ? getServiceStatusColors("danger").onBackground
                               : colors.textMuted || COLORS.textLow,
                           },
                         ]}
@@ -2640,7 +2251,7 @@ function RedDefectReportSection({ redDefects, actions, updateAction }) {
   );
 }
 
-function ChecklistSection({
+export function ChecklistSection({
   title,
   hint,
   items,
@@ -2662,17 +2273,15 @@ function ChecklistSection({
     <>
       <View style={styles.sectionHeaderRow}>
         <Text
-          style={[
+          tone={"primary"} style={[
             styles.sectionTitle,
-            { color: colors.text || COLORS.textHigh },
           ]}
         >
           {title}
         </Text>
         <Text
-          style={[
+          tone={"muted"} style={[
             styles.sectionHint,
-            { color: colors.textMuted || COLORS.textMid },
           ]}
         >
           {hint}
@@ -2724,18 +2333,24 @@ function ChecklistRow({
   onPressPhoto,
   onRemovePhoto,
 }) {
-  const { colors } = useTheme();
+  const { colors, colorScheme } = useTheme();
+  const paletteFor = (value) => getServiceStatusColors({ green: "success", amber: "warning", red: "danger" }[value] || "neutral", colorScheme);
   const selectedStatus = normalizeCheckStatus(rating);
-  const selectedStatusOption = getCheckStatusOption(selectedStatus);
+  const selectedPalette = paletteFor(selectedStatus);
+  const neutralPalette = paletteFor("");
   const requiresNote = NOTE_REQUIRED_STATUSES.has(selectedStatus);
   const noteMissing = requiresNote && !String(note || "").trim();
 
   return (
-    <View style={styles.checkRowWrapper}>
+    <View testID="service-check-row" style={styles.checkRowWrapper}>
       {/* Left: tick + label */}
       <TouchableOpacity
         style={styles.checkRowLeft}
         onPress={onToggle}
+        accessibilityRole="checkbox"
+        accessibilityLabel={label}
+        accessibilityState={{ checked }}
+        aria-checked={checked}
         activeOpacity={0.8}
       >
         <View style={styles.checkIconWrap}>
@@ -2743,10 +2358,10 @@ function ChecklistRow({
             <View
               style={[
                 styles.checkIconFilled,
-                selectedStatusOption && { backgroundColor: selectedStatusOption.color },
+                { backgroundColor: selectedPalette.background },
               ]}
             >
-              <Icon name="check" size={18} color={COLORS.textHigh} />
+              <Icon name="check" size={18} color={selectedPalette.onBackground} />
             </View>
           ) : (
             <View
@@ -2758,10 +2373,10 @@ function ChecklistRow({
           )}
         </View>
         <Text
-          style={[
+          tone={(checked) ? "primary" : ("muted")} style={[
             styles.checkLabel,
-            { color: colors.textMuted || COLORS.textLow },
-            checked && { color: colors.text || COLORS.textHigh },
+            null,
+            checked && null,
             na && { opacity: 0.5 },
           ]}
         >
@@ -2773,17 +2388,22 @@ function ChecklistRow({
       <View style={styles.ratingRow}>
         {CHECK_STATUS_OPTIONS.map((option) => {
           const isActive = selectedStatus === option.value;
+          const palette = paletteFor(option.value);
           return (
             <TouchableOpacity
               key={option.value}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}: ${option.label}`}
+              aria-pressed={isActive}
+              accessibilityState={{ selected: isActive }}
               style={[
                 styles.conditionPill,
-                { borderColor: option.color },
+                { borderColor: palette.border },
                 isActive && {
-                  backgroundColor: option.color,
-                  borderColor: option.color,
+                  backgroundColor: palette.background,
+                  borderColor: palette.border,
                 },
-                na && { opacity: 0.6 },
+
               ]}
               onPress={() => onChangeRating(option.value)}
               activeOpacity={0.7}
@@ -2791,8 +2411,8 @@ function ChecklistRow({
               <Text
                 style={[
                   styles.conditionText,
-                  { color: option.color },
-                  isActive && styles.conditionTextActive,
+                  { color: isActive ? palette.onBackground : palette.foreground },
+
                 ]}
               >
                 {option.label}
@@ -2802,40 +2422,36 @@ function ChecklistRow({
         })}
 
         <TouchableOpacity
-          style={[styles.naPill, na && styles.naPillActive]}
+          style={[styles.naPill, na && styles.naPillActive, { borderColor: neutralPalette.border }, na && { backgroundColor: neutralPalette.background }]}
           onPress={onToggleNA}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: Not applicable`}
+          aria-pressed={na}
+          accessibilityState={{ selected: na }}
           activeOpacity={0.7}
         >
-          <Text style={[styles.naText, na && styles.naTextActive]}>N/A</Text>
+          <Text style={[styles.naText, na && styles.naTextActive, { color: neutralPalette.foreground }]}>N/A</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.photoIconButton}
           onPress={onPressPhoto}
+          accessibilityRole="button"
+          accessibilityLabel={`Add photo for ${label}`}
           activeOpacity={0.7}
         >
-          <Icon name="image" size={16} color={COLORS.textMid} />
+          <Icon name="image" size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
 
       {/* Notes for this check */}
-      <TextInput
-        style={[
-          styles.checkNoteInput,
-          noteMissing && styles.checkNoteInputRequired,
-          {
-            backgroundColor: colors.inputBackground || COLORS.inputBg,
-            borderColor: noteMissing
-              ? selectedStatusOption?.color || COLORS.primaryAction
-              : colors.inputBorder || COLORS.lightGray,
-            color: colors.text || COLORS.textHigh,
-          },
-        ]}
+      <TextArea
+        label="Check notes"
+        autoGrow
+        error={noteMissing ? "Notes are required for this status." : undefined}
         placeholder={requiresNote ? "Notes required for amber/red..." : "Notes for this check..."}
-        placeholderTextColor={colors.textMuted || COLORS.textLow}
         value={note}
         onChangeText={onChangeNote}
-        multiline
       />
 
       {/* Photos for this check */}
@@ -2843,7 +2459,7 @@ function ChecklistRow({
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 6 }}
+          style={{ marginTop: t.spacing.xxs }}
         >
           {photos.map((p) => (
             <View key={p.uri} style={styles.photoThumbWrapper}>
@@ -2864,592 +2480,3 @@ function ChecklistRow({
 }
 
 /* ---------------- STYLES ---------------- */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingTop: 8,
-    paddingBottom: 110,
-  },
-  sectionHeaderRow: {
-    marginTop: 4,
-    marginBottom: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  sectionHint: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  flatSectionContent: {
-    marginBottom: 10,
-  },
-  fieldGroup: {
-    marginBottom: 12,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textMid,
-    marginBottom: 4,
-  },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    color: COLORS.textHigh,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  inputMultiline: {
-    minHeight: 110,
-    textAlignVertical: "top",
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    color: COLORS.textHigh,
-    fontSize: 15,
-  },
-  centerRow: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  vehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  vehicleRowActive: {
-    backgroundColor: "rgba(255,59,48,0.12)",
-  },
-  vehicleName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.textHigh,
-  },
-  vehicleReg: {
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  vehicleMetaRow: {
-    marginTop: 8,
-  },
-  vehicleMeta: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  selectedVehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  readonlyField: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  readonlyText: {
-    fontSize: 14,
-    color: COLORS.textHigh,
-  },
-  vehicleFootprint: {
-    flexDirection: "row",
-    gap: 14,
-    alignItems: "stretch",
-    justifyContent: "space-between",
-  },
-  wheelColumn: {
-    flex: 1,
-    gap: 14,
-    minWidth: 0,
-  },
-  vehicleBody: {
-    width: 74,
-    minHeight: 520,
-    alignSelf: "center",
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 18,
-    ...Platform.select({
-      ios: { display: "none" },
-      android: { display: "none" },
-    }),
-  },
-  vehicleBodyText: {
-    color: COLORS.textLow,
-    fontSize: 10,
-    fontWeight: "800",
-  },
-  vehicleBodyLine: {
-    width: 1,
-    flex: 1,
-    marginVertical: 12,
-    backgroundColor: COLORS.border,
-  },
-  wheelCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 10,
-    ...Platform.select({
-      ios: { minWidth: "100%" },
-      android: { minWidth: "100%" },
-    }),
-  },
-  wheelCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    marginBottom: 8,
-  },
-  wheelBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  wheelBadgeText: {
-    color: COLORS.textHigh,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  wheelTitle: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  wheelMetricRow: {
-    marginTop: 7,
-  },
-  wheelMetricHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 3,
-  },
-  wheelMetricLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  wheelStatusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  wheelMetricInputWrap: {
-    minHeight: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  wheelMetricInput: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "800",
-    paddingVertical: 6,
-    minWidth: 0,
-  },
-  wheelMetricSuffix: {
-    marginLeft: 4,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  wheelNoteInput: {
-    marginTop: 8,
-    minHeight: 48,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    fontSize: 13,
-    textAlignVertical: "top",
-  },
-  redDefectRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  redDefectHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-  redDefectIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  redDefectTitle: {
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  redDefectMeta: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  defectActionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 10,
-  },
-  defectActionPill: {
-    minHeight: 34,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    paddingHorizontal: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  defectActionText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  monitorReportRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  monitorReportBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#F59E0B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monitorReportBadgeText: {
-    color: COLORS.textHigh,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  monitorReportTitle: {
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  monitorReportDetails: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: "600",
-    lineHeight: 17,
-  },
-  checkRowWrapper: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  checkRowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: 6,
-    marginBottom: 6,
-  },
-  checkIconWrap: {
-    paddingRight: 8,
-  },
-  checkIconEmpty: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2.5,
-    borderColor: COLORS.textMid,
-  },
-  checkIconFilled: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.textLow,
-  },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 6,
-  },
-  conditionPill: {
-    minHeight: 32,
-    borderRadius: 999,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  conditionText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  conditionTextActive: {
-    color: COLORS.textHigh,
-  },
-  naPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: COLORS.lightGray,
-  },
-  naPillActive: {
-    backgroundColor: "rgba(142,142,147,0.2)",
-    borderColor: COLORS.textMid,
-  },
-  naText: {
-    fontSize: 13,
-    color: COLORS.textLow,
-  },
-  naTextActive: {
-    color: COLORS.textMid,
-    fontWeight: "600",
-  },
-  photoIconButton: {
-    marginLeft: 6,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    borderColor: COLORS.lightGray,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkNoteInput: {
-    marginTop: 4,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: COLORS.textHigh,
-    textAlignVertical: "top",
-    minHeight: 48,
-  },
-  checkNoteInputRequired: {
-    borderWidth: 2,
-  },
-  dropdownHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    justifyContent: "space-between",
-  },
-  dropdownText: {
-    color: COLORS.textHigh,
-    fontSize: 15,
-    flex: 1,
-    marginRight: 8,
-  },
-  dropdownList: {
-    marginTop: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#FFFFFF",
-    overflow: "hidden",
-  },
-  dropdownItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  dropdownItemActive: {
-    backgroundColor: "rgba(255,59,48,0.12)",
-  },
-  dropdownItemText: {
-    fontSize: 15,
-    color: COLORS.textHigh,
-  },
-  photoButtonsRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  photoButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 10,
-    backgroundColor: "#FFFFFF",
-  },
-  photoAddText: {
-    color: COLORS.textHigh,
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  photoThumbWrapper: {
-    marginRight: 10,
-  },
-  photoThumb: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-  },
-  photoRemoveBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  signatureInfo: {
-    fontSize: 11,
-    color: COLORS.textMid,
-  },
-  submitButton: {
-    marginTop: 10,
-    backgroundColor: COLORS.primaryAction,
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  submitText: {
-    color: COLORS.textHigh,
-    fontWeight: "700",
-    fontSize: 15,
-  },
-  deleteButton: {
-    marginTop: 10,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.primaryAction,
-    backgroundColor: "rgba(255,59,48,0.08)",
-  },
-  deleteText: {
-    color: COLORS.textHigh,
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    backgroundColor: "#111111",
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 24,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modalTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-    marginBottom: 10,
-  },
-  modalOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  modalOptionText: {
-    fontSize: 14,
-    color: COLORS.textHigh,
-  },
-});

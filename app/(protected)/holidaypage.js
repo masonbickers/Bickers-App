@@ -1,38 +1,35 @@
+import { cancelEmployeeHoliday } from "../../lib/hrHistoryApi";
+import { getCardSurfaceStyle } from "../../lib/design/cardSurface";
+import { routeColors } from "../../lib/design/routePresentation/holidaypage-js.js";
+import { styles } from "../../lib/design/screenStyles/holidaypage-js.js";
+import { AppButton, AppText as Text, AppPressable as TouchableOpacity, Banner } from "../../components/ui/AppPrimitives";
 // app/holidaypage.js
-import { useRouter } from "expo-router";
-import { collection, deleteDoc, doc, getDocs, onSnapshot } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
 import {
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  useRouter } from "expo-router";
+import { doc, getDoc } from "firebase/firestore";
+import { useEffect,
+  useMemo,
+  useState } from "react";
+import { useWindowDimensions, View } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 import { db } from "../../firebaseConfig";
+import { effectiveHolidayCarryOver, holidayBelongsToYear } from "../../lib/holidayYear";
+import { countHolidayDays } from "../../lib/holidayRequestParity";
+import { useHolidays } from "../../hooks/useOperationalData";
+import {
+  getHolidayBalancePresentation,
+  getHolidayLeaveType,
+  getVisibleHolidayHistory,
+  shouldStackHolidayRows,
+} from "../../lib/holidayPresentation";
 import { useAuth } from "../../providers/AuthProvider";
 import { useTheme } from "../../providers/ThemeProvider";
+import { withAlpha } from "../../lib/design/color";
+import PageShell from "../../components/layout/PageShell";
 
 /* ─────────────────────────── Helpers ─────────────────────────── */
 const norm = (v) => String(v ?? "").trim().toLowerCase();
-const canonicalCode = (v) => {
-  const raw = String(v ?? "").trim();
-  if (!raw) return "";
-  const digits = raw.replace(/\D/g, "");
-  return digits ? digits.padStart(4, "0") : norm(raw);
-};
 
-function withAlpha(hex, alpha) {
-  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
-  const raw = String(hex || "").replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return `rgba(255,255,255,${safeAlpha})`;
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${safeAlpha})`;
-}
 
 /** Parse "YYYY-MM-DD" safely at local midnight (no TZ shift). */
 const parseYMD = (s) => {
@@ -232,23 +229,12 @@ function renderDateWithHalf(d, which, h) {
 }
 
 function displayTypeAndColor(h) {
-  let displayType = "Other";
-  let typeColor = "#22d3ee";
-  const typeStr = (h.leaveType || h.paidStatus || h.type || h.holidayType || "").toLowerCase();
-
-  if (h.isAccrued || typeStr.includes("accrued") || typeStr.includes("toil")) {
-    displayType = "Accrued";
-    typeColor = "#38bdf8";
-  } else if (h.isUnpaid || typeStr.includes("unpaid") || h.paid === false) {
-    displayType = "Unpaid";
-    typeColor = "#f87171";
-  } else if (h.paid || typeStr.includes("paid")) {
-    displayType = "Paid";
-    typeColor = "#29bc5f";
-  } else {
-    // default: treat as paid if not explicitly unpaid/accrued
-    displayType = "Paid";
-    typeColor = "#29bc5f";
+  const displayType = getHolidayLeaveType(h);
+  let typeColor = routeColors.hex_29bc5f_75jpdr;
+  if (displayType === "Accrued") {
+    typeColor = routeColors.hex_38bdf8_92tkol;
+  } else if (displayType === "Unpaid") {
+    typeColor = routeColors.hex_f87171_ohxdjs;
   }
   return { displayType, typeColor };
 }
@@ -263,118 +249,30 @@ function numOrZero(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
 function getAllowanceForYear(emp, y) {
   const Y = yearKey(y);
 
   const holidayAllowances = emp?.holidayAllowances || emp?.holidayAllowanceByYear || {};
   const carryoverByYear = emp?.carryoverByYear || emp?.carryOverByYear || emp?.carriedOverByYear || {};
 
-  const allowance =
-    numOrZero(holidayAllowances?.[Y]) ||
-    numOrZero(emp?.holidayAllowance); // fallback
+  // A configured value of 0 is meaningful. Only use the legacy fields when
+  // this year has no entry at all; otherwise last year's value can leak into
+  // the current-year totals.
+  const allowance = hasOwn(holidayAllowances, Y)
+    ? numOrZero(holidayAllowances[Y])
+    : numOrZero(emp?.holidayAllowance);
 
-  const carryOver =
-    numOrZero(carryoverByYear?.[Y]) ||
-    numOrZero(emp?.carriedOverDays) || // fallback
-    numOrZero(emp?.carryOverDays);
+  const carryOver = hasOwn(carryoverByYear, Y)
+    ? numOrZero(carryoverByYear[Y])
+    : emp?.carriedOverDays !== undefined && emp?.carriedOverDays !== null
+      ? numOrZero(emp.carriedOverDays)
+      : numOrZero(emp?.carryOverDays);
 
   return { allowance, carryOver };
-}
-
-function employeeMatchesHoliday(h, empRecord, sessionEmployee, user) {
-  const ids = [
-    empRecord?.id,
-    empRecord?.employeeId,
-    empRecord?.uid,
-    empRecord?.authUid,
-    sessionEmployee?.employeeId,
-    sessionEmployee?.id,
-    sessionEmployee?.uid,
-    user?.uid,
-  ]
-    .map(norm)
-    .filter(Boolean);
-
-  const holidayIds = [
-    h?.employeeId,
-    h?.employeeDocId,
-    h?.staffId,
-    h?.userId,
-    h?.uid,
-    h?.authUid,
-    h?.employeeUid,
-  ]
-    .map(norm)
-    .filter(Boolean);
-
-  if (holidayIds.some((id) => ids.includes(id))) return true;
-
-  const codes = [
-    empRecord?.userCode,
-    empRecord?.employeeCode,
-    empRecord?.code,
-    sessionEmployee?.userCode,
-    sessionEmployee?.employeeCode,
-    sessionEmployee?.code,
-  ]
-    .map(canonicalCode)
-    .filter(Boolean);
-
-  const holidayCodes = [
-    h?.employeeCode,
-    h?.userCode,
-    h?.code,
-    h?.staffCode,
-    h?.requestedByCode,
-    h?.createdByCode,
-    h?.driverCode,
-  ]
-    .map(canonicalCode)
-    .filter(Boolean);
-
-  if (holidayCodes.some((code) => codes.includes(code))) return true;
-
-  const names = [
-    empRecord?.name,
-    empRecord?.displayName,
-    sessionEmployee?.name,
-    sessionEmployee?.displayName,
-    sessionEmployee?.fullName,
-    user?.displayName,
-  ]
-    .map(norm)
-    .filter(Boolean);
-
-  const holidayNames = [
-    h?.employee,
-    h?.name,
-    h?.employeeName,
-    h?.displayName,
-    h?.staffName,
-    h?.requestedBy,
-    h?.requestedByName,
-    h?.createdByName,
-  ]
-    .map(norm)
-    .filter(Boolean);
-
-  if (holidayNames.some((name) => names.includes(name))) return true;
-
-  const emails = [empRecord?.email, sessionEmployee?.email, user?.email]
-    .map(norm)
-    .filter(Boolean);
-
-  const holidayEmails = [
-    h?.email,
-    h?.employeeEmail,
-    h?.userEmail,
-    h?.requestedByEmail,
-    h?.createdByEmail,
-  ]
-    .map(norm)
-    .filter(Boolean);
-
-  return holidayEmails.some((email) => emails.includes(email));
 }
 
 function isRequestedStatus(status) {
@@ -402,26 +300,21 @@ function isApprovedStatus(status) {
   );
 }
 
-// holiday intersects year?
-function holidayTouchesYear(h, y) {
-  const s = getHolidayStart(h);
-  const e = getHolidayEnd(h) || s;
-  if (!s || !e) return false;
-
-  const startOfYear = new Date(y, 0, 1);
-  const endOfYear = new Date(y, 11, 31);
-
-  return e >= startOfYear && s <= endOfYear;
-}
-
+// Holidays belong to the leave year in which they start. Using an overlap
+// check here caused leave beginning in the previous year to reappear in the
+// current year's lists and totals.
 /* ───────────────────────────── Component ───────────────────────────── */
 export default function HolidayPage() {
   const router = useRouter();
   const { employee, user, isAuthed, loading } = useAuth();
+  const companyId = String(employee?.companyId || "").trim();
   const { colors } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
 
   const [employeeData, setEmployeeData] = useState(null);
-  const [holidays, setHolidays] = useState([]);
+  const { data: holidays, error: historyLoadError, withheldCount, historyComplete, refresh: refreshHolidays } = useHolidays();
+  const historyError = historyLoadError?.message || ((withheldCount || !historyComplete) ? "Some historical leave needs office ownership review." : null);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
 
   // ✅ Lock to current year only (no selector UI)
   const currentYear = new Date().getFullYear();
@@ -481,55 +374,29 @@ export default function HolidayPage() {
   }, [currentYear]);
 
   useEffect(() => {
-    let unsubscribe = null;
+    let mounted = true;
+    setEmployeeData(null);
 
     const fetchData = async () => {
-      if (loading || !isAuthed) {
+      if (loading || !isAuthed || !companyId) {
         setEmployeeData(null);
-        setHolidays([]);
         return;
       }
 
-      const empSnap = await getDocs(collection(db, "employees"));
-      const employees = empSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const snapshot = await getDoc(doc(db, "employees", employee.employeeId));
+      if (mounted) setEmployeeData(snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } : null);
 
-      let empRecord = null;
-      const email = (employee?.email || user?.email || "").trim().toLowerCase();
-
-      if (employee?.userCode) {
-        const targetCode = canonicalCode(employee.userCode);
-        empRecord =
-          employees.find((e) => canonicalCode(e.userCode) === targetCode) ||
-          employees.find((e) => (e.email || "").trim().toLowerCase() === email);
-      } else if (email) {
-        empRecord = employees.find((e) => (e.email || "").trim().toLowerCase() === email);
-      }
-
-      if (!empRecord) {
-        setEmployeeData(null);
-        setHolidays([]);
-        return;
-      }
-
-      setEmployeeData(empRecord);
-
-      const holRef = collection(db, "holidays");
-      unsubscribe = onSnapshot(holRef, (snapshot) => {
-        const allHolidays = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const myHolidays = allHolidays.filter((h) =>
-          employeeMatchesHoliday(h, empRecord, employee, user)
-        );
-        setHolidays(myHolidays);
-      });
     };
 
-    fetchData();
-    return () => unsubscribe && unsubscribe();
-  }, [loading, isAuthed, employee, user]);
+    fetchData().catch(error => { if (mounted) console.warn("Employee profile unavailable:", error); });
+    return () => { mounted = false; };
+  }, [companyId, loading, isAuthed, employee, user]);
 
   const cancelHoliday = async (id) => {
     try {
-      await deleteDoc(doc(db, "holidays", id));
+      const record = holidays.find(row => row.id === id);
+      await cancelEmployeeHoliday(user, employee, record);
+      await refreshHolidays();
       alert("Holiday request cancelled");
     } catch (err) {
       console.error("Error cancelling holiday:", err.message, err);
@@ -538,12 +405,14 @@ export default function HolidayPage() {
   };
 
   const holidaysForYear = useMemo(() => {
-    return (holidays || []).filter((h) => holidayTouchesYear(h, selectedYear));
+    return (holidays || []).filter((h) =>
+      holidayBelongsToYear(h, selectedYear, getHolidayStart(h))
+    );
   }, [holidays, selectedYear]);
 
   /* ✅ Summary calc (CURRENT YEAR ONLY) */
   const calc = () => {
-    let paid = 0,
+    let paidBooked = 0,
       unpaid = 0,
       accruedTaken = 0,
       accruedEarned = 0;
@@ -554,32 +423,49 @@ export default function HolidayPage() {
       const days = computeDays(h, isBankHoliday);
       const { displayType } = displayTypeAndColor(h);
 
-      if (displayType === "Paid") paid += days;
+      if (displayType === "Paid") paidBooked += days;
       else if (displayType === "Unpaid") unpaid += days;
       else if (displayType === "Accrued") accruedTaken += days;
     });
 
     const { allowance, carryOver } = getAllowanceForYear(employeeData, selectedYear);
-    const totalAllowance = allowance + carryOver;
+    const marchEnd = new Date(selectedYear, 2, 31);
+    const januaryStart = new Date(selectedYear, 0, 1);
+    const paidUsedByApril = holidaysForYear.reduce((sum, h) => {
+      if (!isApprovedStatus(h.status) || displayTypeAndColor(h).displayType !== "Paid") return sum;
+      const start = getHolidayStart(h);
+      const end = getHolidayEnd(h);
+      if (!start || !end || start > marchEnd || end < januaryStart) return sum;
+      const clippedStart = start > januaryStart ? start : januaryStart;
+      const clippedEnd = end < marchEnd ? end : marchEnd;
+      const half = getHalfMeta(h);
+      return sum + countHolidayDays(clippedStart, clippedEnd, {
+        bankHolidays: bankHolidaySet,
+        startHalfDay: clippedStart.getTime() === start.getTime() && (half.startHalfFlag || !!half.startAMPM || half.legacySingleHalf),
+        endHalfDay: clippedEnd.getTime() === end.getTime() && (half.endHalfFlag || !!half.endAMPM),
+      });
+    }, 0);
+    const effectiveCarryOver = effectiveHolidayCarryOver(carryOver, paidUsedByApril, selectedYear);
+    const totalAllowance = allowance + effectiveCarryOver;
 
     const accruedBalance = accruedEarned - accruedTaken;
-    const allowanceBalance = totalAllowance - paid;
+    const allowanceBalance = totalAllowance - paidBooked;
 
     return {
-      paid,
+      paidBooked,
       unpaid,
       accruedEarned,
       accruedTaken,
       accruedBalance,
       allowance,
-      carryOver,
+      carryOver: effectiveCarryOver,
       totalAllowance,
       allowanceBalance,
     };
   };
 
   const {
-    paid,
+    paidBooked,
     unpaid,
     totalAllowance,
     allowanceBalance,
@@ -615,6 +501,7 @@ export default function HolidayPage() {
   }, 0);
 
   const remainingAfterPast = totalAllowance - pastPaidUsed;
+  const upcomingPaidBooked = Math.max(0, paidBooked - pastPaidUsed);
 
   // ✅ Notes field compatibility: app/web save "holidayReason", older UI might have "notes"
   const getNotes = (h) => {
@@ -622,42 +509,63 @@ export default function HolidayPage() {
     return String(v || "").trim();
   };
 
+  const toListItem = (h, trailingLabel, trailingValue) => {
+    const s = getHolidayStart(h);
+    const e = getHolidayEnd(h) || s;
+    const { displayType, typeColor } = displayTypeAndColor(h);
+    return {
+      id: h.id,
+      holiday: h,
+      start: renderDateWithHalf(s, "start", h),
+      end: renderDateWithHalf(e, "end", h),
+      days: computeDays(h, isBankHoliday),
+      type: displayType,
+      typeColor,
+      notes: getNotes(h),
+      trailingLabel,
+      trailingValue,
+    };
+  };
+
+  const requestedItems = requestedHolidays
+    .slice()
+    .sort((a, b) => getHolidayStart(a) - getHolidayStart(b))
+    .map((h) => toListItem(h, "Status", "Requested"));
+
+  let projectedBalance = remainingAfterPast;
+  const upcomingItems = upcomingConfirmed.map((h) => {
+    const { displayType } = displayTypeAndColor(h);
+    if (displayType === "Paid") projectedBalance -= computeDays(h, isBankHoliday);
+    return toListItem(
+      h,
+      "Balance after",
+      `${Number(projectedBalance.toFixed(1))} days`
+    );
+  });
+
+  let pastBalance = totalAllowance;
+  const pastItems = pastConfirmed.map((h) => {
+    const { displayType } = displayTypeAndColor(h);
+    if (displayType === "Paid") pastBalance -= computeDays(h, isBankHoliday);
+    return toListItem(h, "Balance after", `${Number(pastBalance.toFixed(1))} days`);
+  });
+
+  const { isOverbooked, balanceValue, balanceLabel } =
+    getHolidayBalancePresentation(allowanceBalance);
+  const visiblePastItems = getVisibleHolidayHistory(pastItems, historyExpanded);
+  const stackHolidayRows = shouldStackHolidayRows(width, fontScale);
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.heroCard}>
-          <View style={styles.heroContent}>
-            <View style={styles.heroTopRow}>
-              <TouchableOpacity
-                style={[
-                  styles.heroBackButton,
-                  {
-                    backgroundColor: withAlpha(colors.surfaceAlt, 0.82),
-                    borderColor: withAlpha(colors.border, 0.82),
-                  },
-                ]}
-                onPress={() => router.back()}
-                activeOpacity={0.85}
-              >
-                <Icon name="arrow-left" size={15} color={colors.text} />
-              </TouchableOpacity>
-
-              <View style={styles.heroTitleWrap}>
-                <Text style={[styles.heroTitle, { color: colors.text }]}>Holiday</Text>
-                <Text style={[styles.heroSubTitle, { color: colors.textMuted }]}>
-                  {employeeData?.name
-                    ? `${employeeData.name} · ${selectedYear}`
-                    : `Track leave and balances for ${selectedYear}.`}
-                </Text>
-              </View>
-
-              <View style={styles.heroSpacer} />
-            </View>
-
-            <View style={styles.heroMetaRow}>
+    <PageShell
+      appearance="grouped"
+      header={{
+        variant: "compact",
+        eyebrow: "Leave",
+        title: "Holiday",
+        subtitle: employeeData?.name ? `${employeeData.name} · ${selectedYear}` : `Track leave and balances for ${selectedYear}.`,
+        onBack: router.back,
+        action: { label: "Request Holiday", icon: "plus", onPress: () => router.push("/holiday-request") },
+        metadata: <View style={styles.heroMetaRow}>
               <View
                 style={[
                   styles.heroMetaChip,
@@ -668,7 +576,7 @@ export default function HolidayPage() {
                 ]}
               >
                 <Icon name="pie-chart" size={12} color={colors.textMuted} />
-                <Text style={[styles.heroMetaText, { color: colors.text }]}>
+                <Text tone={"primary"} style={[styles.heroMetaText]}>
                   Allowance: {Number(totalAllowance.toFixed(1))}
                 </Text>
               </View>
@@ -677,432 +585,250 @@ export default function HolidayPage() {
                 style={[
                   styles.heroMetaChip,
                   {
-                    backgroundColor: withAlpha(colors.surfaceAlt, 0.82),
-                    borderColor: withAlpha(colors.border, 0.82),
+                    backgroundColor: isOverbooked
+                      ? withAlpha(colors.danger, 0.13)
+                      : withAlpha(colors.surfaceAlt, 0.82),
+                    borderColor: isOverbooked
+                      ? withAlpha(colors.danger, 0.45)
+                      : withAlpha(colors.border, 0.82),
                   },
                 ]}
               >
-                <Icon name="check-circle" size={12} color={colors.textMuted} />
-                <Text style={[styles.heroMetaText, { color: colors.text }]}>
-                  Left: {Number(allowanceBalance.toFixed(1))}
+                <Icon
+                  name={isOverbooked ? "alert-triangle" : "check-circle"}
+                  size={12}
+                  color={isOverbooked ? colors.danger : colors.textMuted}
+                />
+                <Text
+                  tone={isOverbooked ? "danger" : "primary"} style={[styles.heroMetaText]}
+                >
+                  {balanceLabel}
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.heroActionsRow}>
-              <TouchableOpacity
-                style={[styles.heroActionBtn, styles.heroPrimaryBtn]}
-                onPress={() => router.push("/holiday-request")}
-              >
-                <Icon name="plus" size={15} color="#000" />
-                <Text style={[styles.heroActionText, { color: "#000" }]}>Request</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+            </View>,
+      }}
+    >
+      <>
+        {historyError ? <Banner tone="warning" title="History needs attention">{historyError}</Banner> : null}
 
         {employeeData && (
           <>
             {/* Stats Grid */}
             <View style={styles.statsGrid}>
               <Stat
-                label="Paid Used"
-                value={`${Number(paid.toFixed(1))}/${totalAllowance}`}
-                color="#60a5fa"
+                label="Paid used"
+                value={Number(pastPaidUsed.toFixed(1))}
               />
-              <Stat label="Unpaid" value={Number(unpaid.toFixed(1))} color="#f87171" />
+              <Stat
+                label="Paid booked"
+                value={Number(upcomingPaidBooked.toFixed(1))}
+              />
+              <Stat
+                label="Unpaid"
+                value={Number(unpaid.toFixed(1))}
+              />
             </View>
 
-            {/* Requested Holidays */}
-            <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>
-                Requested Holidays ({selectedYear})
-              </Text>
-
-              <View style={[styles.table, { borderColor: colors.border }]}>
-                <View style={[styles.tableHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Text style={[styles.th, { flex: 1.3, color: colors.text }]}>From</Text>
-                  <Text style={[styles.th, { flex: 1.3, color: colors.text }]}>To</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Days</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Type</Text>
-                  <Text style={[styles.th, { flex: 1.5, color: colors.text }]}>Notes</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Status</Text>
+            {isOverbooked ? (
+              <View
+                style={[
+                  styles.balanceWarning,
+                  {
+                    backgroundColor: withAlpha(colors.danger, 0.12),
+                    borderColor: withAlpha(colors.danger, 0.42),
+                  },
+                ]}
+              >
+                <Icon name="alert-triangle" size={18} color={colors.danger} />
+                <View style={styles.balanceWarningCopy}>
+                  <Text tone={"danger"} style={[styles.balanceWarningTitle]}>
+                    Paid leave exceeds allowance by {balanceValue} days
+                  </Text>
+                  <Text tone={"muted"} style={[styles.balanceWarningText]}>
+                    Review upcoming bookings or contact the office.
+                  </Text>
                 </View>
-
-                {requestedHolidays.length === 0 ? (
-                  <Text style={[styles.tableEmpty, { color: colors.textMuted }]}>No requested holidays.</Text>
-                ) : (
-                  requestedHolidays
-                    .slice()
-                    .sort((a, b) => getHolidayStart(a) - getHolidayStart(b))
-                    .map((h) => {
-                      const s = getHolidayStart(h);
-                      const e = getHolidayEnd(h) || s;
-
-                      // ✅ weekdays-only + excludes bank holidays + supports half days
-                      const days = computeDays(h, isBankHoliday);
-
-                      const { displayType, typeColor } = displayTypeAndColor(h);
-                      const notesText = getNotes(h) || "-";
-
-                      return (
-                        <View key={h.id} style={[styles.tableBlock, { backgroundColor: colors.surface }]}>
-                          <View style={styles.tableRow}>
-                            <Text style={[styles.td, { flex: 1.3, color: colors.text }]}>
-                              {renderDateWithHalf(s, "start", h)}
-                            </Text>
-                            <Text style={[styles.td, { flex: 1.3, color: colors.text }]}>
-                              {renderDateWithHalf(e, "end", h)}
-                            </Text>
-                            <Text style={[styles.td, { color: colors.text }]}>{days}</Text>
-                            <Text style={[styles.td, { color: typeColor, fontWeight: "700" }]}>{displayType}</Text>
-                            <Text style={[styles.td, { flex: 1.5, color: colors.text }]}>{notesText}</Text>
-                            <Text style={[styles.td, { color: "#fde047", fontWeight: "800" }]}>Requested</Text>
-                          </View>
-
-                          <View style={styles.tableActions}>
-                            <TouchableOpacity style={styles.cancelButton} onPress={() => cancelHoliday(h.id)}>
-                              <Icon name="x-circle" size={14} color="#fff" />
-                              <Text style={styles.cancelButtonText}>Cancel Request</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    })
-                )}
               </View>
-            </View>
+            ) : null}
 
-            {/* Upcoming Confirmed Holidays */}
-            <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>
-                Upcoming Confirmed Holidays ({selectedYear})
-              </Text>
+            <HolidayTableSection
+              title="Requests"
+              count={requestedItems.length}
+              items={requestedItems}
+              emptyMessage="No holiday requests waiting for approval."
+              colors={colors}
+              stacked={stackHolidayRows}
+              onCancel={(item) => cancelHoliday(item.holiday.id)}
+            />
 
-              <View style={[styles.table, { borderColor: colors.border }]}>
-                <View style={[styles.tableHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Text style={[styles.th, { flex: 1.3, color: colors.text }]}>From</Text>
-                  <Text style={[styles.th, { flex: 1.3, color: colors.text }]}>To</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Days</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Type</Text>
-                  <Text style={[styles.th, { flex: 1.5, color: colors.text }]}>Notes</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Left</Text>
-                </View>
+            <HolidayTableSection
+              title="Upcoming confirmed"
+              count={upcomingItems.length}
+              items={upcomingItems}
+              emptyMessage="No upcoming confirmed holidays."
+              colors={colors}
+              stacked={stackHolidayRows}
+            />
 
-                {upcomingConfirmed.length === 0 ? (
-                  <Text style={[styles.tableEmpty, { color: colors.textMuted }]}>No upcoming confirmed holidays.</Text>
-                ) : (
-                  (() => {
-                    let projected = remainingAfterPast;
-                    return upcomingConfirmed.map((h) => {
-                      const s = getHolidayStart(h);
-                      const e = getHolidayEnd(h) || s;
-                      const days = computeDays(h, isBankHoliday);
-                      const { displayType, typeColor } = displayTypeAndColor(h);
-                      const notesText = getNotes(h) || "-";
-
-                      if (displayType === "Paid") projected -= days;
-
-                      return (
-                        <View key={h.id} style={[styles.tableRow, { backgroundColor: colors.surface }]}>
-                          <Text style={[styles.td, { flex: 1.3, color: colors.text }]}>
-                            {renderDateWithHalf(s, "start", h)}
-                          </Text>
-                          <Text style={[styles.td, { flex: 1.3, color: colors.text }]}>
-                            {renderDateWithHalf(e, "end", h)}
-                          </Text>
-                          <Text style={[styles.td, { color: colors.text }]}>{days}</Text>
-                          <Text style={[styles.td, { color: typeColor, fontWeight: "700" }]}>{displayType}</Text>
-                          <Text style={[styles.td, { flex: 1.5, color: colors.text }]}>{notesText}</Text>
-                          <Text style={[styles.td, { color: colors.text }]}>{Number(projected.toFixed(1))}</Text>
-                        </View>
-                      );
-                    });
-                  })()
-                )}
-              </View>
-            </View>
-
-            {/* Confirmed Holidays (Past) */}
-            <View style={[styles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>
-                Confirmed Holidays (Past) ({selectedYear})
-              </Text>
-
-              <View style={[styles.table, { borderColor: colors.border }]}>
-                <View style={[styles.tableHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Text style={[styles.th, { flex: 1.3, color: colors.text }]}>Date From</Text>
-                  <Text style={[styles.th, { flex: 1.3, color: colors.text }]}>Date To</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Days</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Type</Text>
-                  <Text style={[styles.th, { flex: 1.5, color: colors.text }]}>Notes</Text>
-                  <Text style={[styles.th, { color: colors.text }]}>Balance</Text>
-                </View>
-
-                {pastConfirmed.length === 0 ? (
-                  <Text style={[styles.tableEmpty, { color: colors.textMuted }]}>No past confirmed holidays.</Text>
-                ) : (
-                  (() => {
-                    let runningBalance = totalAllowance;
-                    return pastConfirmed.map((h) => {
-                      const s = getHolidayStart(h);
-                      const e = getHolidayEnd(h) || s;
-                      const days = computeDays(h, isBankHoliday);
-                      const { displayType, typeColor } = displayTypeAndColor(h);
-                      const notesText = getNotes(h) || "-";
-
-                      if (displayType === "Paid") runningBalance -= days;
-
-                      return (
-                        <View key={h.id} style={[styles.tableRow, { backgroundColor: colors.surface }]}>
-                          <Text style={[styles.td, { flex: 1.3, color: colors.text }]}>
-                            {renderDateWithHalf(s, "start", h)}
-                          </Text>
-                          <Text style={[styles.td, { flex: 1.3, color: colors.text }]}>
-                            {renderDateWithHalf(e, "end", h)}
-                          </Text>
-                          <Text style={[styles.td, { color: colors.text }]}>{days}</Text>
-                          <Text style={[styles.td, { color: typeColor, fontWeight: "700" }]}>{displayType}</Text>
-                          <Text style={[styles.td, { flex: 1.5, color: colors.text }]}>{notesText}</Text>
-                          <Text style={[styles.td, { color: colors.text }]}>{Number(runningBalance.toFixed(1))}</Text>
-                        </View>
-                      );
-                    });
-                  })()
-                )}
-              </View>
-            </View>
+            <HolidayTableSection
+              title="Past holidays"
+              count={pastItems.length}
+              items={visiblePastItems}
+              emptyMessage={`No confirmed holidays in ${selectedYear}.`}
+              colors={colors}
+              stacked={stackHolidayRows}
+              muted
+              footer={pastItems.length > 3 ? (
+                <AppButton
+                  label={historyExpanded ? "Show recent" : `View all ${pastItems.length}`}
+                  variant="ghost"
+                  size="small"
+                  onPress={() => setHistoryExpanded((expanded) => !expanded)}
+                />
+              ) : null}
+            />
           </>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </>
+    </PageShell>
   );
 }
 
 /* ─────────────────────────── UI subcomponent ─────────────────────────── */
-function Stat({ label, value, color }) {
-  const { colors } = useTheme();
+function Stat({ label, value }) {
+
   return (
-    <View style={[styles.statBox, { borderColor: color }]}>
-      <Text style={[styles.statLabel, { color: colors.textMuted }]}>{label}</Text>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
+    <View style={styles.statBox}>
+      <Text tone={"muted"} style={[styles.statLabel]}>{label}</Text>
+      <Text tone={"primary"} style={[styles.statValue]}>{value}</Text>
+    </View>
+  );
+}
+
+function HolidayTableSection({ title, count, items, emptyMessage, colors, onCancel, muted = false, stacked = false, footer = null }) {
+  const showTableHeader = items.length > 0 && !stacked;
+  return (
+    <View style={styles.tableSection}>
+      <View style={styles.tableSectionHeader}>
+        <Text tone={"primary"} style={[styles.tableSectionTitle]}>{title}</Text>
+        <View
+          style={[styles.tableCount, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+        >
+          <Text tone={"muted"} style={[styles.tableCountText]}>{count}</Text>
+        </View>
+      </View>
+
+      <View
+        style={[styles.holidayTable, getCardSurfaceStyle(colors)]}
+      >
+        {showTableHeader ? (
+          <View
+            style={[
+              styles.holidayTableHeader,
+              { backgroundColor: colors.surfaceAlt, borderBottomColor: colors.divider },
+            ]}
+          >
+            <Text tone={"muted"} style={[styles.holidayTableHeading, styles.tableDateColumn]}>Date</Text>
+            <Text tone={"muted"} style={[styles.holidayTableHeading, styles.tableDaysColumn]}>Days</Text>
+            <Text tone={"muted"} style={[styles.holidayTableHeading, styles.tableTypeColumn]}>Type</Text>
+            <Text
+              tone={"muted"} style={[
+                styles.holidayTableHeading,
+                styles.tableTrailingColumn,
+              ]}
+            >
+              {onCancel ? "Action" : "Balance"}
+            </Text>
+          </View>
+        ) : null}
+
+        {items.length === 0 ? (
+          <View style={styles.tableEmptyRow}>
+            <Icon name="calendar" size={17} color={colors.textMuted} />
+            <Text tone={"muted"} style={[styles.tableEmptyText]}>{emptyMessage}</Text>
+          </View>
+        ) : (
+          items.map((item) => {
+            const numericBalance = Number.parseFloat(item.trailingValue);
+            const negativeBalance = item.trailingLabel === "Balance after" && numericBalance < 0;
+            return (
+              <View
+                key={item.id}
+                style={[
+                  styles.holidayTableRow,
+                  stacked && styles.holidayTableRowStacked,
+                  {
+                    borderBottomColor: colors.divider,
+                    opacity: muted ? 0.82 : 1,
+                  },
+                ]}
+              >
+                <View style={styles.tableDateColumn}>
+                    <Text tone={"primary"} style={[styles.tableDateText]} numberOfLines={2}>
+                      {item.start === item.end ? item.start : `${item.start} → ${item.end}`}
+                    </Text>
+                    {item.notes ? (
+                      <Text tone={"muted"} style={[styles.tableNoteText]} numberOfLines={1}>
+                        {item.notes}
+                      </Text>
+                    ) : null}
+                </View>
+                <View style={stacked ? styles.tableStackedMeta : styles.tableInlineMeta}>
+                  <Text
+                    tone={"primary"} style={[
+                      styles.tableCellText,
+                      !stacked && styles.tableDaysColumn,
+                    ]}
+                  >
+                    {stacked ? `${item.days} ${item.days === 1 ? "day" : "days"}` : item.days}
+                  </Text>
+                  <Text
+                      style={[
+                        styles.tableCellText,
+                        !stacked && styles.tableTypeColumn,
+                        { color: item.typeColor },
+                      ]}
+                    >{item.type}</Text>
+                    {onCancel ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.tableCancelButton,
+                          !stacked && styles.tableTrailingColumn,
+                          {
+                            backgroundColor: withAlpha(colors.danger, 0.12),
+                            borderColor: withAlpha(colors.danger, 0.35),
+                          },
+                        ]}
+                        onPress={() => onCancel(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Cancel holiday request from ${item.start}`}
+                      >
+                        <Text tone={"danger"} style={[styles.tableCancelText]}>Cancel</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={stacked ? styles.tableStackedBalance : undefined}>
+                        {stacked ? (
+                          <Text tone={"muted"} style={[styles.tableStackedLabel]}>Balance</Text>
+                        ) : null}
+                        <Text
+                          tone={negativeBalance ? "danger" : "primary"} style={[
+                            styles.tableCellText,
+                            !stacked && styles.tableTrailingColumn,
+                          ]}
+                        >
+                          {Number.isFinite(numericBalance) ? numericBalance : "—"}
+                        </Text>
+                      </View>
+                    )}
+                </View>
+              </View>
+            );
+          })
+        )}
+      </View>
+      {footer ? <View style={styles.tableFooter}>{footer}</View> : null}
     </View>
   );
 }
 
 /* ────────────────────────────── Styles ────────────────────────────── */
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0b0b" },
-   scrollContent: { paddingHorizontal: 14, paddingBottom: 24, paddingTop: 24 },
-
-  heroCard: {
-    position: "relative",
-    marginBottom: 8,
-  },
-  heroContent: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  heroBackButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroTitleWrap: {
-    flex: 1,
-    paddingTop: 1,
-    alignItems: "center",
-  },
-  heroSpacer: {
-    width: 34,
-    height: 34,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  heroTitle: {
-    marginTop: 2,
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
-  heroSubTitle: {
-    marginTop: 2,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  heroMetaRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    justifyContent: "center",
-  },
-  heroMetaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  heroMetaText: { fontSize: 11, fontWeight: "700" },
-  heroActionsRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    justifyContent: "center",
-  },
-  heroActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-  },
-  heroPrimaryBtn: { backgroundColor: "#fde047", borderColor: "#fde047" },
-  heroActionText: { fontSize: 13, fontWeight: "800" },
-
-  headerCard: {
-    padding: 14,
-    marginBottom: 12,
-  },
-  headerName: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  pillsWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    justifyContent: "space-between",
-  },
-  pill: {
-    flexGrow: 1,
-    minWidth: "45%",
-    borderWidth: 1,
-    borderColor: "#2b2b2b",
-    backgroundColor: "#161616",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  pillLabel: { color: "#cfcfcf", fontSize: 12 },
-  pillValue: { color: "#fff", fontSize: 16, fontWeight: "800", marginTop: 2 },
-
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-    paddingHorizontal: 2,
-  },
-  statBox: {
-    backgroundColor: "#131313",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    flexGrow: 1,
-    flexBasis: "48%",
-    minWidth: 140,
-  },
-  statLabel: { color: "#cfcfcf", fontSize: 12 },
-  statValue: { fontSize: 18, fontWeight: "800", marginTop: 2 },
-
-  card: {
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#222",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 14,
-  },
-  cardTitle: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "800",
-    marginBottom: 10,
-    textAlign: "left",
-  },
-
-  table: {
-    borderTopWidth: 1,
-    borderColor: "#222",
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  tableHeader: {
-    flexDirection: "row",
-    backgroundColor: "#171717",
-    borderBottomWidth: 1,
-    borderColor: "#222",
-  },
-  th: {
-    flex: 1,
-    color: "#eee",
-    fontWeight: "800",
-    textAlign: "center",
-    paddingVertical: 10,
-    fontSize: 12,
-  },
-  tableEmpty: { color: "#aaa", paddingVertical: 12, textAlign: "center" },
-
-  tableBlock: {
-    borderBottomWidth: 1,
-    borderColor: "#222",
-    backgroundColor: "#0f0f0f",
-  },
-  tableRow: {
-    flexDirection: "row",
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    gap: 6,
-  },
-  td: {
-    flex: 1,
-    color: "#d1d1d1",
-    textAlign: "center",
-    fontSize: 12,
-  },
-
-  tableActions: {
-    paddingHorizontal: 6,
-    paddingBottom: 8,
-    alignItems: "flex-end",
-  },
-  cancelButton: {
-    backgroundColor: "#ef4444",
-    borderWidth: 1,
-    borderColor: "#ef4444",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  cancelButtonText: { color: "#fff", fontSize: 13, fontWeight: "800" },
-});

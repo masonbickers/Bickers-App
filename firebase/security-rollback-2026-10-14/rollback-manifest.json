@@ -1,0 +1,30 @@
+{
+  "preparedFor": "Local security-preserving rollback only; publication not authorized",
+  "project": "demo-bickers-security-remediation",
+  "baseline": "Freshly audited Phase 1 security candidate, including external vehicleIssues equipment-parent protection; Phase 2 adds adapters/UI without changing that policy",
+  "rules": {
+    "firestore.rules": "25e8456837e3edd1e4264ef4dacbe3efef7d755ea0c68549148623cad84d1d2f",
+    "storage.rules": "069b0fbf0d2598216aaae5118028e49e8612e97e1a0f9adab3fbb607c1dfe0f2"
+  },
+  "requiredRetainedContracts": [
+    "GET /api/hr/history",
+    "GET /api/hr/reviews",
+    "GET/POST /api/hr/records (observed-version, scoped authority, legacy resolver and retained cancellation)",
+    "Render fixed /hr proxy after session gates",
+    "vetted Clerk session/recovery bridge and canonical enrollment",
+    "account-scoped mobile histories/outbox; ambiguous work retained"
+  ],
+  "prohibitedRollback": [
+    "original vulnerable Firebase policies",
+    "older broad private queries or direct approval writes",
+    "unvetted passwordless/custom sessions",
+    "reviving token URLs or resetting ownership/revocation cutoffs"
+  ],
+  "releaseHolds": [
+    "Canonical identity conflicts",
+    "Deployed backend/client contracts",
+    "Legacy Storage ownership, tokens and H&S paths/roles",
+    "Real production REST transaction transport verification",
+    "Published rollback/release versions not yet pinned"
+  ]
+}

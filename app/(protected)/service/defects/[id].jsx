@@ -1,41 +1,39 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import Field from "../../../../components/ui/RecordDetailRow";
+import { routeColors } from "../../../../lib/design/routePresentation/service-defects-id-jsx.js";
+import { styles } from "../../../../lib/design/screenStyles/service-defects-id-jsx.js";
+import { Divider, SectionCard, AppButton, AppModal, AppText as Text, AppPressable as TouchableOpacity, TextArea } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS } from "../../../../lib/design/semantics";
+import { useLocalSearchParams,
+  useRouter } from "expo-router";
 import {
   arrayUnion,
   doc,
   getDoc,
   serverTimestamp,
   writeBatch,
-} from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+  } from "firebase/firestore";
+import { useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { db } from "../../../../firebaseConfig";
 import { useServiceCollectionReader } from "../../../../hooks/useServiceData";
-import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  warning: "#FFCC00",
-  inputBg: "#2a2a2a",
-};
+import { isReportableCheckDefect } from "../../../../lib/dailyVehicleCheck";
+import {
+  findVehicleRecord,
+  getVehicleDisplayName,
+  getVehicleRegistration,
+} from "../../../../lib/fleetSchema";
+import { useAuth } from "../../../../providers/AuthProvider";
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 function parseRouteId(value) {
   try {
@@ -106,7 +104,17 @@ function getVehicleLabel(record) {
   );
 }
 
+function getIssueAssetLabel(issue) {
+  if (issue?.assetType !== "equipment") return getVehicleLabel(issue);
+  return issue?.equipmentName || issue?.assetName || "Unknown equipment";
+}
+
 function findVehicleForRecord(record, vehicles) {
+  const sharedMatch =
+    findVehicleRecord(record, vehicles) ||
+    findVehicleRecord(record?.vehicle, vehicles);
+  if (sharedMatch) return sharedMatch;
+
   const recordVehicleId = record?.vehicleId || record?.vehicleDocId;
   if (recordVehicleId) {
     const byId = vehicles.find((v) => v.id === recordVehicleId);
@@ -128,7 +136,7 @@ function findVehicleForRecord(record, vehicles) {
   });
 }
 
-function buildDefectHistoryItem({ source, route, record, defect, completionNote }) {
+function buildDefectHistoryItem({ source, route, record, defect, completionNote, completedByUid, completedByName }) {
   return {
     source,
     sourceDocId: route.docId,
@@ -140,6 +148,8 @@ function buildDefectHistoryItem({ source, route, record, defect, completionNote 
     reporter: defect.reporter || "",
     jobNumber: defect.jobNumber || "",
     completionNote,
+    completedByUid,
+    completedByName,
     reportedAt:
       record?.createdAt ||
       record?.dateISO ||
@@ -162,7 +172,7 @@ function buildCheckDefect(check, item, itemIndex) {
     sourceLabel: "Vehicle check",
     title: label,
     description: note,
-    category: normaliseKey(item?.review?.category),
+    category: item?.assessment === "dangerous" ? "immediate" : normaliseKey(item?.review?.category) || "general",
     status: item?.review?.status || "",
     maintenanceStatus: item?.maintenance?.status || "open",
     vehicleName: getVehicleLabel(check),
@@ -175,15 +185,18 @@ function buildCheckDefect(check, item, itemIndex) {
 }
 
 function buildIssueDefect(issue) {
+  const isEquipment = issue?.assetType === "equipment";
   return {
-    sourceLabel: "Vehicle issue",
+    sourceLabel: isEquipment ? "Equipment issue" : "Vehicle issue",
     title: issue.category || issue.title || "Issue",
     description: issue.description || issue.note || issue.summary || "",
     category: normaliseKey(issue?.review?.category),
     status: issue?.review?.status || "",
     maintenanceStatus: issue?.maintenance?.status || "open",
-    vehicleName: getVehicleLabel(issue),
-    registration: issue.registration || issue.reg || "",
+    vehicleName: getIssueAssetLabel(issue),
+    registration: isEquipment
+      ? issue.serialNumber || issue.equipmentId || issue.asset || ""
+      : issue.registration || issue.reg || "",
     reporter: issue.reporterName || issue.driverName || "",
     jobNumber: issue.jobNumber || "",
     dateText: formatDate(issue.createdAt || issue.dateISO || issue.date),
@@ -217,8 +230,8 @@ function getDefectCollectionName(source) {
 
 export default function DefectDetailScreen() {
   const router = useRouter();
+  const { user, employee } = useAuth();
   const { id } = useLocalSearchParams();
-  const { colors } = useTheme();
   const readServiceCollection = useServiceCollectionReader();
   const route = useMemo(() => parseRouteId(Array.isArray(id) ? id[0] : id), [id]);
 
@@ -254,28 +267,39 @@ export default function DefectDetailScreen() {
         const vehicles = await readServiceCollection("vehicles", {
           orderByField: "name",
         });
-        setMatchedVehicle(findVehicleForRecord(data, vehicles) || null);
+        const matched = findVehicleForRecord(data, vehicles) || null;
+        setMatchedVehicle(matched);
+        const attachVehicleName = (nextDefect) => ({
+          ...nextDefect,
+          vehicleName: matched
+            ? getVehicleDisplayName(matched, vehicles)
+            : nextDefect.vehicleName || "Unknown vehicle",
+          registration:
+            getVehicleRegistration(matched || nextDefect) ||
+            nextDefect.registration ||
+            "",
+        });
 
         if (route.source === "vehicleChecks") {
           const items = Array.isArray(data.items) ? data.items : [];
           const item = items[route.itemIndex];
-          if (!item || !isApprovedDefect(item.review)) {
+          if (!item || !isReportableCheckDefect(data, item)) {
             setDefect(null);
             return;
           }
-          setDefect(buildCheckDefect(data, item, route.itemIndex));
+          setDefect(attachVehicleName(buildCheckDefect(data, item, route.itemIndex)));
         } else if (route.source === "defectReports") {
           if (!isOpenMaintenance(data.status)) {
             setDefect(null);
             return;
           }
-          setDefect(buildManualDefect(data));
+          setDefect(attachVehicleName(buildManualDefect(data)));
         } else {
           if (!isApprovedDefect(data.review)) {
             setDefect(null);
             return;
           }
-          setDefect(buildIssueDefect(data));
+          setDefect(attachVehicleName(buildIssueDefect(data)));
         }
       } catch (err) {
         console.error("Failed to load defect detail:", err);
@@ -315,6 +339,8 @@ export default function DefectDetailScreen() {
         record,
         defect,
         completionNote: trimmedCompletionNote,
+        completedByUid: user?.uid || "",
+        completedByName: employee?.name || employee?.displayName || user?.displayName || "Workshop user",
       });
 
       const batch = writeBatch(db);
@@ -332,6 +358,8 @@ export default function DefectDetailScreen() {
             status: "resolved",
             completedAt: new Date(),
             completionNote: trimmedCompletionNote,
+            completedByUid: user?.uid || "",
+            completedByName: employee?.name || employee?.displayName || user?.displayName || "Workshop user",
           },
         };
 
@@ -385,44 +413,13 @@ export default function DefectDetailScreen() {
   const isResolved = normaliseKey(defect?.maintenanceStatus) === "resolved";
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={router.back}
-          style={styles.backButton}
-          activeOpacity={0.8}
-        >
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.pageTitle, { color: colors.text || COLORS.textHigh }]}>
-            Defect Detail
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Review and complete workshop defect.
-          </Text>
-        </View>
-      </View>
+    <PageShell header={{
+      variant: "compact",
+      title: "Defect Detail",
+      subtitle: "Review and complete workshop defect.",
+      onBack: router.back,
+    }}>
+
 
       {loading ? (
         <View style={styles.center}>
@@ -431,38 +428,30 @@ export default function DefectDetailScreen() {
       ) : !defect ? (
         <View style={styles.center}>
           <Icon name="alert-circle" size={28} color={COLORS.textMid} />
-          <Text style={[styles.emptyTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.emptyTitle]}>
             Defect not available
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.emptyText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             It may have been completed, rejected or removed.
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
+        <>
+          <SectionCard
+            tone="subtle" layoutStyle={styles.card}
           >
             <View style={styles.titleRow}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.title, { color: colors.text || COLORS.textHigh }]}>
+                <Text tone={"primary"} style={[styles.title]}>
                   {defect.title}
                 </Text>
                 <Text
-                  style={[
+                  tone={"muted"} style={[
                     styles.vehicleText,
-                    { color: colors.textMuted || COLORS.textMid },
                   ]}
                 >
                   {defect.vehicleName}
@@ -480,16 +469,17 @@ export default function DefectDetailScreen() {
               <NoteField label="Defect" value={defect.description} />
             )}
 
-            <View style={[styles.divider, { backgroundColor: colors.border || COLORS.border }]} />
+            <Divider variant="record" layoutStyle={styles.divider} />
 
             <Field label="Source" value={defect.sourceLabel} />
             <Field label="Status" value={formatStatus(defect.maintenanceStatus)} />
             <Field label="Reporter" value={defect.reporter || "-"} />
+            {route.source === "vehicleChecks" && record?.reportedTo ? <Field label="Reported to" value={record.reportedTo} /> : null}
             {!!defect.jobNumber && (
               <Field label="Job number" value={defect.jobNumber} />
             )}
             <Field label="Reported" value={defect.dateText || "-"} />
-          </View>
+          </SectionCard>
 
           <TouchableOpacity
             style={[
@@ -508,7 +498,7 @@ export default function DefectDetailScreen() {
                   name="check-circle"
                   size={18}
                   color={COLORS.textHigh}
-                  style={{ marginRight: 8 }}
+                  style={{ marginRight: t.spacing.xs }}
                 />
                 <Text style={styles.completeText}>
                   {isResolved ? "Already completed" : "Mark defect complete"}
@@ -517,307 +507,53 @@ export default function DefectDetailScreen() {
             )}
           </TouchableOpacity>
 
-          <Modal
+          <AppModal
             visible={completeModalVisible}
-            transparent
-            animationType="fade"
+            title="Complete defect"
+            busy={submitting}
             onRequestClose={() => {
               if (!submitting) setCompleteModalVisible(false);
             }}
+            actions={
+              <>
+                <AppButton label="Cancel" variant="secondary" onPress={() => setCompleteModalVisible(false)} disabled={submitting} />
+                <AppButton label="Complete" onPress={submitComplete} loading={submitting} />
+              </>
+            }
           >
-            <View style={styles.modalOverlay}>
-              <View
-                style={[
-                  styles.modalCard,
-                  {
-                    backgroundColor: colors.surfaceAlt || COLORS.card,
-                    borderColor: colors.border || COLORS.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.modalTitle, { color: colors.text || COLORS.textHigh }]}>
-                  Complete defect
-                </Text>
                 <Text
-                  style={[
+                  tone={"muted"} style={[
                     styles.modalSubtitle,
-                    { color: colors.textMuted || COLORS.textMid },
                   ]}
                 >
                   Add a short note on what was done to fix it.
                 </Text>
-                <TextInput
+                <TextArea
+                  label="Completion note"
                   value={completionNote}
                   onChangeText={setCompletionNote}
                   placeholder="Example: Greased rear suspension joints and road tested."
-                  placeholderTextColor={colors.textMuted || COLORS.textLow}
-                  multiline
-                  textAlignVertical="top"
-                  style={[
-                    styles.completionInput,
-                    {
-                      backgroundColor: colors.inputBackground || COLORS.inputBg,
-                      borderColor: colors.border || COLORS.border,
-                      color: colors.text || COLORS.textHigh,
-                    },
-                  ]}
                 />
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalButton,
-                      styles.modalCancelButton,
-                      { borderColor: colors.border || COLORS.border },
-                    ]}
-                    onPress={() => setCompleteModalVisible(false)}
-                    disabled={submitting}
-                  >
-                    <Text style={[styles.modalCancelText, { color: colors.text || COLORS.textHigh }]}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalCompleteButton]}
-                    onPress={submitComplete}
-                    disabled={submitting}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color={COLORS.textHigh} />
-                    ) : (
-                      <Text style={styles.modalCompleteText}>Complete</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </Modal>
-        </ScrollView>
+          </AppModal>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
-function Field({ label, value }) {
-  const { colors } = useTheme();
 
-  return (
-    <View style={styles.fieldRow}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textLow }]}>
-        {label}
-      </Text>
-      <Text style={[styles.fieldValue, { color: colors.text || COLORS.textMid }]}>
-        {value}
-      </Text>
-    </View>
-  );
-}
 
 function NoteField({ label, value }) {
-  const { colors } = useTheme();
+
 
   return (
     <View style={styles.noteField}>
-      <Text style={[styles.noteLabel, { color: colors.textMuted || COLORS.textLow }]}>
+      <Text tone={"muted"} style={[styles.noteLabel]}>
         {label}
       </Text>
-      <Text style={[styles.noteValue, { color: colors.text || COLORS.textMid }]}>
+      <Text tone={"primary"} style={[styles.noteValue]}>
         {value || "-"}
       </Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 30,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 28,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: 10,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-    padding: 14,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  vehicleText: {
-    marginTop: 2,
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  badge: {
-    marginLeft: 10,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    opacity: 0.6,
-    marginVertical: 8,
-  },
-  fieldRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    color: COLORS.textLow,
-  },
-  fieldValue: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    textAlign: "right",
-    flex: 1,
-    marginLeft: 10,
-  },
-  noteField: {
-    paddingTop: 8,
-  },
-  noteLabel: {
-    fontSize: 12,
-    color: COLORS.textLow,
-    marginBottom: 3,
-  },
-  noteValue: {
-    fontSize: 13,
-    color: COLORS.textMid,
-    lineHeight: 18,
-    textAlign: "left",
-  },
-  completeButton: {
-    marginTop: 12,
-    minHeight: 50,
-    borderRadius: 10,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-  },
-  completeText: {
-    color: COLORS.textHigh,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalCard: {
-    width: "100%",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 16,
-    backgroundColor: COLORS.card,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  modalSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  completionInput: {
-    marginTop: 14,
-    minHeight: 110,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    lineHeight: 20,
-    color: COLORS.textHigh,
-  },
-  modalActions: {
-    marginTop: 14,
-    flexDirection: "row",
-    gap: 10,
-  },
-  modalButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalCancelButton: {
-    borderWidth: 1,
-  },
-  modalCompleteButton: {
-    backgroundColor: COLORS.primaryAction,
-  },
-  modalCancelText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  modalCompleteText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  emptyText: {
-    marginTop: 6,
-    textAlign: "center",
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-});

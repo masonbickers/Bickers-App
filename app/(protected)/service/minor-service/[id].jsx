@@ -1,39 +1,41 @@
+import { createWorkshopPhotoUploader } from "../../../../lib/workshopPhotoUpload";
+import AssetSelectField from "../../../../components/ui/AssetSelectField";
+import { routeColors } from "../../../../lib/design/routePresentation/service-minor-service-id-jsx.js";
+import { styles } from "../../../../lib/design/screenStyles/service-minor-service-id-jsx.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity, FormField as SharedFormField, TextArea } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../../lib/design/semantics";
 // app/(protected)/service/minor-service/[id].jsx
 import { Feather } from "@expo/vector-icons"; // ✅ use Expo Feather
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams,
+  useNavigation,
+  useRouter } from "expo-router";
 import {
-  arrayUnion,
-  collection,
   doc,
   serverTimestamp,
-  setDoc,
-  updateDoc,
-} from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-import { useEffect, useMemo, useRef, useState } from "react";
+  } from "firebase/firestore";
+import { getDownloadURL,
+  ref,
+  uploadBytesResumable } from "firebase/storage";
+import { useEffect,
+  useMemo,
+  useRef,
+  useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   Platform,
   ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
 
 import { db, storage } from "../../../../firebaseConfig";
 import { formatShortDate } from "../../../../lib/dateDisplay";
+import { formatISODateDDMMYYYY } from "../../../../lib/dateFormat";
 import {
-  buildVehicleIdentityMirrorUpdate,
-  buildVehicleOdometerMirrorUpdate,
-  buildVehicleServiceDateMirrorUpdate,
   getVehicleLastService,
   getVehicleManufacturer,
   getVehicleMileage,
@@ -41,21 +43,11 @@ import {
   getVehicleRegistration,
 } from "../../../../lib/fleetSchema";
 import { useServiceCacheActions, useServiceCollectionReader } from "../../../../hooks/useServiceData";
-import { runOrQueueFirestoreMutations } from "../../../../lib/sync/firestoreQueue";
+import { submitOrQueueWorkshopRecord } from "../../../../lib/workshopSubmissionApi";
+import { useAuth } from "../../../../providers/AuthProvider";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  recceAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-  lightGray: "#4a4a4a",
-};
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 const SERVICE_TYPE_OPTIONS = [
   "Interim / minor service",
@@ -65,9 +57,9 @@ const SERVICE_TYPE_OPTIONS = [
 ];
 
 const CHECK_STATUS_OPTIONS = [
-  { value: "green", label: "Green", color: "#22C55E" },
-  { value: "amber", label: "Amber", color: "#F59E0B" },
-  { value: "red", label: "Red", color: "#EF4444" },
+  { value: "green", label: "Green", color: routeColors.hex_22c55e_740if4 },
+  { value: "amber", label: "Amber", color: routeColors.hex_f59e0b_4zbh7f },
+  { value: "red", label: "Red", color: routeColors.hex_ef4444_4oizhh },
 ];
 
 const NOTE_REQUIRED_STATUSES = new Set(["amber", "red"]);
@@ -148,31 +140,6 @@ function normalizeCheckStatus(status) {
   return "";
 }
 
-function getCheckStatusOption(status) {
-  return CHECK_STATUS_OPTIONS.find((option) => option.value === status) || null;
-}
-
-function buildVehicleServiceHistoryItem({
-  completedDate,
-  serviceRecordId,
-  notes,
-  odometer,
-  partsUsed,
-}) {
-  return {
-    completedDate,
-    bookingId: null,
-    serviceRecordId,
-    provider: "",
-    bookingRef: "",
-    notes,
-    recordedAt: new Date(),
-    location: "",
-    odometer,
-    partsUsed,
-  };
-}
-
 function isDownloadUrl(uri) {
   return typeof uri === "string" && /^https?:\/\//i.test(uri);
 }
@@ -222,32 +189,31 @@ async function uploadImageUri(uri, path) {
   return getDownloadURL(storageRef);
 }
 
-async function uploadPhotoList(photoItems, basePath) {
+async function uploadPhotoList(photoItems, basePath, uploadPhoto) {
   const uris = photoItems
     .map((p) => (typeof p === "string" ? p : p?.uri))
     .filter(Boolean);
 
   const uploaded = [];
-  for (const [index, uri] of uris.entries()) {
+  for (const uri of uris) {
     if (isDownloadUrl(uri)) {
       uploaded.push(uri);
       continue;
     }
 
-    const filename = `${Date.now()}-${index}.jpg`;
-    uploaded.push(await uploadImageUri(uri, `${basePath}/${filename}`));
+    uploaded.push(await uploadPhoto(uri, basePath));
   }
 
   return uploaded;
 }
 
-async function uploadCheckPhotoMap(checkPhotosMap, basePath) {
+async function uploadCheckPhotoMap(checkPhotosMap, basePath, uploadPhoto) {
   const uploadedMap = {};
 
   for (const [label, photoItems] of Object.entries(checkPhotosMap || {})) {
     if (!Array.isArray(photoItems) || photoItems.length === 0) continue;
     const safeLabel = sanitizeStorageSegment(label);
-    const uploaded = await uploadPhotoList(photoItems, `${basePath}/${safeLabel}`);
+    const uploaded = await uploadPhotoList(photoItems, `${basePath}/${safeLabel}`, uploadPhoto);
     if (uploaded.length > 0) {
       uploadedMap[label] = uploaded;
     }
@@ -262,8 +228,13 @@ const MINOR_SERVICE_DRAFTS_KEY = "minorServiceFormDrafts_v1";
 export default function MinorServiceFormScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { id } = useLocalSearchParams();
+  const { id, workshopRequestId: routeWorkshopRequestId, vehicleId: routeRequestedVehicleId } = useLocalSearchParams();
+  const [workshopRequestId, setWorkshopRequestId] = useState(String(routeWorkshopRequestId || ""));
+  const [requestedVehicleId, setRequestedVehicleId] = useState(String(routeRequestedVehicleId || ""));
   const formId = Array.isArray(id) ? id[0] : id;
+  const { employee } = useAuth();
+  const photoUploaderRef = useRef(null);
+  if (!photoUploaderRef.current) photoUploaderRef.current = createWorkshopPhotoUploader(uploadImageUri);
   const allowLeaveRef = useRef(false);
 
   const { colors } = useTheme();
@@ -275,8 +246,7 @@ export default function MinorServiceFormScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   // VEHICLE SEARCH + SELECTION
-  const [vehicleSearch, setVehicleSearch] = useState("");
-  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(requestedVehicleId ? String(requestedVehicleId) : null);
   const [vehicleCollapsed, setVehicleCollapsed] = useState(false);
 
   // DATE/TIME
@@ -338,22 +308,6 @@ export default function MinorServiceFormScreen() {
     loadVehicles();
   }, [readServiceCollection]);
 
-  const filteredVehicles = useMemo(() => {
-    if (!vehicleSearch.trim()) return vehicles;
-    const q = vehicleSearch.toLowerCase();
-    return vehicles.filter((v) => {
-      const name = String(getVehicleName(v)).toLowerCase();
-      const reg = String(getVehicleRegistration(v)).toLowerCase();
-      const manufacturer = String(getVehicleManufacturer(v)).toLowerCase();
-      const model = (v.model || "").toLowerCase();
-      return (
-        name.includes(q) ||
-        reg.includes(q) ||
-        manufacturer.includes(q) ||
-        model.includes(q)
-      );
-    });
-  }, [vehicles, vehicleSearch]);
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.id === selectedVehicleId) || null,
@@ -363,7 +317,6 @@ export default function MinorServiceFormScreen() {
   const hasUnsavedChanges = useMemo(
     () =>
       !!selectedVehicleId ||
-      !!vehicleSearch.trim() ||
       !!odometer.trim() ||
       serviceType !== "Interim / minor service" ||
       !!workSummary.trim() ||
@@ -389,7 +342,6 @@ export default function MinorServiceFormScreen() {
       selectedVehicleId,
       serviceType,
       signedBy,
-      vehicleSearch,
       workSummary,
     ]
   );
@@ -467,12 +419,13 @@ export default function MinorServiceFormScreen() {
         const allDrafts = JSON.parse(raw) || {};
         const draft = allDrafts[formId];
         if (!draft) return;
+        if (draft.workshopRequestId) setWorkshopRequestId(String(draft.workshopRequestId));
+        if (draft.requestedVehicleId) setRequestedVehicleId(String(draft.requestedVehicleId));
 
         if (draft.selectedVehicleId) {
           setSelectedVehicleId(draft.selectedVehicleId);
           setVehicleCollapsed(true);
         }
-        if (draft.vehicleSearch) setVehicleSearch(draft.vehicleSearch);
         if (draft.odometer) setOdometer(String(draft.odometer));
         if (draft.serviceType) setServiceType(draft.serviceType);
         if (draft.workSummary) setWorkSummary(draft.workSummary);
@@ -546,10 +499,11 @@ export default function MinorServiceFormScreen() {
         }
 
         const draftToSave = {
+          workshopRequestId: workshopRequestId || allDrafts[formId]?.workshopRequestId || "",
+          requestedVehicleId: requestedVehicleId || allDrafts[formId]?.requestedVehicleId || "",
           selectedVehicleId,
           vehicleName,
           registration,
-          vehicleSearch,
           odometer,
           serviceType,
           serviceDate,
@@ -584,9 +538,10 @@ export default function MinorServiceFormScreen() {
     saveDraft();
   }, [
     formId,
+    workshopRequestId,
+    requestedVehicleId,
     selectedVehicleId,
     selectedVehicle,
-    vehicleSearch,
     odometer,
     serviceType,
     serviceDate,
@@ -725,16 +680,6 @@ export default function MinorServiceFormScreen() {
 
   const handleAddPhotoFromLibrary = async () => {
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "We need access to your photos to attach images."
-        );
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsMultipleSelection: false,
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -759,16 +704,6 @@ export default function MinorServiceFormScreen() {
 
   const handleAddCheckPhoto = async (label) => {
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "We need access to your photos to attach images."
-        );
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsMultipleSelection: false,
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -800,6 +735,10 @@ export default function MinorServiceFormScreen() {
   /* ---------------- SUBMIT ---------------- */
 
   const handleSubmit = async () => {
+    if (workshopRequestId && String(selectedVehicleId) !== String(requestedVehicleId)) {
+      Alert.alert("Wrong vehicle", "Complete this request for its selected vehicle.");
+      return;
+    }
     if (submitting) return;
     if (!validate()) return;
 
@@ -809,19 +748,22 @@ export default function MinorServiceFormScreen() {
       const odoNumber = odometer ? Number(odometer) : null;
       const nextServiceDate = nextServiceComputed || null;
       const serviceDateTime = `${serviceDate} ${serviceTime}`;
-      const serviceRecordRef = doc(collection(db, "serviceRecords"));
-      const storageBasePath = `serviceRecords/${serviceRecordRef.id}`;
+      const serviceRecordRef = doc(db, "serviceRecords", String(workshopRequestId || formId));
+      if (!employee?.companyId) throw new Error("Your approved account is missing its company. Sign in again.");
+      const storageBasePath = `companies/${employee.companyId}/vehicles/${selectedVehicleId}/service/${serviceRecordRef.id}`;
 
       let photoURLs = [];
       let checkPhotoURLs = {};
       try {
         photoURLs = await uploadPhotoList(
           photos,
-          `${storageBasePath}/overall`
+          `${storageBasePath}/overall`,
+          photoUploaderRef.current
         );
         checkPhotoURLs = await uploadCheckPhotoMap(
           checkPhotos,
-          `${storageBasePath}/checks`
+          `${storageBasePath}/checks`,
+          photoUploaderRef.current
         );
       } catch (uploadErr) {
         console.error("Failed to upload minor service photos:", uploadErr);
@@ -835,6 +777,8 @@ export default function MinorServiceFormScreen() {
       const recordVehicleName = getVehicleName(v) || "";
       const recordRegistration = getVehicleRegistration(v) || "";
       const record = {
+        companyId: employee?.companyId,
+        ...(workshopRequestId ? { workshopRequestId: String(workshopRequestId), workshopWorkType: "minor_service" } : {}),
         vehicleId: selectedVehicleId,
         vehicleName: recordVehicleName,
         registration: recordRegistration,
@@ -867,61 +811,11 @@ export default function MinorServiceFormScreen() {
         createdAt: serverTimestamp(),
       };
 
-      const vehicleRef = doc(db, "vehicles", selectedVehicleId);
-      const historyNotes = [workSummary.trim(), extraNotes.trim()]
-        .filter(Boolean)
-        .join(" ");
-      const updatePayload = {
-        ...buildVehicleIdentityMirrorUpdate({
-          ...v,
-          name: recordVehicleName,
-          registration: recordRegistration,
-          manufacturer: getVehicleManufacturer(v) || "",
-        }),
-        ...buildVehicleServiceDateMirrorUpdate({
-          lastService: serviceDate,
-          nextService: nextServiceDate,
-        }),
-        serviceHistory: arrayUnion(
-          buildVehicleServiceHistoryItem({
-            completedDate: serviceDate,
-            serviceRecordId: serviceRecordRef.id,
-            notes: historyNotes,
-            odometer: odoNumber,
-            partsUsed: partsUsed.trim(),
-          })
-        ),
-      };
-      if (odoNumber && !Number.isNaN(odoNumber)) {
-        Object.assign(updatePayload, buildVehicleOdometerMirrorUpdate(odoNumber));
-      }
-
-      const { queued } = await runOrQueueFirestoreMutations([
-        {
-          run: () => setDoc(serviceRecordRef, record),
-          mutation: {
-            operation: "set",
-            docPath: `serviceRecords/${serviceRecordRef.id}`,
-            data: record,
-            options: { merge: false },
-            entityType: "serviceRecord",
-            entityId: serviceRecordRef.id,
-          },
-        },
-        {
-          run: () => updateDoc(vehicleRef, updatePayload),
-          mutation: {
-            operation: "update",
-            docPath: `vehicles/${selectedVehicleId}`,
-            data: updatePayload,
-            entityType: "vehicle",
-            entityId: selectedVehicleId,
-          },
-        },
-      ]);
-      await Promise.all([
-        upsertServiceRow("serviceRecords", { ...record, id: serviceRecordRef.id }),
-        patchServiceRow("vehicles", selectedVehicleId, updatePayload),
+      const result = await submitOrQueueWorkshopRecord({ kind: "minor", recordId: serviceRecordRef.id, record });
+      const { queued } = result;
+      await Promise.allSettled([
+        upsertServiceRow("serviceRecords", { ...(result.record || record), id: serviceRecordRef.id }),
+        ...(result.vehiclePatch ? [patchServiceRow("vehicles", selectedVehicleId, result.vehiclePatch)] : []),
       ]);
 
       // clear just this draft
@@ -962,7 +856,7 @@ export default function MinorServiceFormScreen() {
       );
     } catch (err) {
       console.error("Failed to save minor service record:", err);
-      Alert.alert("Error", "Could not save service record. Please try again.");
+      Alert.alert("Error", err.message || "Could not save service record. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -971,57 +865,21 @@ export default function MinorServiceFormScreen() {
   /* ---------------- RENDER ---------------- */
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
+    <PageShell mode="form" width="form" header={{
+      variant: "compact",
+      title: "Minor Service Form",
+      subtitle: "Interim / minor service checklist, parts and notes.",
+      onBack: () => confirmLeave(() => router.back()),
+    }}>
       {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => confirmLeave(() => router.back())}
-          style={styles.backButton}
-        >
-          <Feather
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.pageTitle,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-          >
-            Minor Service Form
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Interim / minor service checklist, parts and notes.
-          </Text>
-        </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+
+      <>
         {/* VEHICLE SECTION */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Vehicle
@@ -1039,9 +897,8 @@ export default function MinorServiceFormScreen() {
             </TouchableOpacity>
           ) : loadingVehicles ? (
             <Text
-              style={[
+              tone={"muted"} style={[
                 styles.sectionHint,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Loading fleet…
@@ -1052,122 +909,41 @@ export default function MinorServiceFormScreen() {
         <View style={styles.flatSectionContent}>
           {vehicleCollapsed && selectedVehicle ? (
             <>
-              <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+              <Text tone={"muted"} style={[styles.fieldLabel]}>
                 Selected vehicle
               </Text>
               <View style={styles.selectedVehicleRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.vehicleName, { color: colors.text || COLORS.textHigh }]}>
+                  <Text tone={"primary"} style={[styles.vehicleName]}>
                     {getVehicleName(selectedVehicle) || "Unnamed vehicle"}
                   </Text>
-                  <Text style={[styles.vehicleReg, { color: colors.textMuted || COLORS.textMid }]}>
+                  <Text tone={"muted"} style={[styles.vehicleReg]}>
                     {getVehicleRegistration(selectedVehicle) || "—"}
                   </Text>
                 </View>
               </View>
               <View style={styles.vehicleMetaRow}>
-                <Text style={[styles.vehicleMeta, { color: colors.textMuted || COLORS.textMid }]}>
+                <Text tone={"muted"} style={[styles.vehicleMeta]}>
                   Current mileage:{" "}
                   {typeof getVehicleMileage(selectedVehicle) === "number"
                     ? `${getVehicleMileage(selectedVehicle).toLocaleString("en-GB")} mi`
                     : "—"}
                 </Text>
-                <Text style={[styles.vehicleMeta, { color: colors.textMuted || COLORS.textMid }]}>
+                <Text tone={"muted"} style={[styles.vehicleMeta]}>
                   Last service: {formatShortDate(getVehicleLastService(selectedVehicle)) || getVehicleLastService(selectedVehicle) || "—"}
                 </Text>
               </View>
             </>
           ) : (
             <>
-              <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
-                Search vehicle
-              </Text>
-              <View
-                style={[
-                  styles.searchBox,
-                  {
-                    backgroundColor: colors.inputBackground || "#FFFFFF",
-                    borderColor: colors.inputBorder || colors.border || COLORS.border,
-                  },
-                ]}
-              >
-                <Feather
-                  name="search"
-                  size={16}
-                  color={colors.textMuted || COLORS.textMid}
-                  style={{ marginRight: 6 }}
-                />
-                <TextInput
-                  style={[styles.searchInput, { color: colors.text || COLORS.textHigh }]}
-                  placeholder="Name, reg, manufacturer or model…"
-                  placeholderTextColor={colors.textMuted || COLORS.textLow}
-                  value={vehicleSearch}
-                  onChangeText={setVehicleSearch}
-                />
-              </View>
-
-              {loadingVehicles ? (
-                <View style={styles.centerRow}>
-                  <ActivityIndicator size="small" color={COLORS.primaryAction} />
-                </View>
-              ) : filteredVehicles.length === 0 ? (
-                <View style={styles.centerRow}>
-                  <Text style={styles.emptyText}>
-                    No vehicles match this search.
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ maxHeight: 180, marginTop: 8 }}
-                  nestedScrollEnabled
-                >
-                  {filteredVehicles.map((v) => {
-                    const name = getVehicleName(v) || "Unnamed vehicle";
-                    const reg = getVehicleRegistration(v);
-                    const manufacturer = getVehicleManufacturer(v);
-                    const isActive = v.id === selectedVehicleId;
-
-                    return (
-                      <TouchableOpacity
-                        key={v.id}
-                        style={[
-                          styles.vehicleRow,
-                          isActive && styles.vehicleRowActive,
-                        ]}
-                        onPress={() => handleSelectVehicle(v.id)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.vehicleName,
-                              { color: colors.text || COLORS.textHigh },
-                              isActive && { color: COLORS.primaryAction },
-                            ]}
-                          >
-                            {name}
-                          </Text>
-                          <Text style={[styles.vehicleReg, { color: colors.textMuted || COLORS.textMid }]}>
-                            {reg}
-                            {manufacturer || v.model
-                              ? ` · ${manufacturer || ""}${
-                                  manufacturer && v.model ? " " : ""
-                                }${v.model || ""}`
-                              : ""}
-                          </Text>
-                        </View>
-                        {isActive && (
-                          <Feather
-                            name="check-circle"
-                            size={18}
-                            color={COLORS.primaryAction}
-                          />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
+              <AssetSelectField
+                hideLabel
+                records={vehicles}
+                value={selectedVehicleId}
+                onChange={handleSelectVehicle}
+                loading={loadingVehicles}
+                testID="service-vehicle-select"
+              />
             </>
           )}
         </View>
@@ -1175,9 +951,8 @@ export default function MinorServiceFormScreen() {
         {/* SERVICE DETAILS */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Service details
@@ -1186,38 +961,38 @@ export default function MinorServiceFormScreen() {
 
         <View style={styles.flatSectionContent}>
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Service date (auto)
             </Text>
             <View
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
-                {serviceDate}
+              <Text tone={"primary"} style={[styles.readonlyText]}>
+                {formatISODateDDMMYYYY(serviceDate)}
               </Text>
             </View>
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Service time (auto)
             </Text>
             <View
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>
                 {serviceTime}
               </Text>
             </View>
@@ -1232,21 +1007,21 @@ export default function MinorServiceFormScreen() {
           />
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Service type
             </Text>
             <TouchableOpacity
               style={[
                 styles.dropdownHeader,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
               onPress={() => setServiceTypeOpen((prev) => !prev)}
               activeOpacity={0.8}
             >
-              <Text style={[styles.dropdownText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.dropdownText]}>
                 {serviceType}
               </Text>
               <Feather
@@ -1260,7 +1035,7 @@ export default function MinorServiceFormScreen() {
                 style={[
                   styles.dropdownList,
                   {
-                    backgroundColor: colors.inputBackground || "#FFFFFF",
+                    backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                     borderColor: colors.border || COLORS.border,
                   },
                 ]}
@@ -1297,19 +1072,19 @@ export default function MinorServiceFormScreen() {
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Next service due (auto)
             </Text>
             <View
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>
                 {nextServiceComputed ||
                   "Calculated from service date (+12 months)"}
               </Text>
@@ -1372,23 +1147,16 @@ export default function MinorServiceFormScreen() {
         {/* WORKSHOP NOTES */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Workshop notes
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
+        <SectionCard
+          tone="subtle" layoutStyle={styles.card}
         >
           <FormField
             label="Work carried out"
@@ -1406,41 +1174,34 @@ export default function MinorServiceFormScreen() {
           />
           <FormField
             label="Extra notes (optional)"
+            autoGrow
             placeholder="Anything else useful for future jobs."
             value={extraNotes}
             onChangeText={setExtraNotes}
             multiline
           />
-        </View>
+        </SectionCard>
 
         {/* SIGN-OFF */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Sign-off
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.sectionHint,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Required to complete service.
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
+        <SectionCard
+          tone="subtle" layoutStyle={styles.card}
         >
           <FormField
             label="Technician signature (name)"
@@ -1448,49 +1209,41 @@ export default function MinorServiceFormScreen() {
             value={signedBy}
             onChangeText={setSignedBy}
           />
-          <View style={{ marginTop: 6 }}>
-            <Text style={[styles.signatureInfo, { color: colors.textMuted || COLORS.textMid }]}>
+          <View style={{ marginTop: t.spacing.xxs }}>
+            <Text tone={"muted"} style={[styles.signatureInfo]}>
               By entering your name you confirm the checks above have been
               carried out to the best of your ability.
             </Text>
           </View>
-        </View>
+        </SectionCard>
 
         {/* PHOTOS / ATTACHMENTS */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Photos / attachments
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.sectionHint,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Tyre wear, pad condition, damage, etc.
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
+        <SectionCard
+          tone="subtle" layoutStyle={styles.card}
         >
           <View style={styles.photoButtonsRow}>
             <TouchableOpacity
               style={[
                 styles.photoButton,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.border || COLORS.border,
                 },
               ]}
@@ -1501,7 +1254,7 @@ export default function MinorServiceFormScreen() {
                 name="image"
                 size={16}
                 color={COLORS.textHigh}
-                style={{ marginRight: 6 }}
+                style={{ marginRight: t.spacing.xxs }}
               />
               <Text style={styles.photoAddText}>Add from library</Text>
             </TouchableOpacity>
@@ -1511,7 +1264,7 @@ export default function MinorServiceFormScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ marginTop: 10 }}
+              style={{ marginTop: t.spacing.xs }}
             >
               {photos.map((p) => (
                 <View key={p.uri} style={styles.photoThumbWrapper}>
@@ -1527,7 +1280,7 @@ export default function MinorServiceFormScreen() {
               ))}
             </ScrollView>
           )}
-        </View>
+        </SectionCard>
 
         {/* SUBMIT */}
         <TouchableOpacity
@@ -1544,7 +1297,7 @@ export default function MinorServiceFormScreen() {
                 name="save"
                 size={16}
                 color={COLORS.textHigh}
-                style={{ marginRight: 6 }}
+                style={{ marginRight: t.spacing.xxs }}
               />
               <Text style={styles.submitText}>
                 Save minor service & update vehicle
@@ -1554,8 +1307,8 @@ export default function MinorServiceFormScreen() {
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
-    </SafeAreaView>
+      </>
+    </PageShell>
   );
 }
 
@@ -1567,37 +1320,22 @@ function FormField({
   onChangeText,
   placeholder,
   multiline = false,
+  autoGrow = false,
   keyboardType = "default",
 }) {
-  const { colors } = useTheme();
-
   return (
     <View style={styles.fieldGroup}>
-      <Text
-        style={[
-          styles.fieldLabel,
-          { color: colors.textMuted || COLORS.textMid },
-        ]}
-      >
-        {label}
-      </Text>
-      <TextInput
-        style={[
-          styles.input,
-          {
-            backgroundColor: colors.inputBackground || "#FFFFFF",
-            borderColor: colors.inputBorder || colors.border || COLORS.border,
-            color: colors.text || COLORS.textHigh,
-          },
-          multiline && styles.inputMultiline,
-        ]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted || COLORS.textLow}
-        value={value}
-        onChangeText={onChangeText}
-        multiline={multiline}
-        keyboardType={keyboardType}
-      />
+      {multiline ? (
+        <TextArea label={label} autoGrow={autoGrow} placeholder={placeholder} value={value} onChangeText={onChangeText} />
+      ) : (
+        <SharedFormField
+          label={label}
+          placeholder={placeholder}
+          value={value}
+          onChangeText={onChangeText}
+          inputProps={{ keyboardType }}
+        />
+      )}
     </View>
   );
 }
@@ -1618,36 +1356,28 @@ function ChecklistSection({
   addCheckPhoto,
   removeCheckPhoto,
 }) {
-  const { colors } = useTheme();
+
   return (
     <>
       <View style={styles.sectionHeaderRow}>
         <Text
-          style={[
+          tone={"primary"} style={[
             styles.sectionTitle,
-            { color: colors.text || COLORS.textHigh },
           ]}
         >
           {title}
         </Text>
         <Text
-          style={[
+          tone={"muted"} style={[
             styles.sectionHint,
-            { color: colors.textMuted || COLORS.textMid },
           ]}
         >
           {hint}
         </Text>
       </View>
 
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: colors.surfaceAlt || COLORS.card,
-            borderColor: colors.border || COLORS.border,
-          },
-        ]}
+      <SectionCard
+        tone="subtle" layoutStyle={styles.card}
       >
         {items.map((item) => (
           <ChecklistRow
@@ -1666,12 +1396,12 @@ function ChecklistSection({
             onRemovePhoto={(uri) => removeCheckPhoto(item, uri)}
           />
         ))}
-      </View>
+      </SectionCard>
     </>
   );
 }
 
-function ChecklistRow({
+export function ChecklistRow({
   label,
   checked,
   na,
@@ -1685,9 +1415,11 @@ function ChecklistRow({
   onPressPhoto,
   onRemovePhoto,
 }) {
-  const { colors } = useTheme();
+  const { colors, colorScheme } = useTheme();
+  const paletteFor = (value) => getServiceStatusColors({ green: "success", amber: "warning", red: "danger" }[value] || "neutral", colorScheme);
+  const neutralPalette = paletteFor("");
   const selectedStatus = normalizeCheckStatus(rating);
-  const selectedStatusOption = getCheckStatusOption(selectedStatus);
+  const selectedPalette = paletteFor(selectedStatus);
   const requiresNote = NOTE_REQUIRED_STATUSES.has(selectedStatus);
   const noteMissing = requiresNote && !String(note || "").trim();
 
@@ -1704,12 +1436,12 @@ function ChecklistRow({
             <View
               style={[
                 styles.checkIconFilled,
-                selectedStatusOption && {
-                  backgroundColor: selectedStatusOption.color,
+                {
+                  backgroundColor: selectedPalette.background,
                 },
               ]}
             >
-              <Feather name="check" size={18} color={COLORS.textHigh} />
+              <Feather name="check" size={18} color={selectedPalette.onBackground} />
             </View>
           ) : (
             <View
@@ -1722,10 +1454,10 @@ function ChecklistRow({
           )}
         </View>
         <Text
-          style={[
+          tone={(checked) ? "primary" : ("muted")} style={[
             styles.checkLabel,
-            { color: colors.textMuted || COLORS.textLow },
-            checked && { color: colors.text || COLORS.textHigh },
+            null,
+            checked && null,
             na && { opacity: 0.5 },
           ]}
         >
@@ -1737,17 +1469,22 @@ function ChecklistRow({
       <View style={styles.ratingRow}>
         {CHECK_STATUS_OPTIONS.map((option) => {
           const isActive = selectedStatus === option.value;
+          const palette = paletteFor(option.value);
           return (
             <TouchableOpacity
               key={option.value}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}: ${option.label}`}
+              aria-pressed={isActive}
+              accessibilityState={{ selected: isActive }}
               style={[
                 styles.conditionPill,
-                { borderColor: option.color },
+                { borderColor: palette.border },
                 isActive && {
-                  backgroundColor: option.color,
-                  borderColor: option.color,
+                  backgroundColor: palette.background,
+                  borderColor: palette.border,
                 },
-                na && { opacity: 0.6 },
+
               ]}
               onPress={() => onChangeRating(option.value)}
               activeOpacity={0.7}
@@ -1755,8 +1492,8 @@ function ChecklistRow({
               <Text
                 style={[
                   styles.conditionText,
-                  { color: option.color },
-                  isActive && styles.conditionTextActive,
+                  { color: isActive ? palette.onBackground : palette.foreground },
+
                 ]}
               >
                 {option.label}
@@ -1766,16 +1503,22 @@ function ChecklistRow({
         })}
 
         <TouchableOpacity
-          style={[styles.naPill, na && styles.naPillActive]}
+          style={[styles.naPill, na && styles.naPillActive, { borderColor: neutralPalette.border }, na && { backgroundColor: neutralPalette.background }]}
           onPress={onToggleNA}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: Not applicable`}
+          aria-pressed={na}
+          accessibilityState={{ selected: na }}
           activeOpacity={0.7}
         >
-          <Text style={[styles.naText, na && styles.naTextActive]}>N/A</Text>
+          <Text style={[styles.naText, na && styles.naTextActive, { color: neutralPalette.foreground }]}>N/A</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.photoIconButton}
           onPress={onPressPhoto}
+          accessibilityRole="button"
+          accessibilityLabel={`Add photo for ${label}`}
           activeOpacity={0.7}
         >
           <Feather name="image" size={16} color={colors.textMuted || COLORS.textMid} />
@@ -1787,34 +1530,24 @@ function ChecklistRow({
         </TouchableOpacity>
       </View>
 
-      <TextInput
-        style={[
-          styles.checkNoteInput,
-          noteMissing && styles.checkNoteInputRequired,
-          {
-            backgroundColor: colors.inputBackground || "#FFFFFF",
-            borderColor: noteMissing
-              ? selectedStatusOption?.color || COLORS.primaryAction
-              : colors.inputBorder || colors.border || COLORS.border,
-            color: colors.text || COLORS.textHigh,
-          },
-        ]}
+      <TextArea
+        label="Check notes"
+        autoGrow
+        error={noteMissing ? "Notes are required for this status." : undefined}
         placeholder={
           requiresNote
             ? "Notes required for amber/red..."
             : "Notes for this check..."
         }
-        placeholderTextColor={colors.textMuted || COLORS.textLow}
         value={note}
         onChangeText={onChangeNote}
-        multiline
       />
 
       {photos.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 6 }}
+          style={{ marginTop: t.spacing.xxs }}
         >
           {photos.map((p) => (
             <View key={p.uri} style={styles.photoThumbWrapper}>
@@ -1835,366 +1568,3 @@ function ChecklistRow({
 }
 
 /* ---------------- STYLES ---------------- */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingTop: 8,
-    paddingBottom: 110,
-  },
-  sectionHeaderRow: {
-    marginTop: 4,
-    marginBottom: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  sectionHint: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  flatSectionContent: {
-    marginBottom: 10,
-  },
-  fieldGroup: {
-    marginBottom: 10,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textMid,
-    marginBottom: 4,
-  },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    color: COLORS.textHigh,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-  },
-  inputMultiline: {
-    minHeight: 90,
-    textAlignVertical: "top",
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  searchInput: {
-    flex: 1,
-    color: COLORS.textHigh,
-    fontSize: 14,
-  },
-  centerRow: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  vehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  vehicleRowActive: {
-    backgroundColor: "rgba(255,59,48,0.12)",
-  },
-  vehicleName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textHigh,
-  },
-  vehicleReg: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  vehicleMetaRow: {
-    marginTop: 8,
-  },
-  vehicleMeta: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  selectedVehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  readonlyField: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  readonlyText: {
-    fontSize: 14,
-    color: COLORS.textHigh,
-  },
-  checkRowWrapper: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  checkRowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: 6,
-    marginBottom: 6,
-  },
-  checkIconWrap: {
-    paddingRight: 8,
-  },
-  checkIconEmpty: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 2,
-    borderColor: COLORS.textMid,
-  },
-  checkIconFilled: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkLabel: {
-    flex: 1,
-    fontSize: 13,
-    color: COLORS.textLow,
-  },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 6,
-  },
-  conditionPill: {
-    minHeight: 30,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  conditionText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  conditionTextActive: {
-    color: COLORS.textHigh,
-  },
-  naPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-  },
-  naPillActive: {
-    backgroundColor: "rgba(142,142,147,0.2)",
-    borderColor: COLORS.textMid,
-  },
-  naText: {
-    fontSize: 12,
-    color: COLORS.textLow,
-  },
-  naTextActive: {
-    color: COLORS.textMid,
-    fontWeight: "600",
-  },
-  photoIconButton: {
-    marginLeft: 2,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoBadge: {
-    position: "absolute",
-    top: -5,
-    right: -5,
-    minWidth: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-  },
-  photoBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    fontWeight: "800",
-  },
-  checkNoteInput: {
-    marginTop: 4,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: COLORS.textHigh,
-    textAlignVertical: "top",
-    minHeight: 48,
-  },
-  checkNoteInputRequired: {
-    borderWidth: 2,
-  },
-  dropdownHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    justifyContent: "space-between",
-  },
-  dropdownText: {
-    color: COLORS.textHigh,
-    fontSize: 14,
-    flex: 1,
-    marginRight: 8,
-  },
-  dropdownList: {
-    marginTop: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#FFFFFF",
-    overflow: "hidden",
-  },
-  dropdownItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  dropdownItemActive: {
-    backgroundColor: "rgba(255,59,48,0.12)",
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: COLORS.textHigh,
-  },
-  photoButtonsRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  photoButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 10,
-    backgroundColor: "#FFFFFF",
-  },
-  photoAddText: {
-    color: COLORS.textHigh,
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  photoThumbWrapper: {
-    marginRight: 10,
-  },
-  photoThumb: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-  },
-  photoRemoveBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  signatureInfo: {
-    fontSize: 11,
-    color: COLORS.textMid,
-  },
-  submitButton: {
-    marginTop: 10,
-    backgroundColor: COLORS.primaryAction,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  submitText: {
-    color: COLORS.textHigh,
-    fontWeight: "700",
-    fontSize: 15,
-  },
-});

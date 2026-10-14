@@ -1,444 +1,376 @@
+import { EmptyState, LoadingState } from "../../components/AsyncState";
+import { styles } from "../../lib/design/screenStyles/notifications-js.js";
+import { getReceiptNotificationHref, isReceiptNotification } from "../../lib/receipts/navigation";
+import { groupNotificationItems } from "../../lib/notificationGroups";
+import { AppText as Text, AppPressable as TouchableOpacity, AppButton, Banner } from "../../components/ui/AppPrimitives";
 // app/(protected)/notifications.js
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  RefreshControl,
-  SafeAreaView,
+  useRouter } from "expo-router";
+import { useCallback,
+  useEffect,
+  useMemo,
+  useState } from "react";
+import {
+  Alert,
   ScrollView,
   StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  View } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 
+import { useVehicles } from "../../hooks/useOperationalData";
+import { resolveNotificationVehicleBody } from "../../lib/fleetSchema";
+import { syncRemoteNotificationsToInbox } from "../../lib/remoteNotifications";
 import {
+  collapseInboxDuplicates,
   clearInbox,
   getInbox,
   markAllRead,
   markRead,
+  subscribeToInbox,
 } from "../../lib/notificationInbox";
+import { notificationVisibleToAccount } from "../../lib/notificationVisibility";
+import {
+  getTimesheetReminderHref,
+  isTimesheetReminder,
+} from "../../lib/timesheetNotification";
 import { useTheme } from "../../providers/ThemeProvider";
-
-function withAlpha(hex, alpha) {
-  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
-  const raw = String(hex || "").replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return `rgba(255,255,255,${safeAlpha})`;
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${safeAlpha})`;
-}
+import { useAuth } from "../../providers/AuthProvider";
+import { withAlpha } from "../../lib/design/color";
+import { getStatusColors } from "../../lib/design/semantics";
+import { designTokens as t } from "../../lib/design/tokens";
+import PageShell from "../../components/layout/PageShell";
 
 function formatTime(ts) {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "";
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (elapsedMinutes < 1) return "now";
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours}h`;
+  return `${Math.floor(elapsedHours / 24)}d`;
+}
+
+function notificationPresentation(data = {}) {
+  if (isReceiptNotification(data)) return { icon: "file-text", label: "Company-card receipt" };
+  if (isTimesheetReminder(data)) return { icon: "clock", label: "Timesheet" };
+  if (data?.bookingId) return { icon: "briefcase", label: "Job" };
+  if (data?.holidayId) return { icon: "umbrella", label: "Holiday" };
+  return { icon: "info", label: "General" };
 }
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { user, employee } = useAuth();
+  const vehiclesResource = useVehicles();
 
   const [items, setItems] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const account = useMemo(() => ({ uid: user?.uid, personId: employee?.employeeId, companyId: employee?.companyId, employeeCode: employee?.userCode }), [user?.uid, employee?.employeeId, employee?.companyId, employee?.userCode]);
+  const displayItems = useMemo(() => collapseInboxDuplicates(items.filter((item) => notificationVisibleToAccount(item, account))), [items, account]);
 
   const unreadCount = useMemo(
-    () => items.filter((n) => !n.read).length,
-    [items]
+    () => displayItems.filter((n) => !n.read).length,
+    [displayItems]
   );
-
   const load = useCallback(async () => {
     const list = await getInbox();
     setItems(list);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    load();
+    let active = true;
+    load().catch(() => { setError(true); setLoading(false); });
+    const unsubscribe = subscribeToInbox((inbox) => {
+      if (active) setItems(inbox);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setError(false);
     try {
+      await syncRemoteNotificationsToInbox({ user, employee }).catch((error) =>
+        setError(true)
+      );
       await load();
+    } catch {
+      setError(true);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
-  }, [load]);
+  }, [employee, load, user]);
 
   const onTap = useCallback(
     async (n) => {
+      if (!notificationVisibleToAccount(n, account)) return;
       // mark read immediately
       await markRead(n.id);
       await load();
 
-      // ALWAYS go to notification details page
+      const receiptHref = getReceiptNotificationHref(n.data, account);
+      if (receiptHref) { router.push(receiptHref); return; }
+      const timesheetHref = getTimesheetReminderHref(n.data);
+      if (timesheetHref) {
+        router.push(timesheetHref);
+        return;
+      }
+
       router.push(`/(protected)/notification/${n.id}`);
     },
-    [router, load]
+    [router, load, account]
   );
 
   const handleMarkAllRead = useCallback(async () => {
-    await markAllRead();
+    await markAllRead((item) => notificationVisibleToAccount(item, account));
     await load();
-  }, [load]);
+  }, [account, load]);
 
   const handleClearAll = useCallback(async () => {
-    await clearInbox();
+    await clearInbox((item) => notificationVisibleToAccount(item, account));
     await load();
-  }, [load]);
+  }, [account, load]);
 
-  return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: colors.background }]}
-    >
-      <View
-        style={[
-          styles.heroCard,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
-      >
-        <View style={styles.heroTopRow}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={[
-              styles.backBtn,
-              {
-                borderColor: withAlpha(colors.border, 0.8),
-                backgroundColor: withAlpha(colors.surfaceAlt, 0.8),
-              },
-            ]}
-            activeOpacity={0.85}
-          >
-            <Icon name="arrow-left" size={14} color={colors.text} />
-            <Text style={[styles.backText, { color: colors.text }]}>Back</Text>
-          </TouchableOpacity>
+  const confirmClearAll = useCallback(() => {
+    if (displayItems.length === 0) return;
+    Alert.alert(
+      "Clear notifications?",
+      "This removes every notification from your inbox.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Clear all", style: "destructive", onPress: handleClearAll },
+      ]
+    );
+  }, [handleClearAll, displayItems.length]);
 
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={handleMarkAllRead}
-              style={[
-                styles.actionBtn,
-                {
-                  borderColor: withAlpha(colors.border, 0.8),
-                  backgroundColor: withAlpha(colors.surfaceAlt, 0.8),
-                },
-              ]}
-              activeOpacity={0.85}
-            >
-              <Icon name="check" size={16} color={colors.text} />
-            </TouchableOpacity>
+  const openInboxActions = useCallback(() => {
+    Alert.alert("Inbox actions", undefined, [
+      ...(unreadCount > 0
+        ? [{ text: "Mark all as read", onPress: handleMarkAllRead }]
+        : []),
+      ...(displayItems.length > 0
+        ? [{ text: "Clear notifications", style: "destructive", onPress: confirmClearAll }]
+        : []),
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [confirmClearAll, handleMarkAllRead, displayItems.length, unreadCount]);
 
-            <TouchableOpacity
-              onPress={handleClearAll}
-              style={[
-                styles.actionBtn,
-                {
-                  borderColor: withAlpha(colors.border, 0.8),
-                  backgroundColor: withAlpha(colors.surfaceAlt, 0.8),
-                },
-              ]}
-              activeOpacity={0.85}
-            >
-              <Icon name="trash-2" size={16} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.heroContent}>
-          <Text style={[styles.heroEyebrow, { color: colors.textMuted }]}>Inbox</Text>
-          <Text style={[styles.heroTitle, { color: colors.text }]}>Notifications</Text>
-          <Text style={[styles.heroSubTitle, { color: colors.textMuted }]}>
-            {unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}
-          </Text>
-
-          <View style={styles.heroMetaRow}>
-            <View
-              style={[
-                styles.heroMetaChip,
-                {
-                  borderColor: withAlpha(colors.border, 0.75),
-                  backgroundColor: withAlpha(colors.surfaceAlt, 0.75),
-                },
-              ]}
-            >
-              <Icon name="bell" size={12} color={colors.textMuted} />
-              <Text style={[styles.heroMetaText, { color: colors.text }]}>
-                {items.length} total
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.heroMetaChip,
-                {
-                  borderColor: withAlpha(colors.border, 0.75),
-                  backgroundColor: withAlpha(colors.surfaceAlt, 0.75),
-                },
-              ]}
-            >
-              <Icon name="refresh-cw" size={12} color={colors.textMuted} />
-              <Text style={[styles.heroMetaText, { color: colors.text }]}>
-                Pull to refresh
-              </Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent}
-          />
-        }
-      >
-        {items.length === 0 ? (
-          <View
-            style={[
-              styles.emptyCard,
-              { borderColor: colors.border, backgroundColor: colors.surface },
-            ]}
-          >
-            <View
-              style={[styles.emptyIcon, { backgroundColor: colors.surfaceAlt }]}
-            >
-              <Icon name="bell" size={22} color={colors.textMuted} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>
-              No notifications
-            </Text>
-            <Text style={[styles.emptySub, { color: colors.textMuted }]}>
-              When you’re assigned a job or a holiday is approved, it’ll show up
-              here.
-            </Text>
-          </View>
-        ) : (
-          items.map((n) => {
-            const time = formatTime(n.createdAt);
-            const unread = !n.read;
-
-            return (
-              <TouchableOpacity
-                key={n.id}
-                onPress={() => onTap(n)}
-                activeOpacity={0.9}
-                style={[
-                  styles.card,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: colors.surface,
-                  },
-                ]}
-              >
-                <View style={styles.rowTop}>
-                  <View style={styles.rowLeft}>
-                    <View
-                      style={[
-                        styles.dot,
-                        {
-                          backgroundColor: unread
-                            ? colors.accent
-                            : withAlpha(colors.textMuted, 0.65),
-                        },
-                      ]}
-                    />
-                    <Text
-                      style={[styles.cardTitle, { color: colors.text }]}
-                      numberOfLines={1}
-                    >
-                      {n.title}
-                    </Text>
-                  </View>
-
-                  <Text style={[styles.time, { color: colors.textMuted }]}>
-                    {time}
-                  </Text>
-                </View>
-
-                {!!n.body && (
-                  <Text
-                    style={[styles.body, { color: colors.textMuted }]}
-                    numberOfLines={3}
-                  >
-                    {n.body}
-                  </Text>
-                )}
-
-                <View style={styles.rowBottom}>
-                  <View
-                    style={[
-                      styles.pill,
-                      {
-                        backgroundColor: colors.surfaceAlt,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  >
-                    <Icon
-                      name={
-                        n.data?.bookingId
-                          ? "briefcase"
-                          : n.data?.holidayId
-                          ? "umbrella"
-                          : "info"
-                      }
-                      size={12}
-                      color={colors.text}
-                    />
-                    <Text style={[styles.pillText, { color: colors.text }]}>
-                      {n.data?.bookingId
-                        ? "Job"
-                        : n.data?.holidayId
-                        ? "Holiday"
-                        : "General"}
-                    </Text>
-                  </View>
-
-                  <Icon name="chevron-right" size={18} color={colors.textMuted} />
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-
-        <View style={{ height: 30 }} />
-      </ScrollView>
-    </SafeAreaView>
-  );
+  return <NotificationsView displayItems={displayItems} unreadCount={unreadCount} vehicles={vehiclesResource.data} loading={loading} error={error} refreshing={refreshing} onRefresh={onRefresh} onTap={onTap} onBack={router.back} openInboxActions={openInboxActions} />;
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
+export function NotificationsView({ displayItems, unreadCount, vehicles, loading, error, refreshing, onRefresh, onTap, onBack, openInboxActions }) {
+  const { colors, colorScheme } = useTheme();
+  const accentStatus = getStatusColors("danger", colorScheme);
+  const [filter, setFilter] = useState("all");
+  const visibleItems = useMemo(() => {
+    if (filter === "unread") return displayItems.filter((item) => !item.read);
+    if (filter === "jobs") return displayItems.filter((item) => item.data?.bookingId);
+    if (filter === "timesheets") return displayItems.filter((item) => isTimesheetReminder(item.data));
+    if (filter === "holidays") return displayItems.filter((item) => item.data?.holidayId);
+    return displayItems;
+  }, [displayItems, filter]);
+  const listItems = useMemo(
+    () => groupNotificationItems(visibleItems).flatMap((group) => [
+      { type: "heading", id: `heading:${group.label}`, label: group.label, count: group.items.length },
+      ...group.items.map((notification, index) => ({
+        type: "notification",
+        id: notification.id,
+        notification,
+        showDivider: index < group.items.length - 1,
+      })),
+    ]),
+    [visibleItems]
+  );
 
-  heroCard: {
-    position: "relative",
-    borderRadius: 18,
-    borderWidth: 1,
-    marginHorizontal: 12,
-    marginTop: 24,
-    marginBottom: 10,
-    overflow: "hidden",
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingTop: 16,
-  },
-  backBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  backText: { fontWeight: "800", fontSize: 12 },
+  const filters = [
+    { key: "all", label: "All" },
+    { key: "unread", label: `Unread ${unreadCount}` },
+    { key: "jobs", label: "Jobs" },
+    { key: "timesheets", label: "Timesheets" },
+    { key: "holidays", label: "Holidays" },
+  ];
 
-  heroContent: {
-    paddingHorizontal: 14,
-    paddingBottom: 14,
-    paddingTop: 12,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    fontWeight: "800",
-  },
-  heroTitle: { marginTop: 3, fontSize: 24, fontWeight: "900", letterSpacing: 0.2 },
-  heroSubTitle: { marginTop: 2, fontSize: 13, fontWeight: "600" },
-  heroMetaRow: { marginTop: 12, flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  heroMetaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  heroMetaText: { fontSize: 11, fontWeight: "700" },
+  const filterBar = (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filters}
+      style={styles.filtersScroll}
+    >
+      {filters.map((option) => {
+        const selected = filter === option.key;
+        return (
+          <TouchableOpacity
+            key={option.key}
+            onPress={() => setFilter(option.key)}
+            activeOpacity={0.84}
+            style={[
+              styles.filterChip,
+              {
+                backgroundColor: selected ? accentStatus.background : colors.surfaceAlt,
+                borderColor: selected ? accentStatus.border : withAlpha(colors.border, 0.72),
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+          >
+            <Text style={[styles.filterText, { color: selected ? accentStatus.foreground : colors.text }]}>
+              {option.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
 
-  headerActions: { flexDirection: "row", gap: 8 },
-  actionBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  const renderItem = ({ item }) => {
+    if (item.type === "heading") {
+      return (
+        <View style={styles.groupHeading}>
+          <Text tone={"primary"} style={[styles.groupTitle]}>{item.label}</Text>
+          <Text tone={"muted"} style={[styles.groupCount]}>{item.count}</Text>
+        </View>
+      );
+    }
+    const notification = item.notification;
+    const unread = !notification.read;
+    const presentation = notificationPresentation(notification.data);
+    const body = resolveNotificationVehicleBody(notification.body, vehicles);
+    return (
+                  <TouchableOpacity
+                    key={notification.id}
+                    testID={`notification-row-${notification.id}`}
+                    onPress={() => onTap(notification)}
+                    activeOpacity={0.78}
+                    style={[
+                      styles.notificationRow,
+                      item.showDivider && {
+                        borderBottomColor: colors.divider,
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                      },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${notification.title}, ${formatTime(
+                      notification.createdAt
+                    )}`}
+                  >
+                    <View
+                      style={[
+                        styles.notificationIcon,
+                        {
+                          backgroundColor: unread
+                            ? withAlpha(colors.accent, 0.13)
+                            : colors.surfaceAlt,
+                          borderColor: unread
+                            ? withAlpha(colors.accent, 0.3)
+                            : withAlpha(colors.border, 0.72),
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name={presentation.icon}
+                        size={20}
+                        color={unread ? colors.accent : colors.textMuted}
+                      />
+                      {unread && (
+                        <View
+                          style={[
+                            styles.notificationUnreadDot,
+                            {
+                              backgroundColor: colors.accent,
+                              borderColor: colors.background,
+                            },
+                          ]}
+                        />
+                      )}
+                    </View>
 
-  content: { paddingHorizontal: 16, paddingTop: 12 },
+                    <View style={styles.notificationCopy}>
+                      <View style={styles.notificationTitleRow}>
+                        <Text
+                          tone={"primary"} style={[styles.notificationTitle]}
+                        >
+                          {notification.title}
+                        </Text>
+                        <Text tone={"muted"} style={[styles.notificationTime]}>
+                          {formatTime(notification.createdAt)}
+                        </Text>
+                      </View>
+                      {!!body && (
+                        <Text
+                          tone={"muted"} style={[styles.notificationBody]}
+                          numberOfLines={2}
+                        >
+                          {body}
+                        </Text>
+                      )}
+                      <View style={styles.notificationMetaRow}>
+                        <Text tone={"muted"} style={[styles.notificationType]}>
+                          {presentation.label}
+                        </Text>
+                        {unread && (
+                          <Text style={[styles.unreadLabel, { color: accentStatus.foreground }]}>New</Text>
+                        )}
+                      </View>
+                    </View>
 
-  emptyCard: {
-    marginTop: 20,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 18,
-    alignItems: "center",
-  },
-  emptyIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  emptyTitle: { fontSize: 16, fontWeight: "900" },
-  emptySub: { marginTop: 4, fontSize: 13, textAlign: "center", lineHeight: 18 },
+                    <Icon name="chevron-right" size={21} color={colors.textMuted} />
+                  </TouchableOpacity>
+    );
+  };
 
-  card: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 14,
-    marginTop: 10,
-  },
-  rowTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  rowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-    paddingRight: 10,
-  },
-  dot: { width: 9, height: 9, borderRadius: 5 },
-  cardTitle: { fontSize: 15, fontWeight: "900", flex: 1 },
+  const emptyState = loading && displayItems.length === 0
+    ? <LoadingState label="Loading notifications…" presentation="grouped" />
+    : (
+      <EmptyState
+        presentation="grouped"
+        icon="bell"
+        title={displayItems.length === 0 ? "No notifications" : "Nothing here yet"}
+        message={displayItems.length === 0
+          ? "Job, holiday and timesheet updates will appear here."
+          : "Try another filter to see your other notifications."}
+      />
+    );
 
-  time: { fontSize: 11, fontWeight: "700" },
-  body: { marginTop: 8, fontSize: 13, lineHeight: 18 },
-
-  rowBottom: {
-    marginTop: 12,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  pillText: { fontSize: 12, fontWeight: "800" },
-});
+  return (
+    <PageShell
+      appearance="grouped"
+      mode="list"
+      contentSpacing="none"
+      gutter="compact"
+      header={{
+        variant: "compact",
+        title: "Notifications",
+        subtitle: loading ? "Loading inbox…" : error ? "Refresh needed" : unreadCount > 0 ? `${unreadCount} unread` : "You're all caught up",
+        onBack,
+        action: { label: "Actions", icon: "more-horizontal", onPress: openInboxActions },
+      }}
+      refresh={{ refreshing, onRefresh }}
+      listHeader={
+        <>
+          {error ? <Banner tone="warning" title="Notifications may be out of date"><AppButton label="Retry notifications" variant="secondary" onPress={onRefresh} /></Banner> : null}
+          {filterBar}
+        </>
+      }
+      listEmpty={emptyState}
+      listProps={{
+        data: listItems,
+        renderItem,
+        keyExtractor: (item) => item.id,
+        maintainVisibleContentPosition: { minIndexForVisible: 0 },
+        initialNumToRender: 12,
+        maxToRenderPerBatch: 12,
+        windowSize: 7,
+      }}
+    />
+  );
+}

@@ -1,37 +1,32 @@
+import { routeColors } from "../../../lib/design/routePresentation/service-activity-history-jsx.js";
+import { styles } from "../../../lib/design/screenStyles/service-activity-history-jsx.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity, FormField } from "../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../lib/design/semantics";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { useServiceCollection } from "../../../hooks/useServiceData";
+import { getVehicleDisplayLabel } from "../../../lib/fleetSchema";
+import { matchesServiceSearch } from "../../../lib/serviceSearch";
 import { useTheme } from "../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-};
+import { designTokens as t } from "../../../lib/design/tokens";
+import PageShell from "../../../components/layout/PageShell";
 
 const ACTIVITY_ICON_COLORS = {
-  services: "#2563EB",
-  repairs: "#D97706",
+  services: routeColors.hex_2563eb_6ywilf,
+  repairs: routeColors.hex_d97706_6cn8pp,
   defects: COLORS.primaryAction,
-  inspections: "#64748B",
-  mot: "#2563EB",
-  prep: "#64748B",
+  inspections: routeColors.hex_64748b_4jwrvh,
+  mot: routeColors.hex_2563eb_6ywilf,
 };
 
 function toDateMaybe(value) {
@@ -74,16 +69,13 @@ function getActivityDate(item) {
     item?.completedDate ||
     item?.precheckDateOnly ||
     item?.precheckDateTime ||
-    item?.prepDate ||
     item?.date ||
     null
   );
 }
 
-function getVehicleText(item) {
-  return [item?.vehicleName || item?.vehicle || item?.name, item?.registration || item?.reg]
-    .filter(Boolean)
-    .join(" · ");
+function getVehicleText(item, vehicles) {
+  return getVehicleDisplayLabel(item, vehicles);
 }
 
 function getEquipmentText(item) {
@@ -108,7 +100,6 @@ function buildActivityItems({
   serviceRecords,
   defectReports,
   vehicles,
-  vehiclePrepRecords,
   motPreChecks,
   equipmentInspections,
 }) {
@@ -124,8 +115,9 @@ function buildActivityItems({
       typeKey: isRepair ? "repairs" : "services",
       title: serviceType,
       subtitle: record.workSummary || record.repairSummary || record.extraNotes || "Service record completed",
-      vehicle: getVehicleText(record),
+      vehicle: getVehicleText(record, vehicles),
       technician: record.signedBy || record.completedBy || "",
+      searchValues: [record.workSummary, record.repairSummary, record.extraNotes, record.notes],
       date: getActivityDate(record),
       route: record.id ? `/service/service-record/${record.id}` : null,
     };
@@ -140,8 +132,9 @@ function buildActivityItems({
       report.status === "resolved" && report.completionNote
         ? report.completionNote
         : report.description || report.category || report.notes || "Defect report logged",
-    vehicle: getVehicleText(report),
+    vehicle: getVehicleText(report, vehicles),
     technician: report.reportedBy || report.reporterName || report.driverName || "",
+    searchValues: [report.description, report.category, report.notes, report.completionNote],
     date: getActivityDate(report),
     route:
       report.status === "resolved"
@@ -165,24 +158,13 @@ function buildActivityItems({
         vehicle: getVehicleText({
           vehicleName: vehicle?.name || vehicle?.vehicleName || item?.vehicleName,
           registration: vehicle?.registration || vehicle?.reg || item?.registration,
-        }),
+        }, vehicles),
         technician: item?.completedBy || item?.resolvedBy || item?.reporter || "",
+        searchValues: [item?.completionNote, item?.description, item?.title, item?.sourceLabel],
         date: item?.completedAt || item?.resolvedAt || item?.recordedAt,
         route: `/service/resolved-defects/${buildResolvedDefectRouteId("vehicles", vehicle.id, index)}`,
       }));
   });
-
-  const prep = vehiclePrepRecords.map((record) => ({
-    id: `prep-${record.id}`,
-    icon: record.completed ? "check-square" : "save",
-    typeKey: "prep",
-    title: record.completed ? "Vehicle prep completed" : "Vehicle prep saved",
-    subtitle: record.notes || "Vehicle prep record saved",
-    vehicle: getVehicleText(record),
-    technician: record.completedBy || record.signedBy || "",
-    date: getActivityDate(record),
-    route: null,
-  }));
 
   const mot = motPreChecks.map((record) => ({
     id: `mot-${record.id}`,
@@ -190,8 +172,9 @@ function buildActivityItems({
     typeKey: "mot",
     title: "MOT pre-check",
     subtitle: record.status || record.motPrecheckStatus || record.summary || "MOT pre-check completed",
-    vehicle: getVehicleText(record),
+    vehicle: getVehicleText(record, vehicles),
     technician: record.signedBy || record.completedBy || "",
+    searchValues: [record.status, record.motPrecheckStatus, record.summary, record.extraNotes],
     date: getActivityDate(record),
     route: null,
   }));
@@ -208,11 +191,12 @@ function buildActivityItems({
       `${record.overallResult === "fail" ? "Failed" : "Passed"} equipment inspection`,
     vehicle: getEquipmentText(record),
     technician: record.signedBy || record.inspectedBy || "",
+    searchValues: [record.findings, record.recommendations, record.extraNotes, record.overallResult],
     date: getActivityDate(record),
     route: record.id ? `/service/inspections/inspection-form/${record.id}` : null,
   }));
 
-  return [...services, ...defects, ...completedVehicleDefects, ...prep, ...mot, ...inspections]
+  return [...services, ...defects, ...completedVehicleDefects, ...mot, ...inspections]
     .map((item) => ({ ...item, dateObj: toDateMaybe(item.date) }))
     .sort((a, b) => (b.dateObj?.getTime() || 0) - (a.dateObj?.getTime() || 0));
 }
@@ -226,7 +210,7 @@ function useCollectionRows(collectionName, onErrorLabel) {
 
 export default function ActivityHistoryScreen() {
   const router = useRouter();
-  const { colors, colorScheme } = useTheme();
+  const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -235,7 +219,6 @@ export default function ActivityHistoryScreen() {
   const serviceRecords = useCollectionRows("serviceRecords", "service activity");
   const defectReports = useCollectionRows("defectReports", "defect activity");
   const vehicles = useCollectionRows("vehicles", "vehicle defect history");
-  const vehiclePrepRecords = useCollectionRows("vehiclePrepRecords", "vehicle prep activity");
   const motPreChecks = useCollectionRows("motPreChecks", "MOT pre-check activity");
   const equipmentInspections = useCollectionRows("equipmentInspections", "equipment inspection activity");
 
@@ -250,11 +233,10 @@ export default function ActivityHistoryScreen() {
         serviceRecords,
         defectReports,
         vehicles,
-        vehiclePrepRecords,
         motPreChecks,
         equipmentInspections,
       }),
-    [defectReports, equipmentInspections, motPreChecks, serviceRecords, vehiclePrepRecords, vehicles]
+    [defectReports, equipmentInspections, motPreChecks, serviceRecords, vehicles]
   );
 
   const summary = useMemo(() => {
@@ -289,56 +271,23 @@ export default function ActivityHistoryScreen() {
       }
 
       if (!queryText) return true;
-      const haystack = [
+      return matchesServiceSearch(queryText, [
         item.title,
         item.subtitle,
         item.vehicle,
         item.technician,
-      ]
-        .map(normaliseKey)
-        .join(" ");
-      return haystack.includes(queryText);
+        ...item.searchValues,
+      ]);
     });
   }, [activity, dateFilter, searchText, typeFilter]);
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        {
-          backgroundColor:
-            colorScheme === "light" ? "#FFFFFF" : colors.background || COLORS.background,
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.pageTitle, { color: colors.text || COLORS.textHigh }]}>
-            Activity History
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Recent services, repairs, defects and inspections.
-          </Text>
-        </View>
-      </View>
+    <PageShell header={{
+      variant: "compact",
+      title: "Activity History",
+      subtitle: "Recent services, repairs, defects and inspections.",
+      onBack: router.back,
+    }}>
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -347,16 +296,15 @@ export default function ActivityHistoryScreen() {
             color={colors.accent || COLORS.primaryAction}
           />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading activity...
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <>
           <View
             style={styles.summaryCard}
           >
@@ -370,44 +318,25 @@ export default function ActivityHistoryScreen() {
           <View
             style={styles.filterCard}
           >
-            <View
-              style={[
-                styles.searchBox,
-                {
-                  backgroundColor: colors.inputBackground || "#111114",
-                  borderColor: colors.inputBorder || colors.border || COLORS.border,
-                },
-              ]}
-            >
-              <Icon
-                name="search"
-                size={16}
-                color={colors.textMuted || COLORS.textMid}
-                style={{ marginRight: 8 }}
-              />
-              <TextInput
-                style={[
-                  styles.searchInput,
-                  { color: colors.text || COLORS.textHigh },
-                ]}
-                placeholder="Search vehicle, equipment, reg, notes, technician..."
-                placeholderTextColor={colors.textMuted || COLORS.textLow}
-                value={searchText}
-                onChangeText={setSearchText}
-              />
-            </View>
+            <FormField
+              label="Search"
+              placeholder="Search vehicle, equipment, reg, notes, technician..."
+              value={searchText}
+              onChangeText={setSearchText}
+              inputProps={{ returnKeyType: "search" }}
+            />
 
             <FilterRow
               label="Type"
+              horizontal
               value={typeFilter}
               options={[
                 ["all", "All"],
                 ["services", "Services"],
                 ["repairs", "Repairs"],
                 ["defects", "Defects"],
-                ["inspections", "Insp."],
+                ["inspections", "Inspections"],
                 ["mot", "MOT"],
-                ["prep", "Prep"],
               ]}
               onChange={setTypeFilter}
               colors={colors}
@@ -428,32 +357,27 @@ export default function ActivityHistoryScreen() {
           </View>
 
           {filteredActivity.length === 0 ? (
-            <View
-              style={[
-                styles.emptyState,
-                {
-                  backgroundColor: colors.surfaceAlt || COLORS.card,
-                  borderColor: colors.border || COLORS.border,
-                },
-              ]}
+            <SectionCard
+              tone="subtle" layoutStyle={styles.emptyState}
             >
               <Icon
                 name="activity"
                 size={30}
                 color={colors.textMuted || COLORS.textMid}
               />
-              <Text style={[styles.emptyTitle, { color: colors.text || COLORS.textHigh }]}>
-                No activity yet
+              <Text tone={"primary"} style={[styles.emptyTitle]}>
+                {searchText.trim() || typeFilter !== "all" || dateFilter !== "all" ? "No matching activity" : "No activity yet"}
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.emptySubtitle,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
-                Completed services, general repairs, prep records, inspections and defects will appear here.
+                {searchText.trim() || typeFilter !== "all" || dateFilter !== "all"
+                  ? "Try clearing the search or changing the filters."
+                  : "Completed services, repairs, MOT pre-checks, inspections and defects will appear here."}
               </Text>
-            </View>
+            </SectionCard>
           ) : (
             filteredActivity.map((item) => (
               <TouchableOpacity
@@ -481,17 +405,15 @@ export default function ActivityHistoryScreen() {
                 <View style={{ flex: 1 }}>
                   <View style={styles.activityHeaderRow}>
                     <Text
-                      style={[
+                      tone={"primary"} style={[
                         styles.activityTitle,
-                        { color: colors.text || COLORS.textHigh },
                       ]}
                     >
                       {item.title}
                     </Text>
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.activityDate,
-                        { color: colors.textMuted || COLORS.textLow },
                       ]}
                     >
                       {formatDate(item.date)}
@@ -499,9 +421,8 @@ export default function ActivityHistoryScreen() {
                   </View>
                   {!!item.vehicle && (
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.activityVehicle,
-                        { color: colors.textMuted || COLORS.textMid },
                       ]}
                     >
                       {item.vehicle}
@@ -509,9 +430,8 @@ export default function ActivityHistoryScreen() {
                   )}
                   {!!item.subtitle && (
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.activitySubtitle,
-                        { color: colors.textMuted || COLORS.textMid },
                       ]}
                       numberOfLines={2}
                     >
@@ -530,243 +450,83 @@ export default function ActivityHistoryScreen() {
               </TouchableOpacity>
             ))
           )}
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
 function SummaryItem({ label, value, colors }) {
   return (
     <View style={styles.summaryItem}>
-      <Text style={[styles.summaryValue, { color: colors.text || COLORS.textHigh }]}>
+      <Text tone={"primary"} style={[styles.summaryValue]}>
         {value}
       </Text>
-      <Text style={[styles.summaryLabel, { color: colors.textMuted || COLORS.textMid }]}>
+      <Text tone={"muted"} style={[styles.summaryLabel]}>
         {label}
       </Text>
     </View>
   );
 }
 
-function FilterRow({ label, value, options, onChange, colors }) {
+function FilterRow({ label, value, options, onChange, colors, horizontal = false }) {
+  const chips = options.map(([optionValue, optionLabel]) => {
+    const active = value === optionValue;
+    return (
+      <TouchableOpacity
+        key={optionValue}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${optionLabel}`}
+        accessibilityState={{ selected: active }}
+        style={[
+          styles.filterChip,
+          {
+            borderColor: active
+              ? COLORS.primaryAction
+              : colors.border || COLORS.border,
+            backgroundColor: active
+              ? getServiceStatusColors("danger").background
+              : colors.surface || COLORS.card,
+          },
+        ]}
+        onPress={() => onChange(optionValue)}
+        activeOpacity={0.85}
+      >
+        <Text
+          style={[
+            styles.filterChipText,
+            {
+              color: active
+                ? getServiceStatusColors("danger").onBackground
+                : colors.textMuted || COLORS.textMid,
+            },
+          ]}
+        >
+          {optionLabel}
+        </Text>
+      </TouchableOpacity>
+    );
+  });
   return (
     <View style={styles.filterBlock}>
       <Text
-        style={[
+        tone={"muted"} style={[
           styles.filterLabel,
-          { color: colors.textMuted || COLORS.textMid },
         ]}
       >
         {label}
       </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterChipsContent}
-      >
-        {options.map(([optionValue, optionLabel]) => {
-          const active = value === optionValue;
-          return (
-            <TouchableOpacity
-              key={optionValue}
-              style={[
-                styles.filterChip,
-                {
-                  borderColor: active
-                    ? COLORS.primaryAction
-                    : colors.border || COLORS.border,
-                  backgroundColor: active
-                    ? "rgba(237,28,37,0.18)"
-                    : colors.surface || COLORS.card,
-                },
-              ]}
-              onPress={() => onChange(optionValue)}
-              activeOpacity={0.85}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  {
-                    color: active
-                      ? COLORS.textHigh
-                      : colors.textMuted || COLORS.textMid,
-                  },
-                ]}
-              >
-                {optionLabel}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {horizontal ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.filterChipsContent, styles.filterChipsSingleLine]}
+        >
+          {chips}
+        </ScrollView>
+      ) : (
+        <View style={styles.filterChipsContent}>{chips}</View>
+      )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 36,
-  },
-  summaryCard: {
-    flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    marginBottom: 10,
-  },
-  summaryItem: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  summaryValue: {
-    fontSize: 17,
-    fontWeight: "800",
-  },
-  summaryLabel: {
-    fontSize: 10,
-  },
-  filterCard: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 12,
-  },
-  searchBox: {
-    minHeight: 38,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    marginBottom: 7,
-  },
-  searchInput: {
-    flex: 1,
-    minHeight: 36,
-    fontSize: 13,
-  },
-  filterBlock: {
-    marginTop: 5,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  filterLabel: {
-    width: 42,
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  filterChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 7,
-  },
-  filterChipsContent: {
-    paddingRight: 18,
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  activityCard: {
-    flexDirection: "row",
-    position: "relative",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-  },
-  iconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-    backgroundColor: COLORS.primaryAction,
-  },
-  activityHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  activityTitle: {
-    flex: 1,
-    paddingRight: 10,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  activityDate: {
-    maxWidth: 112,
-    fontSize: 11,
-    textAlign: "right",
-  },
-  activityVehicle: {
-    marginTop: 3,
-    fontSize: 12,
-  },
-  activitySubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-    paddingRight: 12,
-  },
-  cardChevron: {
-    position: "absolute",
-    right: 0,
-    bottom: 0,
-  },
-  emptyState: {
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 24,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "center",
-  },
-});

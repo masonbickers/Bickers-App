@@ -25,6 +25,11 @@ Set these in Expo `extra` or `EXPO_PUBLIC_*` env vars:
 - `syncTimeoutMs` / `EXPO_PUBLIC_SYNC_TIMEOUT_MS`: bridge request timeout (default `10000`).
 - `syncApiBaseUrl` / `EXPO_PUBLIC_SYNC_API_URL`: optional external bridge API base URL.
 - `appEnv` / `EXPO_PUBLIC_APP_ENV`: `development`, `staging`, or `production`.
+- `EXPO_PUBLIC_WEB_URL`: the verified public HTTPS origin of this Expo web app. Set it before a web release to enable absolute social preview image URLs. Do not point it at the separate bookings or marketing website.
+
+Web exports include route titles, descriptions and British English language metadata. Employee pages are marked `noindex, nofollow`, and the public route sitemap is disabled. `public/social-preview.png` reuses the existing Bickers Action logo; its Open Graph URL is emitted only when `EXPO_PUBLIC_WEB_URL` is a valid public HTTPS origin.
+
+Release builds reject insecure or loopback API and sync bridge destinations, even when their environment label is accidentally left as development. Finance website links require a public HTTPS destination. Explicit development emulator URLs remain available for local tests.
 
 Set these on the deployed API server:
 
@@ -92,3 +97,9 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+### Error monitoring
+
+Release builds use Sentry (`aurex-design/react-native`) with employee-data filtering and replay/tracing disabled. The SDK requires a fresh native build starting at version 5.0.13; do not publish it to older binaries. Source maps upload during EAS builds using the sensitive project variable `SENTRY_AUTH_TOKEN` (production/preview). Never prefix that token with `EXPO_PUBLIC_` or commit it.
+
+After an OTA export, upload the matching source maps with `npx sentry-expo-upload-sourcemaps dist`. A manual ingestion-only test is `node --experimental-default-type=module scripts/monitoring/sentry-smoke-test.mjs`; it creates a synthetic issue/alert and uses no employee records. It does not substitute for testing a crash on the release binary. See `docs/launch-checklist-2026-10-13.md` for validation and remaining email/device checks.

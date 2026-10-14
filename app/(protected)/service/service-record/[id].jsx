@@ -1,39 +1,44 @@
+import Field from "../../../../components/ui/RecordDetailRow";
+import { routeColors } from "../../../../lib/design/routePresentation/service-service-record-id-jsx.js";
+import { styles } from "../../../../lib/design/screenStyles/service-service-record-id-jsx.js";
+import { Divider, AppText as Text, AppPressable as TouchableOpacity } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS } from "../../../../lib/design/semantics";
 // app/(protected)/service/service-record/[id].jsx
 import { Feather } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { deleteDoc, deleteField, doc, getDoc, updateDoc } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams,
+  useRouter } from "expo-router";
+import { deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  updateDoc } from "firebase/firestore";
+import { useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
 
 import { db } from "../../../../firebaseConfig";
 import { useServiceCacheActions, useServiceCollection } from "../../../../hooks/useServiceData";
+import {
+  findVehicleRecord,
+  getVehicleDisplayName,
+  getVehicleRegistration,
+} from "../../../../lib/fleetSchema";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  chipBg: "#262626",
-  primaryAction: "#ED1C25",
-};
+import { designTokens as t } from "../../../../lib/design/tokens";
+import { formatServiceRecordDate } from "../../../../lib/serviceRecordDate";
+import PageShell from "../../../../components/layout/PageShell";
 
 const CHECK_STATUS_META = {
-  green: { label: "Green", color: "#22C55E" },
-  amber: { label: "Amber", color: "#F59E0B" },
-  red: { label: "Red", color: "#EF4444" },
+  green: { label: "Green", color: routeColors.hex_22c55e_740if4 },
+  amber: { label: "Amber", color: routeColors.hex_f59e0b_4zbh7f },
+  red: { label: "Red", color: routeColors.hex_ef4444_4oizhh },
 };
 
 const WHEEL_POSITIONS = [
@@ -112,45 +117,11 @@ function getBrakeWearStatus(value) {
   return "red";
 }
 
-function toDateMaybe(value) {
-  if (!value) return null;
-  if (value.toDate) return value.toDate();
-  if (typeof value === "string" || value instanceof String) {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (value instanceof Date) return value;
-  return null;
-}
-
-function formatDateLong(value) {
-  const d = toDateMaybe(value);
-  if (!d) return "";
-  return d.toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDateShort(value) {
-  const d = toDateMaybe(value);
-  if (!d) return "";
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-  });
-}
-
 function formatFieldValue(value) {
   if (value === null || value === undefined || value === "") return "—";
 
   if (typeof value === "object") {
-    const d = typeof value.toDate === "function" ? value.toDate() : null;
-    return d ? formatDateShort(d) : "—";
+    return formatServiceRecordDate(value) || "—";
   }
 
   const text = String(value);
@@ -158,7 +129,7 @@ function formatFieldValue(value) {
     /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s].*)?$/.test(text) ||
     /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(text);
 
-  if (looksLikeDate) return formatDateShort(text) || text;
+  if (looksLikeDate) return formatServiceRecordDate(text) || text;
   return text || "—";
 }
 
@@ -168,6 +139,7 @@ export default function ServiceRecordViewScreen() {
   const { colors } = useTheme();
   const { removeServiceRow } = useServiceCacheActions();
   const recordsResource = useServiceCollection("serviceRecords");
+  const vehiclesResource = useServiceCollection("vehicles");
 
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -182,8 +154,12 @@ export default function ServiceRecordViewScreen() {
   }, [id, recordsResource.data, recordsResource.isInitialLoading]);
 
   const title = record?.serviceType || "Service record";
-  const vehicleName = record?.vehicleName || "Vehicle";
-  const reg = record?.registration || "";
+  const matchedVehicle = findVehicleRecord(record, vehiclesResource.data);
+  const vehicleName = getVehicleDisplayName(
+    matchedVehicle || record,
+    vehiclesResource.data
+  );
+  const reg = getVehicleRegistration(matchedVehicle || record) || "";
   const serviceFormNumber = record?.serviceFormNumber || "";
   const wheelInspection = normalizeWheelInspection(record?.wheelInspection);
   const hasWheelInspection = hasWheelInspectionData(wheelInspection);
@@ -192,13 +168,13 @@ export default function ServiceRecordViewScreen() {
     (item) => item?.title
   );
   const monitorReport = Array.isArray(record?.monitorReport) ? record.monitorReport : [];
-  const serviceDateDisplay =
-    record?.serviceDate ||
-    record?.serviceDateOnly ||
-    record?.createdAt ||
-    null;
-
-  const fullDate = formatDateLong(serviceDateDisplay);
+  const serviceDateDisplay = [
+    record?.serviceDateOnly,
+    record?.serviceDate,
+    record?.date,
+    record?.completedDate,
+    record?.completedAt,
+  ].map((value) => formatServiceRecordDate(value)).find(Boolean) || "Not recorded";
 
   // ---- Build full checklist items from stored maps -----------------
   const checklistItems = useMemo(() => {
@@ -302,80 +278,28 @@ export default function ServiceRecordViewScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-          activeOpacity={0.8}
-        >
-          <Feather
-            name="chevron-left"
-            size={20}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.title,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-            numberOfLines={1}
-          >
-            {title}
-          </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-            numberOfLines={1}
-          >
-            {reg}
-            {reg && vehicleName ? " · " : ""}
-            {vehicleName}
-          </Text>
-        </View>
-        {record && (
-          <TouchableOpacity
-            style={[
-              styles.editButton,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.chipBg,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-            onPress={() =>
+    <PageShell header={{
+      variant: "compact",
+      title,
+      subtitle: [reg, vehicleName].filter(Boolean).join(" · "),
+      onBack: router.back,
+      action: record
+        ? {
+            label: "Edit service record",
+            icon: "edit-3",
+            variant: "secondary",
+            onPress: () =>
               router.push({
                 pathname: "/service/service-form/[id]",
                 params: {
                   id: `edit-${record.id}`,
                   recordId: record.id,
                 },
-              })
-            }
-            activeOpacity={0.85}
-          >
-            <Feather name="edit-3" size={15} color={colors.text || COLORS.textHigh} />
-            <Text style={[styles.editButtonText, { color: colors.text || COLORS.textHigh }]}>
-              Edit
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+              }),
+          }
+        : undefined,
+    }}>
+      {/* HEADER */}
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -384,9 +308,8 @@ export default function ServiceRecordViewScreen() {
             color={colors.textMuted || COLORS.textMid}
           />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading service record…
@@ -395,36 +318,22 @@ export default function ServiceRecordViewScreen() {
       ) : !record ? (
         <View style={styles.loadingContainer}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.loadingText,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Service record not found.
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* SUMMARY CARD */}
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+        <>
+          {/* SERVICE DETAILS */}
+          <View style={styles.section}>
             <View className="summaryHeader" style={styles.summaryHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.mainTitle, { color: colors.text || COLORS.textHigh }]}>
-                  {title}
+                <Text tone={"primary"} style={[styles.sectionTitle]}>
+                  Service details
                 </Text>
-                {!!fullDate && (
-                  <Text style={[styles.summaryMeta, { color: colors.textMuted || COLORS.textMid }]}>
-                    {fullDate}
-                  </Text>
-                )}
               </View>
               {typeof record.odometer === "number" && (
                 <View
@@ -440,45 +349,37 @@ export default function ServiceRecordViewScreen() {
                     name="activity"
                     size={12}
                     color={colors.textMuted || COLORS.textMid}
-                    style={{ marginRight: 6 }}
+                    style={{ marginRight: t.spacing.xxs }}
                   />
-                  <Text style={[styles.chipText, { color: colors.textMuted || COLORS.textMid }]}>
+                  <Text tone={"muted"} style={[styles.chipText]}>
                     {record.odometer.toLocaleString("en-GB")} mi
                   </Text>
                 </View>
               )}
             </View>
 
-            <View style={[styles.divider, { backgroundColor: colors.border || COLORS.border }]} />
+            <Divider variant="record" layoutStyle={styles.divider} />
 
             <Field
               label="Vehicle"
-              value={`${vehicleName}${reg ? ` · ${reg}` : ""}`}
+              value={formatFieldValue(`${vehicleName}${reg ? ` · ${reg}` : ""}`)}
             />
-            <Field label="Service form no." value={serviceFormNumber || "—"} />
-            <Field label="Service type" value={record.serviceType} />
-            <Field label="Service date" value={fullDate} />
+            <Field label="Service form no." value={formatFieldValue(serviceFormNumber || "—")} />
+            <Field label="Service type" value={formatFieldValue(record.serviceType)} />
+            <Field label="Service date" value={formatFieldValue(serviceDateDisplay)} />
             <Field
               label="Next service due"
-              value={record.nextService || record.nextServiceDate || "—"}
+              value={formatFieldValue(formatServiceRecordDate(record.nextService || record.nextServiceDate) || "Not recorded")}
             />
             <Field
               label="Technician"
-              value={record.signedBy || "Not recorded"}
+              value={formatFieldValue(record.signedBy || "Not recorded")}
             />
           </View>
 
           {/* WORKSHOP NOTES */}
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
-            <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <View style={styles.section}>
+            <Text tone={"primary"} style={[styles.sectionTitle]}>
               Workshop notes
             </Text>
             <NoteField
@@ -493,22 +394,12 @@ export default function ServiceRecordViewScreen() {
           </View>
 
           {/* TYRES & BRAKES FOOTPRINT */}
-          <View
-            style={[
-              hasWheelInspection ? styles.card : styles.emptyCard,
-              {
-                backgroundColor: hasWheelInspection
-                  ? colors.surfaceAlt || COLORS.card
-                  : "transparent",
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
-            <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <View style={styles.section}>
+            <Text tone={"primary"} style={[styles.sectionTitle]}>
               Tyres & brakes footprint
             </Text>
             {!hasWheelInspection ? (
-              <Text style={[styles.checkSummaryText, { color: colors.textMuted || COLORS.textMid }]}>
+              <Text tone={"muted"} style={[styles.checkSummaryText]}>
                 No wheel inspection data saved for this service.
               </Text>
             ) : (
@@ -530,7 +421,7 @@ export default function ServiceRecordViewScreen() {
                         <View style={styles.wheelRecordBadge}>
                           <Text style={styles.wheelRecordBadgeText}>{wheel.shortLabel}</Text>
                         </View>
-                        <Text style={[styles.wheelRecordTitle, { color: colors.text || COLORS.textHigh }]}>
+                        <Text tone={"primary"} style={[styles.wheelRecordTitle]}>
                           {wheel.label}
                         </Text>
                       </View>
@@ -549,11 +440,10 @@ export default function ServiceRecordViewScreen() {
                       />
                       {item.note ? (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.wheelRecordNote,
                             {
                               borderTopColor: colors.border || COLORS.border,
-                              color: colors.textMuted || COLORS.textMid,
                             },
                           ]}
                         >
@@ -578,7 +468,7 @@ export default function ServiceRecordViewScreen() {
                 },
               ]}
             >
-              <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.sectionTitle]}>
                 Monitor report
               </Text>
               {monitorReport.map((item) => (
@@ -593,10 +483,10 @@ export default function ServiceRecordViewScreen() {
                     <Text style={styles.monitorRecordBadgeText}>M</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.monitorRecordTitle, { color: colors.text || COLORS.textHigh }]}>
+                    <Text tone={"primary"} style={[styles.monitorRecordTitle]}>
                       {item.title}
                     </Text>
-                    <Text style={[styles.monitorRecordDetails, { color: colors.textMuted || COLORS.textLow }]}>
+                    <Text tone={"muted"} style={[styles.monitorRecordDetails]}>
                       {item.details}
                     </Text>
                   </View>
@@ -616,7 +506,7 @@ export default function ServiceRecordViewScreen() {
                 },
               ]}
             >
-              <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.sectionTitle]}>
                 Defect report actions
               </Text>
               {serviceDefectActionList.map((item) => (
@@ -628,10 +518,10 @@ export default function ServiceRecordViewScreen() {
                   ]}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.defectActionRecordTitle, { color: colors.text || COLORS.textHigh }]}>
+                    <Text tone={"primary"} style={[styles.defectActionRecordTitle]}>
                       {item.title}
                     </Text>
-                    <Text style={[styles.defectActionRecordMeta, { color: colors.textMuted || COLORS.textLow }]}>
+                    <Text tone={"muted"} style={[styles.defectActionRecordMeta]}>
                       {item.value}
                       {item.unit} recorded
                       {item.defectReportId ? ` · Report ${item.defectReportId}` : ""}
@@ -663,11 +553,11 @@ export default function ServiceRecordViewScreen() {
               },
             ]}
           >
-            <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+            <Text tone={"primary"} style={[styles.sectionTitle]}>
               Checklist details
             </Text>
             {checklistItems.length === 0 ? (
-              <Text style={[styles.checkSummaryText, { color: colors.textMuted || COLORS.textMid }]}>
+              <Text tone={"muted"} style={[styles.checkSummaryText]}>
                 No checklist data saved for this service.
               </Text>
             ) : (
@@ -707,7 +597,7 @@ export default function ServiceRecordViewScreen() {
                           <View style={styles.checkIconEmpty} />
                         )}
                       </View>
-                      <Text style={[styles.checkLabel, { color: colors.textMuted || COLORS.textMid }]}>
+                      <Text tone={"muted"} style={[styles.checkLabel]}>
                         {item.label}
                       </Text>
                     </View>
@@ -715,7 +605,7 @@ export default function ServiceRecordViewScreen() {
                     {/* Right: status */}
                     <View style={styles.checkRight}>
                       {item.na ? (
-                        <Text style={[styles.checkRightText, { color: colors.textMuted || COLORS.textLow }]}>
+                        <Text tone={"muted"} style={[styles.checkRightText]}>
                           N/A
                         </Text>
                       ) : item.status ? (
@@ -728,7 +618,7 @@ export default function ServiceRecordViewScreen() {
                           {CHECK_STATUS_META[item.status].label}
                         </Text>
                       ) : (
-                        <Text style={[styles.checkRightText, { color: colors.textMuted || COLORS.textLow }]}>
+                        <Text tone={"muted"} style={[styles.checkRightText]}>
                           No status
                         </Text>
                       )}
@@ -737,7 +627,7 @@ export default function ServiceRecordViewScreen() {
 
                   {/* Note for this check */}
                   {item.note ? (
-                    <Text style={[styles.checkNoteText, { color: colors.textMuted || COLORS.textMid }]}>
+                    <Text tone={"muted"} style={[styles.checkNoteText]}>
                       {item.note}
                     </Text>
                   ) : null}
@@ -747,7 +637,7 @@ export default function ServiceRecordViewScreen() {
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
-                      style={{ marginTop: 6 }}
+                      style={{ marginTop: t.spacing.xxs }}
                     >
                       {item.photos.map((uri) => (
                         <View
@@ -779,13 +669,13 @@ export default function ServiceRecordViewScreen() {
                 },
               ]}
             >
-              <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.sectionTitle]}>
                 Photos
               </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                style={{ marginTop: 8 }}
+                style={{ marginTop: t.spacing.xs }}
               >
                 {(record.photoURIs || record.photoURLs).map((uri) => (
                   <View key={uri} style={styles.photoThumbWrapper}>
@@ -810,14 +700,14 @@ export default function ServiceRecordViewScreen() {
               <ActivityIndicator
                 size="small"
                 color={COLORS.primaryAction}
-                style={{ marginRight: 8 }}
+                style={{ marginRight: t.spacing.xs }}
               />
             ) : (
               <Feather
                 name="trash-2"
                 size={17}
                 color={COLORS.primaryAction}
-                style={{ marginRight: 8 }}
+                style={{ marginRight: t.spacing.xs }}
               />
             )}
             <Text style={styles.deleteButtonText}>
@@ -826,38 +716,25 @@ export default function ServiceRecordViewScreen() {
           </TouchableOpacity>
 
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
 /* SMALL REUSABLE FIELD */
 
-function Field({ label, value }) {
-  const { colors } = useTheme();
 
-  return (
-    <View style={styles.fieldRow}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textLow }]}>
-        {label}
-      </Text>
-      <Text style={[styles.fieldValue, { color: colors.text || COLORS.textMid }]}>
-        {formatFieldValue(value)}
-      </Text>
-    </View>
-  );
-}
 
 function NoteField({ label, value }) {
-  const { colors } = useTheme();
+
 
   return (
     <View style={styles.noteField}>
-      <Text style={[styles.noteLabel, { color: colors.textMuted || COLORS.textLow }]}>
+      <Text tone={"muted"} style={[styles.noteLabel]}>
         {label}
       </Text>
-      <Text style={[styles.noteValue, { color: colors.text || COLORS.textMid }]}>
+      <Text tone={"primary"} style={[styles.noteValue]}>
         {formatFieldValue(value)}
       </Text>
     </View>
@@ -865,21 +742,21 @@ function NoteField({ label, value }) {
 }
 
 function WheelRecordMetric({ label, value, suffix, status }) {
-  const { colors } = useTheme();
+
   const displayValue = String(value || "").trim();
   const statusMeta = CHECK_STATUS_META[status] || null;
 
   return (
     <View style={styles.wheelRecordMetric}>
       <View style={styles.wheelRecordMetricLabelRow}>
-        <Text style={[styles.wheelRecordMetricLabel, { color: colors.textMuted || COLORS.textLow }]}>
+        <Text tone={"muted"} style={[styles.wheelRecordMetricLabel]}>
           {label}
         </Text>
         {statusMeta ? (
           <View style={[styles.wheelRecordStatusDot, { backgroundColor: statusMeta.color }]} />
         ) : null}
       </View>
-      <Text style={[styles.wheelRecordMetricValue, { color: colors.text || COLORS.textMid }]}>
+      <Text tone={"primary"} style={[styles.wheelRecordMetricValue]}>
         {displayValue ? `${displayValue} ${suffix}` : "—"}
       </Text>
     </View>
@@ -887,386 +764,3 @@ function WheelRecordMetric({ label, value, suffix, status }) {
 }
 
 /* STYLES */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  editButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    marginLeft: 8,
-  },
-  editButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginLeft: 5,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  subtitle: {
-    fontSize: 13,
-    marginTop: 2,
-    color: COLORS.textMid,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: COLORS.textMid,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 28,
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  emptyCard: {
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderStyle: "dashed",
-  },
-  summaryHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  mainTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  summaryMeta: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    marginTop: 2,
-  },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 999,
-    marginLeft: 10,
-  },
-  chipText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    opacity: 0.6,
-    marginVertical: 8,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-    marginBottom: 6,
-  },
-  fieldRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    color: COLORS.textLow,
-  },
-  fieldValue: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    textAlign: "right",
-    flex: 1,
-    marginLeft: 10,
-  },
-  noteField: {
-    paddingTop: 8,
-  },
-  noteLabel: {
-    fontSize: 12,
-    color: COLORS.textLow,
-    marginBottom: 3,
-  },
-  noteValue: {
-    fontSize: 13,
-    color: COLORS.textMid,
-    lineHeight: 18,
-    textAlign: "left",
-  },
-  checkSummaryText: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  wheelGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  wheelRecordCard: {
-    width: "48%",
-    minWidth: 132,
-    flexGrow: 1,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    padding: 10,
-  },
-  wheelRecordHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    marginBottom: 8,
-  },
-  wheelRecordBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  wheelRecordBadgeText: {
-    color: COLORS.textHigh,
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  wheelRecordTitle: {
-    flex: 1,
-    color: COLORS.textHigh,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  wheelRecordMetric: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 3,
-  },
-  wheelRecordMetricLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  wheelRecordMetricLabel: {
-    color: COLORS.textLow,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  wheelRecordStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  wheelRecordMetricValue: {
-    color: COLORS.textMid,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  wheelRecordNote: {
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
-    color: COLORS.textMid,
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  defectActionRecordRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  defectActionRecordTitle: {
-    color: COLORS.textHigh,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  defectActionRecordMeta: {
-    color: COLORS.textLow,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  defectActionRecordBadge: {
-    color: COLORS.textMid,
-    fontSize: 11,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-  monitorRecordRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  monitorRecordBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#F59E0B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monitorRecordBadgeText: {
-    color: COLORS.textHigh,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  monitorRecordTitle: {
-    color: COLORS.textHigh,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  monitorRecordDetails: {
-    color: COLORS.textLow,
-    fontSize: 11,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-
-  /* Checklist details */
-  checkRowWrapper: {
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.04)",
-  },
-  checkRowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  checkLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: 8,
-  },
-  checkIconWrap: {
-    marginRight: 8,
-  },
-  checkIconEmpty: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: COLORS.textLow,
-  },
-  checkIconFilled: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  naIcon: {
-    minWidth: 32,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: COLORS.textMid,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    backgroundColor: "rgba(142,142,147,0.15)",
-  },
-  naIconText: {
-    fontSize: 10,
-    color: COLORS.textMid,
-    fontWeight: "600",
-  },
-  checkLabel: {
-    flex: 1,
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  checkRight: {
-    minWidth: 70,
-    alignItems: "flex-end",
-  },
-  checkRightText: {
-    fontSize: 11,
-    color: COLORS.textLow,
-  },
-
-  checkNoteText: {
-    marginTop: 4,
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-
-  checkPhotoThumbWrapper: {
-    marginRight: 8,
-  },
-  checkPhotoThumb: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-  },
-
-  // Overall photos section
-  photoThumbWrapper: {
-    marginRight: 10,
-  },
-  photoThumb: {
-    width: 90,
-    height: 90,
-    borderRadius: 8,
-  },
-  deleteButton: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    marginTop: 10,
-  },
-  deleteButtonDisabled: {
-    opacity: 0.7,
-  },
-  deleteButtonText: {
-    color: COLORS.primaryAction,
-    fontSize: 14,
-    fontWeight: "800",
-  },
-});

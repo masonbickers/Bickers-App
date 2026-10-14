@@ -1,0 +1,22 @@
+{
+  "project": "bickers-booking",
+  "startedAt": "2026-10-03T08:33:53.640Z",
+  "targets": [
+    {
+      "kind": "firestore",
+      "release": "cloud.firestore",
+      "previousRuleset": "projects/bickers-booking/rulesets/81b8f43e-5856-4b0e-9635-b6791f31f7c4",
+      "newRuleset": "projects/bickers-booking/rulesets/0573ad89-0476-4a2b-bb71-41792cd3af3a",
+      "hash": "e7bdf3b4bdea04b7c814f1f7ada7e54642aa49ae6505173520c736ba19f9534b"
+    },
+    {
+      "kind": "storage",
+      "release": "firebase.storage/bickers-booking.firebasestorage.app",
+      "previousRuleset": "projects/bickers-booking/rulesets/3b176451-00c8-4736-91cf-4386fd5d5a7d",
+      "newRuleset": "projects/bickers-booking/rulesets/bf056989-e840-43a4-9400-8516a7eb9fa9",
+      "hash": "a4901dbee651b7fa3792586472fd5066d76a61f79392dc5be8361e249beaf690"
+    }
+  ],
+  "verified": true,
+  "verifiedAt": "2026-10-03T08:33:58.717Z"
+}

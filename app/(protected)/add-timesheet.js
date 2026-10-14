@@ -1,21 +1,25 @@
-import { useNavigation } from '@react-navigation/native';
-import { addDoc, collection } from 'firebase/firestore';
+import { getCardSurfaceStyle } from "../../lib/design/cardSurface";
+import { routeColors } from "../../lib/design/routePresentation/add-timesheet-js.js";
+import { styles } from "../../lib/design/screenStyles/add-timesheet-js.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity, TextArea } from "../../components/ui/AppPrimitives";
+import {
+  useNavigation } from '@react-navigation/native';
+import { addDoc,
+  collection } from 'firebase/firestore';
 import { useState } from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
   Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+  View } from "react-native";
 import DropDownPicker from 'react-native-dropdown-picker';
 import Icon from 'react-native-vector-icons/Feather';
 import { db } from '../../firebaseConfig';
 import { useDataCache } from '../../providers/DataCacheProvider';
+import { useAuth } from '../../providers/AuthProvider';
+import { timesheetOwnership } from '../../lib/timesheetOwnership';
 import { useTheme } from '../../providers/ThemeProvider';
+import { withAlpha } from "../../lib/design/color";
+import { designTokens as t } from "../../lib/design/tokens";
+import PageShell from "../../components/layout/PageShell";
 
 const LUNCH_DEDUCTION_MINUTES = 30;
 const ON_SET_BASIC_DAY_MINUTES = 10 * 60;
@@ -30,16 +34,6 @@ for (let h = 0; h < 24; h++) {
     const min = String(m).padStart(2, '0');
     timeOptions.push({ label: `${hour}:${min}`, value: `${hour}:${min}` });
   }
-}
-
-function withAlpha(hex, alpha) {
-  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
-  const raw = String(hex || '').replace('#', '');
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return `rgba(255,255,255,${safeAlpha})`;
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${safeAlpha})`;
 }
 
 function timeToMinutes(value) {
@@ -210,6 +204,7 @@ function computeDaySummary(entry) {
 }
 
 export default function TimesheetPage() {
+  const { employee } = useAuth();
   const { invalidate } = useDataCache();
   const { colors } = useTheme();
   const [weekData, setWeekData] = useState(
@@ -276,7 +271,6 @@ export default function TimesheetPage() {
   };
   const navigation = useNavigation();
 
-
   const getFilteredTimes = (previousValue, allowFullDay = false) => {
     if (!previousValue || allowFullDay) return timeOptions;
     return timeOptions.filter((t) => t.value > previousValue);
@@ -320,6 +314,9 @@ export default function TimesheetPage() {
     try {
       await addDoc(collection(db, 'timesheets'), {
         weekData,
+        ...timesheetOwnership(employee),
+        employeeCode: employee.userCode || '',
+        employeeName: employee.displayName || employee.name || null,
         totalHours: Number((weeklySummary.totalMinutes / 60).toFixed(2)),
         totalMinutes: weeklySummary.totalMinutes,
         summary: {
@@ -351,37 +348,17 @@ export default function TimesheetPage() {
       setShowPreview(false);
     }
   };
-  
-  
+
+
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content}>
-      {submittedMessage ? (
-  <View
-    style={[
-      styles.submittedBanner,
-      {
-        backgroundColor: withAlpha(colors.success || '#22c55e', 0.16),
-        borderColor: withAlpha(colors.success || '#22c55e', 0.42),
-      },
-    ]}
-  >
-    <Text style={[styles.submittedBannerText, { color: colors.text }]}>{submittedMessage}</Text>
-  </View>
-) : null}
-
-
-        <View
-          style={[
-            styles.heroCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
+    <PageShell appearance="grouped" mode="form" width="form" customHeader={<View
+          style={[styles.heroCard, getCardSurfaceStyle(colors)]}
         >
           <View style={styles.heroContent}>
-            <Text style={[styles.heroEyebrow, { color: colors.textMuted }]}>Payroll</Text>
-            <Text style={[styles.heroTitle, { color: colors.text }]}>Weekly Timesheet</Text>
-            <Text style={[styles.heroSubTitle, { color: colors.textMuted }]}>
+            <Text tone={"muted"} style={[styles.heroEyebrow]}>Payroll</Text>
+            <Text tone={"primary"} style={[styles.heroTitle]}>Weekly Timesheet</Text>
+            <Text tone={"muted"} style={[styles.heroSubTitle]}>
               Fill each day and submit for manager approval.
             </Text>
 
@@ -396,7 +373,7 @@ export default function TimesheetPage() {
                 ]}
               >
                 <Icon name="calendar" size={12} color={colors.textMuted} />
-                <Text style={[styles.heroMetaText, { color: colors.text }]}>
+                <Text tone={"primary"} style={[styles.heroMetaText]}>
                   {weeklySummary.filledDays}/7 filled
                 </Text>
               </View>
@@ -410,31 +387,44 @@ export default function TimesheetPage() {
                 ]}
               >
                 <Icon name="clock" size={12} color={colors.textMuted} />
-                <Text style={[styles.heroMetaText, { color: colors.text }]}>
+                <Text tone={"primary"} style={[styles.heroMetaText]}>
                   Total {formatHoursMins(weeklySummary.totalMinutes)}
                 </Text>
               </View>
             </View>
           </View>
-        </View>
+        </View>} customHeaderPlacement="fixed">
+      <>
+      {submittedMessage ? (
+  <View
+    style={[
+      styles.submittedBanner,
+      {
+        backgroundColor: withAlpha(colors.success || routeColors.hex_22c55e_74qlvk, 0.16),
+        borderColor: withAlpha(colors.success || routeColors.hex_22c55e_74qlvk, 0.42),
+      },
+    ]}
+  >
+    <Text tone={"primary"} style={[styles.submittedBannerText]}>{submittedMessage}</Text>
+  </View>
+) : null}
 
-        <View
-          style={[
-            styles.summaryCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
+
+
+        <SectionCard
+          layoutStyle={styles.summaryCard}
         >
           <View style={styles.summaryHeaderRow}>
-            <Text style={[styles.summaryTitle, { color: colors.text }]}>Summary</Text>
+            <Text tone={"primary"} style={[styles.summaryTitle]}>Summary</Text>
             <Text style={[styles.summaryTotal, { color: colors.accent }]}>
               {formatHoursMins(weeklySummary.totalMinutes)}
             </Text>
           </View>
-          <Text style={[styles.summaryMetaText, { color: colors.textMuted }]}>
+          <Text tone={"muted"} style={[styles.summaryMetaText]}>
             Gross {formatHoursMins(weeklySummary.totalGrossMinutes)} minus lunch deductions{' '}
             {formatHoursMins(weeklySummary.totalLunchDeductionMinutes)}
           </Text>
-          <Text style={[styles.summaryMetaText, { color: colors.textMuted }]}>
+          <Text tone={"muted"} style={[styles.summaryMetaText]}>
             Yard {formatHoursMins(weeklySummary.totalYardMinutes)} · Basic{' '}
             {formatHoursMins(weeklySummary.totalBasicMinutes)} · OT{' '}
             {formatHoursMins(weeklySummary.totalOvertimeMinutes)} · Travel{' '}
@@ -452,45 +442,42 @@ export default function TimesheetPage() {
                   ]}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.summaryDayLabel, { color: colors.text }]}>{day}</Text>
-                    <Text style={[styles.summaryDaySubLabel, { color: colors.textMuted }]}>
+                    <Text tone={"primary"} style={[styles.summaryDayLabel]}>{day}</Text>
+                    <Text tone={"muted"} style={[styles.summaryDaySubLabel]}>
                       {daySummary.start && daySummary.end
                         ? `${daySummary.start} - ${daySummary.end}`
                         : 'No hours entered'}
                     </Text>
                     {daySummary.lunchDeductionMinutes > 0 ? (
-                      <Text style={[styles.summaryDaySubLabel, { color: colors.textMuted }]}>
+                      <Text tone={"muted"} style={[styles.summaryDaySubLabel]}>
                         Includes 30m lunch deduction
                       </Text>
                     ) : null}
                     {daySummary.breakdownLines.length > 0 ? (
-                      <Text style={[styles.summaryDaySubLabel, { color: colors.textMuted }]}>
+                      <Text tone={"muted"} style={[styles.summaryDaySubLabel]}>
                         {daySummary.breakdownLines.join(' · ')}
                       </Text>
                     ) : null}
                   </View>
-                  <Text style={[styles.summaryDayHours, { color: colors.text }]}>
+                  <Text tone={"primary"} style={[styles.summaryDayHours]}>
                     {formatHoursMins(daySummary.netMinutes)}
                   </Text>
                 </View>
               );
             })}
           </View>
-        </View>
+        </SectionCard>
 
         {daysOfWeek.map((day, dayIndex) => (
-          <View
+          <SectionCard
             key={day}
-            style={[
-              styles.dayCard,
-              { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
-            ]}
+            tone="subtle" layoutStyle={styles.dayCard}
           >
-            <Text style={[styles.dayTitle, { color: colors.text }]}>{day}</Text>
+            <Text tone={"primary"} style={[styles.dayTitle]}>{day}</Text>
 
             {/* Type */}
             <View style={[styles.fieldBlock, { zIndex: 5000 - dayIndex * 10 }]}>
-              <Text style={[styles.label, { color: colors.textMuted }]}>Type:</Text>
+              <Text tone={"muted"} style={[styles.label]}>Type:</Text>
               <DropDownPicker
                 open={openDropdowns[`${day}_type`] || false}
                 value={weekData[day].type}
@@ -527,7 +514,7 @@ export default function TimesheetPage() {
 
                   return (
                     <View key={field} style={[styles.fieldBlock, { zIndex: 5000 - dayIndex * 10 - idx - 1 }]}>
-                      <Text style={[styles.label, { color: colors.textMuted }]}>
+                      <Text tone={"muted"} style={[styles.label]}>
                         {field === 'startTime' ? 'Start Time:' : 'End Time:'}
                       </Text>
                       <DropDownPicker
@@ -562,7 +549,7 @@ export default function TimesheetPage() {
                     const previousValue = previousField ? weekData[day].times[previousField] : null;
                     const allowFullDay = field === 'wrapTime' || field === 'arriveBack';
                     const filteredTimes = getFilteredTimes(previousValue, allowFullDay);
-                    
+
 
                     const labelMap = {
                       leaveTime: 'Leave Time:',
@@ -575,7 +562,7 @@ export default function TimesheetPage() {
 
                     return (
                       <View key={field} style={[styles.fieldBlock, { zIndex: 5000 - dayIndex * 10 - idx - 1 }]}>
-                        <Text style={[styles.label, { color: colors.textMuted }]}>{labelMap[field]}</Text>
+                        <Text tone={"muted"} style={[styles.label]}>{labelMap[field]}</Text>
                         <DropDownPicker
                           open={openDropdowns[`${day}_${field}`] || false}
                           value={weekData[day].times[field]}
@@ -607,7 +594,7 @@ export default function TimesheetPage() {
             {/* Toggles */}
             {weekData[day].type === 'On Set' && (
               <>
-                
+
 
                 <View style={styles.switchRow}>
                   <View style={styles.lunchToggleRow}>
@@ -651,7 +638,7 @@ export default function TimesheetPage() {
                   </View>
                 </View>
                 <View style={styles.switchRow}>
-                  <Text style={[styles.label, { color: colors.textMuted }]}>Overnight:</Text>
+                  <Text tone={"muted"} style={[styles.label]}>Overnight:</Text>
                   <Switch
                     value={weekData[day].overnight}
                     onValueChange={(value) => handleToggle(day, 'overnight', value)}
@@ -664,7 +651,7 @@ export default function TimesheetPage() {
                 </View>
                 {day === 'Saturday' && (
                   <View style={styles.switchRow}>
-                    <Text style={[styles.label, { color: colors.textMuted }]}>Saturday Supervisor:</Text>
+                    <Text tone={"muted"} style={[styles.label]}>Saturday Supervisor:</Text>
                     <Switch
                       value={weekData[day].saturdaySupervisor}
                       onValueChange={(value) => handleToggle(day, 'saturdaySupervisor', value)}
@@ -679,7 +666,7 @@ export default function TimesheetPage() {
 
                 {day === 'Sunday' && (
                   <View style={styles.switchRow}>
-                    <Text style={[styles.label, { color: colors.textMuted }]}>Sunday Supervisor:</Text>
+                    <Text tone={"muted"} style={[styles.label]}>Sunday Supervisor:</Text>
                     <Switch
                       value={weekData[day].sundaySupervisor}
                       onValueChange={(value) => handleToggle(day, 'sundaySupervisor', value)}
@@ -698,20 +685,14 @@ export default function TimesheetPage() {
 
             {/* Notes */}
             <View style={styles.fieldBlock}>
-              <Text style={[styles.label, { color: colors.textMuted }]}>Notes:</Text>
-              <TextInput
-                style={[
-                  styles.notesInput,
-                  { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border },
-                ]}
+              <TextArea
+                label="Notes:"
                 value={weekData[day].notes}
                 onChangeText={(text) => handleNotesChange(day, text)}
                 placeholder="Enter notes..."
-                placeholderTextColor={colors.textMuted}
-                multiline
               />
             </View>
-          </View>
+          </SectionCard>
         ))}
 
 <TouchableOpacity
@@ -721,79 +702,69 @@ export default function TimesheetPage() {
   <Text style={[styles.confirmButtonText, { color: colors.surface }]}>Preview & Continue</Text>
 </TouchableOpacity>
 
-
       {showPreview ? (
-      <View
-        style={[
-          styles.previewContainer,
-          { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
-        ]}
+      <SectionCard
+        tone="subtle" layoutStyle={styles.previewContainer}
       >
-  <Text style={[styles.previewHeader, { color: colors.text }]}>Preview Timesheet</Text>
+  <Text tone={"primary"} style={[styles.previewHeader]}>Preview Timesheet</Text>
   <View
-    style={[
-      styles.previewSummaryCard,
-      { backgroundColor: colors.surface, borderColor: colors.border },
-    ]}
+    style={[styles.previewSummaryCard, getCardSurfaceStyle(colors)]}
   >
-    <Text style={[styles.previewSummaryTitle, { color: colors.text }]}>
+    <Text tone={"primary"} style={[styles.previewSummaryTitle]}>
       Total: {formatHoursMins(weeklySummary.totalMinutes)}
     </Text>
-    <Text style={[styles.previewSummaryText, { color: colors.textMuted }]}>
+    <Text tone={"muted"} style={[styles.previewSummaryText]}>
       Gross {formatHoursMins(weeklySummary.totalGrossMinutes)} minus lunch deductions{' '}
       {formatHoursMins(weeklySummary.totalLunchDeductionMinutes)}
     </Text>
-    <Text style={[styles.previewSummaryText, { color: colors.textMuted }]}>
+    <Text tone={"muted"} style={[styles.previewSummaryText]}>
       Yard {formatHoursMins(weeklySummary.totalYardMinutes)} · Basic{' '}
       {formatHoursMins(weeklySummary.totalBasicMinutes)} · OT{' '}
       {formatHoursMins(weeklySummary.totalOvertimeMinutes)} · Travel{' '}
       {formatHoursMins(weeklySummary.totalTravelMinutes)}
     </Text>
   </View>
-  <ScrollView>
+  <View>
     {daysOfWeek.map((day) => (
       <View
         key={day}
-        style={[
-          styles.previewCard,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
+        style={[styles.previewCard, getCardSurfaceStyle(colors)]}
       >
-        <Text style={[styles.previewDay, { color: colors.text }]}>{day}</Text>
-        <Text style={[styles.previewText, { color: colors.textMuted }]}>
+        <Text tone={"primary"} style={[styles.previewDay]}>{day}</Text>
+        <Text tone={"muted"} style={[styles.previewText]}>
           Type: {weeklySummary.byDay[day].resolvedType}
         </Text>
         {Object.entries(weekData[day].times).map(([field, value]) => (
-          <Text key={field} style={[styles.previewText, { color: colors.textMuted }]}>
+          <Text key={field} tone={"muted"} style={[styles.previewText]}>
             {labelForField(field)}: {value || '—'}
           </Text>
         ))}
-        <Text style={[styles.previewText, { color: colors.textMuted }]}>
+        <Text tone={"muted"} style={[styles.previewText]}>
           Worked: {formatHoursMins(weeklySummary.byDay[day].netMinutes)}
         </Text>
         {weeklySummary.byDay[day].breakdownLines.length > 0 ? (
-          <Text style={[styles.previewText, { color: colors.textMuted }]}>
+          <Text tone={"muted"} style={[styles.previewText]}>
             Breakdown: {weeklySummary.byDay[day].breakdownLines.join(' · ')}
           </Text>
         ) : null}
         {weeklySummary.byDay[day].lunchDeductionMinutes > 0 ? (
-          <Text style={[styles.previewText, { color: colors.textMuted }]}>
+          <Text tone={"muted"} style={[styles.previewText]}>
             Lunch deduction: {formatHoursMins(weeklySummary.byDay[day].lunchDeductionMinutes)}
           </Text>
         ) : null}
-        <Text style={[styles.previewText, { color: colors.textMuted }]}>Night Supervisor: {weekData[day].nightSupervisor ? 'Yes' : 'No'}</Text>
-        <Text style={[styles.previewText, { color: colors.textMuted }]}>Lunch break: {weekData[day].lunch ? 'Taken' : 'Not taken'}</Text>
-        <Text style={[styles.previewText, { color: colors.textMuted }]}>Overnight: {weekData[day].overnight ? 'Yes' : 'No'}</Text>
+        <Text tone={"muted"} style={[styles.previewText]}>Night Supervisor: {weekData[day].nightSupervisor ? 'Yes' : 'No'}</Text>
+        <Text tone={"muted"} style={[styles.previewText]}>Lunch break: {weekData[day].lunch ? 'Taken' : 'Not taken'}</Text>
+        <Text tone={"muted"} style={[styles.previewText]}>Overnight: {weekData[day].overnight ? 'Yes' : 'No'}</Text>
         {day === 'Saturday' && (
-          <Text style={[styles.previewText, { color: colors.textMuted }]}>Saturday Supervisor: {weekData[day].saturdaySupervisor ? 'Yes' : 'No'}</Text>
+          <Text tone={"muted"} style={[styles.previewText]}>Saturday Supervisor: {weekData[day].saturdaySupervisor ? 'Yes' : 'No'}</Text>
         )}
         {day === 'Sunday' && (
-          <Text style={[styles.previewText, { color: colors.textMuted }]}>Sunday Supervisor: {weekData[day].sundaySupervisor ? 'Yes' : 'No'}</Text>
+          <Text tone={"muted"} style={[styles.previewText]}>Sunday Supervisor: {weekData[day].sundaySupervisor ? 'Yes' : 'No'}</Text>
         )}
-        <Text style={[styles.previewText, { color: colors.textMuted }]}>Notes: {weekData[day].notes || '—'}</Text>
+        <Text tone={"muted"} style={[styles.previewText]}>Notes: {weekData[day].notes || '—'}</Text>
       </View>
     ))}
-  </ScrollView>
+  </View>
 
   <TouchableOpacity
     style={[styles.confirmButton, { backgroundColor: colors.accent, borderColor: colors.accent }]}
@@ -801,7 +772,7 @@ export default function TimesheetPage() {
         await submitTimesheetToFirebase();
         navigation.navigate('Timesheet'); // <- use your screen name here
     }}
-      
+
   >
     <Text style={[styles.confirmButtonText, { color: colors.surface }]}>Confirm & Send</Text>
   </TouchableOpacity>
@@ -813,265 +784,12 @@ export default function TimesheetPage() {
     ]}
     onPress={() => setShowPreview(false)}
   >
-    <Text style={[styles.backButtonText, { color: colors.text }]}>Back to Edit</Text>
+    <Text tone={"primary"} style={[styles.backButtonText]}>Back to Edit</Text>
   </TouchableOpacity>
-</View>
+</SectionCard>
       ) : null}
 
-      </ScrollView>
-    </SafeAreaView>
+      </>
+    </PageShell>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0b0b0b' },
-  content: { padding: 12, paddingBottom: 24, overflow: 'visible' },
-
-  heroCard: {
-    position: 'relative',
-    borderRadius: 18,
-    borderWidth: 1,
-    marginBottom: 14,
-    overflow: 'hidden',
-  },
-  heroContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    fontWeight: '800',
-  },
-  heroTitle: {
-    marginTop: 3,
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: 0.2,
-  },
-  heroSubTitle: {
-    marginTop: 3,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '600',
-  },
-  heroMetaRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  heroMetaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  heroMetaText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  dayCard: {
-    borderWidth: 1,
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 14,
-  },
-  dayTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 12,
-  },
-  fieldBlock: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  dropdown: {
-    borderWidth: 1,
-  },
-  dropdownContainer: {
-    borderWidth: 1,
-  },
-  dropdownText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-  },
-  lunchToggleRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  lunchChoiceText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  lunchChoiceLeft: {
-    flex: 1,
-    textAlign: 'right',
-  },
-  lunchChoiceRight: {
-    flex: 1,
-    textAlign: 'left',
-  },
-  lunchChoiceActive: {
-    fontWeight: '900',
-  },
-  notesInput: {
-    borderRadius: 10,
-    padding: 10,
-    minHeight: 60,
-    textAlignVertical: 'top',
-    borderWidth: 1,
-  },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-  },
-  previewContainer: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    marginTop: 12,
-  },
-  previewHeader: {
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 12,
-  },
-  previewSummaryCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  previewSummaryTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  previewSummaryText: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  previewCard: {
-    borderWidth: 1,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  previewDay: {
-    fontSize: 16,
-    fontWeight: '900',
-    marginBottom: 6,
-  },
-  previewText: {
-    fontSize: 13,
-    marginBottom: 2,
-    fontWeight: '600',
-  },
-  summaryCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 14,
-  },
-  summaryHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  summaryTotal: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  summaryMetaText: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  summaryGrid: {
-    gap: 8,
-    marginTop: 10,
-  },
-  summaryDayRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  summaryDayLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  summaryDaySubLabel: {
-    marginTop: 2,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  summaryDayHours: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  confirmButton: {
-    borderWidth: 1,
-    paddingVertical: 12,
-    borderRadius: 999,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  confirmButtonText: {
-    fontWeight: '900',
-    fontSize: 14,
-  },
-  backButton: {
-    borderWidth: 1,
-    paddingVertical: 12,
-    borderRadius: 999,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  backButtonText: {
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  
-  submittedBanner: {
-    borderWidth: 1,
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 12,
-  },
-  submittedBannerText: {
-    textAlign: 'center',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  
-});

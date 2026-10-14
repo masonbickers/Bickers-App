@@ -3,6 +3,8 @@ import { useCallback, useMemo } from "react";
 
 import { db } from "../firebaseConfig";
 import { isBookingVisibleToEmployee } from "../lib/bookingVisibility";
+import { fetchEmployeeHistory } from "../lib/hrHistoryApi";
+import { updateHistoryCache } from "../lib/privateHistoryClient";
 import { removeCollectionRow, upsertCollectionRow } from "../lib/sessionCache";
 import { useAuth } from "../providers/AuthProvider";
 import { useCachedResource, useDataCache } from "../providers/DataCacheProvider";
@@ -15,9 +17,12 @@ function belongsToCompany(row, companyId) {
 }
 
 async function fetchCollection(collectionName, companyId) {
-  const snapshot = await getDocs(collection(db, collectionName));
+  if (!companyId) return EMPTY_ROWS;
+  const snapshot = await getDocs(
+    query(collection(db, collectionName), where("companyId", "==", companyId))
+  );
   return snapshot.docs
-    .map((document) => ({ id: document.id, ...document.data() }))
+    .map((document) => ({ ...document.data(), id: document.id }))
     .filter((row) => belongsToCompany(row, companyId));
 }
 
@@ -25,7 +30,7 @@ export function useCompanyCollection(collectionName, options = {}) {
   const { employee, isAuthed, loading } = useAuth();
   const { mutate } = useDataCache();
   const companyId = String(employee?.companyId || "").trim();
-  const enabled = options.enabled ?? (!loading && isAuthed && !!companyId);
+  const enabled = !loading && isAuthed && !!companyId && (options.enabled ?? true);
   const cacheKey = `collection:${collectionName}:company`;
   const resource = useCachedResource({
     key: cacheKey,
@@ -58,8 +63,28 @@ export function useVehicles(options) {
   return useCompanyCollection("vehicles", options);
 }
 
+export function useEquipment(options) {
+  return useCompanyCollection("equipment", options);
+}
+
 export function useHolidays(options) {
-  return useCompanyCollection("holidays", options);
+  const { employee, user, isAuthed, loading } = useAuth();
+  const { mutate } = useDataCache();
+  const cacheKey = `holidays:employee:${employee?.uid || "unknown"}`;
+  const resource = useCachedResource({
+    key: cacheKey,
+    enabled: !loading && isAuthed && !!employee?.userCode && (options?.enabled ?? true),
+    ttlMs: options?.ttlMs,
+    fetcher: () => fetchEmployeeHistory(user, employee, "holidays"),
+  });
+  return {
+    ...resource,
+    data: Array.isArray(resource.data) ? resource.data : resource.data?.records || EMPTY_ROWS,
+    withheldCount: resource.data?.withheldCount || 0,
+    historyComplete: resource.data?.historyComplete === true,
+    upsertRow: row => mutate(cacheKey, current => updateHistoryCache(current, rows => upsertCollectionRow(rows, row))),
+    removeRow: id => mutate(cacheKey, current => updateHistoryCache(current, rows => removeCollectionRow(rows, id))),
+  };
 }
 
 export function useContacts(options) {
@@ -99,28 +124,17 @@ export function useBookings({ employeeOnly = false, ...options } = {}) {
 }
 
 export function useEmployeeTimesheets(options = {}) {
-  const { employee, isAuthed, loading } = useAuth();
+  const { employee, user, isAuthed, loading } = useAuth();
   const { mutate } = useDataCache();
   const employeeCode = String(employee?.userCode || "").trim();
-  const enabled = options.enabled ?? (!loading && isAuthed && !!employeeCode);
+  const companyId = String(employee?.companyId || "").trim();
+  const enabled = !loading && isAuthed && !!companyId && !!employeeCode && (options.enabled ?? true);
   const cacheKey = `timesheets:employee:${employeeCode || "unknown"}`;
   const timesheets = useCachedResource({
     key: cacheKey,
     enabled,
     ttlMs: options.ttlMs,
-    fetcher: async () => {
-      const snapshot = await getDocs(
-        query(
-          collection(db, "timesheets"),
-          where("employeeCode", "==", employeeCode),
-          limit(options.limit || 60)
-        )
-      );
-      return snapshot.docs.map((document) => ({
-        id: document.id,
-        ...document.data(),
-      }));
-    },
+    fetcher: () => fetchEmployeeHistory(user, employee, "timesheets"),
   });
   const upsertTimesheet = useCallback(
     (timesheet) => {
@@ -128,27 +142,25 @@ export function useEmployeeTimesheets(options = {}) {
       const id =
         timesheet?.id ||
         (employeeCode && weekStart ? `${employeeCode}_${weekStart}` : "");
-      return mutate(cacheKey, (current) =>
-        upsertCollectionRow(
-          current,
-          { ...timesheet, id, employeeCode: timesheet?.employeeCode || employeeCode },
-          ["id", "weekStart", "weekISO"]
-        )
-      );
+      return mutate(cacheKey, current => updateHistoryCache(current, rows =>
+        upsertCollectionRow(rows, { ...timesheet, id, employeeCode: timesheet?.employeeCode || employeeCode }, ["id", "weekStart", "weekISO"])
+      ));
     },
     [cacheKey, employeeCode, mutate]
   );
   const removeTimesheet = useCallback(
     (identity) =>
-      mutate(cacheKey, (current) =>
-        removeCollectionRow(current, identity, ["id", "weekStart", "weekISO"])
-      ),
+      mutate(cacheKey, current => updateHistoryCache(current, rows =>
+        removeCollectionRow(rows, identity, ["id", "weekStart", "weekISO"])
+      )),
     [cacheKey, mutate]
   );
 
   return {
     ...timesheets,
-    data: Array.isArray(timesheets.data) ? timesheets.data : EMPTY_ROWS,
+    data: Array.isArray(timesheets.data) ? timesheets.data : timesheets.data?.records || EMPTY_ROWS,
+    withheldCount: timesheets.data?.withheldCount || 0,
+    historyComplete: timesheets.data?.historyComplete === true,
     upsertTimesheet,
     removeTimesheet,
   };
@@ -157,7 +169,8 @@ export function useEmployeeTimesheets(options = {}) {
 export function useTimesheetQueries(options = {}) {
   const { employee, isAuthed, loading } = useAuth();
   const employeeCode = String(employee?.userCode || "").trim();
-  const enabled = options.enabled ?? (!loading && isAuthed && !!employeeCode);
+  const companyId = String(employee?.companyId || "").trim();
+  const enabled = !loading && isAuthed && !!companyId && !!employeeCode && (options.enabled ?? true);
   const queries = useCachedResource({
     key: `timesheet-queries:employee:${employeeCode || "unknown"}`,
     enabled,
@@ -166,7 +179,10 @@ export function useTimesheetQueries(options = {}) {
       const snapshot = await getDocs(
         query(
           collection(db, "timesheetQueries"),
+          where("companyId", "==", companyId),
           where("employeeCode", "==", employeeCode),
+          where("ownerUid", "==", employee.uid),
+          where("employeeId", "==", employee.employeeId),
           limit(options.limit || 30)
         )
       );

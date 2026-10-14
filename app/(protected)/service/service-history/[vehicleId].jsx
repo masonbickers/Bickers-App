@@ -1,15 +1,17 @@
+import { styles } from "../../../../lib/design/screenStyles/service-service-history-vehicleId-jsx.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS } from "../../../../lib/design/semantics";
 // app/(protected)/service/service-history/[vehicleId].jsx
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams,
+  useRouter } from "expo-router";
+import { useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import {
@@ -19,18 +21,8 @@ import {
 } from "../../../../lib/fleetSchema";
 import { useServiceCollectionReader } from "../../../../hooks/useServiceData";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  chipBg: "#262626",
-  accent: "#ED1C25",
-  accentSoft: "rgba(255,59,48,0.14)",
-};
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 function toDateMaybe(value) {
   if (!value) return null;
@@ -188,66 +180,21 @@ export default function ServiceHistoryListScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
+    <PageShell header={{
+      variant: "compact",
+      title: "Service history",
+      subtitle: [headerReg, headerName].filter(Boolean).join(" · "),
+      onBack: router.back,
+    }}>
       {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          style={[
-            styles.backButton,
-            { borderColor: colors.border || COLORS.border },
-          ]}
-          onPress={() => router.back()}
-          activeOpacity={0.8}
-        >
-          <Icon
-            name="chevron-left"
-            size={20}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
 
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.title,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-            numberOfLines={1}
-          >
-            Service history
-          </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-            numberOfLines={1}
-          >
-            {headerReg}
-            {headerReg && headerName ? " · " : ""}
-            {headerName}
-          </Text>
-        </View>
-      </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.textMuted || COLORS.textMid} />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading services…
@@ -256,32 +203,22 @@ export default function ServiceHistoryListScreen() {
       ) : !vehicle ? (
         <View style={styles.loadingContainer}>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Vehicle not found.
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* VEHICLE SUMMARY CARD */}
-          <View
-            style={[
-              styles.vehicleCard,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+        <>
+          {/* VEHICLE SUMMARY */}
+          <View style={styles.vehicleCard}>
             <View style={styles.vehicleRowTop}>
               <View style={{ flex: 1 }}>
                 <Text
-                  style={[
+                  tone={"primary"} style={[
                     styles.vehicleNameText,
-                    { color: colors.text || COLORS.textHigh },
                   ]}
                   numberOfLines={1}
                 >
@@ -289,9 +226,8 @@ export default function ServiceHistoryListScreen() {
                 </Text>
                 {!!headerReg && (
                   <Text
-                    style={[
+                    tone={"muted"} style={[
                       styles.vehicleRegText,
-                      { color: colors.textMuted || COLORS.textMid },
                     ]}
                   >
                     {headerReg}
@@ -304,7 +240,7 @@ export default function ServiceHistoryListScreen() {
                     name="activity"
                     size={12}
                     color={COLORS.textMid}
-                    style={{ marginRight: 4 }}
+                    style={{ marginRight: t.spacing.xxs }}
                   />
                   <Text style={styles.mileageChipText}>
                     {mileageValue.toLocaleString("en-GB")} mi
@@ -315,10 +251,10 @@ export default function ServiceHistoryListScreen() {
 
             <View style={styles.vehicleMetaRow}>
               <View style={styles.metaItem}>
-                <Text style={[styles.metaLabel, { color: colors.textMuted || COLORS.textLow }]}>
+                <Text tone={"muted"} style={[styles.metaLabel]}>
                   Last service
                 </Text>
-                <Text style={[styles.metaValue, { color: colors.text || COLORS.textHigh }]}>
+                <Text tone={"primary"} style={[styles.metaValue]}>
                   {vehicleLastService
                     ? formatDateShort(vehicleLastService)
                     : lastServiceDate || "—"}
@@ -331,10 +267,10 @@ export default function ServiceHistoryListScreen() {
                 ]}
               />
               <View style={styles.metaItem}>
-                <Text style={[styles.metaLabel, { color: colors.textMuted || COLORS.textLow }]}>
+                <Text tone={"muted"} style={[styles.metaLabel]}>
                   Next service
                 </Text>
-                <Text style={[styles.metaValue, { color: colors.text || COLORS.textHigh }]}>
+                <Text tone={"primary"} style={[styles.metaValue]}>
                   {vehicleNextService
                     ? formatDateShort(vehicleNextService)
                     : "—"}
@@ -343,51 +279,37 @@ export default function ServiceHistoryListScreen() {
             </View>
           </View>
 
-          {/* STATS STRIP */}
-          <View
-            style={[
-              styles.statsStrip,
-              {
-                backgroundColor: colors.surfaceAlt || "#111111",
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+          {/* SERVICE TOTALS */}
+          <View style={styles.statsStrip}>
             <View style={styles.statsItem}>
-              <Text style={[styles.statsLabel, { color: colors.textMuted || COLORS.textLow }]}>
+              <Text tone={"muted"} style={[styles.statsLabel]}>
                 Total services
               </Text>
-              <Text style={[styles.statsValue, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.statsValue]}>
                 {totalServices || 0}
               </Text>
             </View>
             <View style={styles.statsItem}>
-              <Text style={[styles.statsLabel, { color: colors.textMuted || COLORS.textLow }]}>
+              <Text tone={"muted"} style={[styles.statsLabel]}>
                 Last date
               </Text>
-              <Text style={[styles.statsValue, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.statsValue]}>
                 {lastServiceDate || "—"}
               </Text>
             </View>
             <View style={styles.statsItem}>
-              <Text style={[styles.statsLabel, { color: colors.textMuted || COLORS.textLow }]}>
+              <Text tone={"muted"} style={[styles.statsLabel]}>
                 Last mileage
               </Text>
-              <Text style={[styles.statsValue, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.statsValue]}>
                 {lastServiceOdo || "—"}
               </Text>
             </View>
           </View>
 
           {/* HISTORY LIST */}
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
+          <SectionCard
+            tone="subtle" layoutStyle={styles.card}
           >
             {serviceHistory.length === 0 ? (
               <Text style={styles.emptyText}>
@@ -419,7 +341,7 @@ export default function ServiceHistoryListScreen() {
                               name="tool"
                               size={12}
                               color={COLORS.textHigh}
-                              style={{ marginRight: 4 }}
+                              style={{ marginRight: t.spacing.xxs }}
                             />
                             <Text style={styles.typePillText}>
                               {item.type || "Service"}
@@ -436,9 +358,8 @@ export default function ServiceHistoryListScreen() {
 
                         {!!metaLine && (
                           <Text
-                            style={[
+                            tone={"muted"} style={[
                               styles.rowMeta,
-                              { color: colors.textMuted || COLORS.textLow },
                             ]}
                           >
                             {metaLine}
@@ -454,9 +375,8 @@ export default function ServiceHistoryListScreen() {
 
                     {!!item.summary && (
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.rowSummary,
-                          { color: colors.textMuted || COLORS.textMid },
                         ]}
                         numberOfLines={2}
                       >
@@ -465,9 +385,8 @@ export default function ServiceHistoryListScreen() {
                     )}
 
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.tapHint,
-                        { color: colors.textMuted || COLORS.textLow },
                       ]}
                     >
                       Tap to view full checklist
@@ -476,214 +395,11 @@ export default function ServiceHistoryListScreen() {
                 );
               })
             )}
-          </View>
+          </SectionCard>
 
           <View style={{ height: 24 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  subtitle: {
-    fontSize: 12,
-    marginTop: 2,
-    color: COLORS.textMid,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: COLORS.textMid,
-  },
-  content: {
-    padding: 16,
-  },
-
-  /* Vehicle summary */
-  vehicleCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 10,
-  },
-  vehicleRowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  vehicleNameText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  vehicleRegText: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    marginTop: 2,
-  },
-  mileageChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.chipBg,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-  },
-  mileageChipText: {
-    fontSize: 11,
-    color: COLORS.textMid,
-    fontWeight: "600",
-  },
-  vehicleMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  metaItem: {
-    flex: 1,
-  },
-  metaLabel: {
-    fontSize: 11,
-    color: COLORS.textLow,
-  },
-  metaValue: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    marginTop: 2,
-  },
-  metaDivider: {
-    width: 1,
-    height: 26,
-    backgroundColor: COLORS.border,
-    marginHorizontal: 10,
-    opacity: 0.8,
-  },
-
-  /* Stats strip */
-  statsStrip: {
-    flexDirection: "row",
-    backgroundColor: "#111111",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  statsItem: {
-    flex: 1,
-    paddingHorizontal: 4,
-  },
-  statsLabel: {
-    fontSize: 11,
-    color: COLORS.textLow,
-  },
-  statsValue: {
-    fontSize: 13,
-    color: COLORS.textHigh,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-
-  /* History list */
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  row: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.04)",
-  },
-  rowHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 2,
-  },
-  rowTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  typePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.chipBg,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  typePillText: {
-    fontSize: 11,
-    color: COLORS.textHigh,
-    fontWeight: "600",
-  },
-  recentPill: {
-    marginLeft: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: COLORS.accentSoft,
-  },
-  recentPillText: {
-    fontSize: 10,
-    color: COLORS.accent,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  rowMeta: {
-    fontSize: 11,
-    color: COLORS.textLow,
-  },
-  rowSummary: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    marginTop: 4,
-  },
-  tapHint: {
-    fontSize: 11,
-    color: COLORS.textLow,
-    marginTop: 3,
-  },
-});

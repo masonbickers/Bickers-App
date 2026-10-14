@@ -1,16 +1,17 @@
+import { routeColors } from "../../../lib/design/routePresentation/service-service-js.js";
+import { styles } from "../../../lib/design/screenStyles/service-service-js.js";
+import { AppText as Text, AppPressable as TouchableOpacity } from "../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../lib/design/semantics";
 // app/protected/service.jsx
 
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import {
@@ -23,21 +24,10 @@ import {
 } from "../../../lib/fleetSchema";
 import { useServiceCollection } from "../../../hooks/useServiceData";
 import { useTheme } from "../../../providers/ThemeProvider";
+import { designTokens as t } from "../../../lib/design/tokens";
+import PageShell from "../../../components/layout/PageShell";
 
 /* ---------- CONSTANTS & HELPERS ---------- */
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#2176FF",
-  recceAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-  lightGray: "#4a4a4a",
-};
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -169,36 +159,13 @@ export default function ServiceScreen() {
   const defectCount = processed.filter((v) => v.hasDefects).length;
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
+    <PageShell header={{
+      variant: "compact",
+      title: "Service & MOT",
+      onBack: router.back,
+    }}>
       {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity onPress={router.back} style={styles.backButton}>
-          <Icon
-            name="arrow-left"
-            size={24}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <Text
-          style={[
-            styles.pageTitle,
-            { color: colors.text || COLORS.textHigh },
-          ]}
-        >
-          Service & MOT
-        </Text>
-      </View>
+
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -207,16 +174,15 @@ export default function ServiceScreen() {
             color={colors.accent || COLORS.primaryAction}
           />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading vehicle maintenance...
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <>
           {/* SUMMARY CARD */}
           <View
             style={[
@@ -229,30 +195,22 @@ export default function ServiceScreen() {
             ]}
           >
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.infoTextTitle,
-                { color: colors.text || COLORS.textHigh },
               ]}
             >
               Fleet Overview
             </Text>
             <Text
-              style={[
+              tone={"muted"} style={[
                 styles.infoTextDetail,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Vehicles: {processed.length}
             </Text>
             <Text
-              style={[
+              tone={overdueCount > 0 ? "danger" : "muted"} style={[
                 styles.infoTextDetail,
-                {
-                  color:
-                    overdueCount > 0
-                      ? colors.danger || "#ED1C25"
-                      : colors.textMuted || COLORS.textMid,
-                },
               ]}
             >
               Overdue: {overdueCount}
@@ -263,7 +221,7 @@ export default function ServiceScreen() {
                 {
                   color:
                     dueSoonCount > 0
-                      ? "#FF9500"
+                      ? routeColors.hex_ff9500_5c3jxm
                       : colors.textMuted || COLORS.textMid,
                 },
               ]}
@@ -271,14 +229,8 @@ export default function ServiceScreen() {
               Due Soon (30 days): {dueSoonCount}
             </Text>
             <Text
-              style={[
+              tone={defectCount > 0 ? "danger" : "muted"} style={[
                 styles.infoTextDetail,
-                {
-                  color:
-                    defectCount > 0
-                      ? colors.danger || "#ED1C25"
-                      : colors.textMuted || COLORS.textMid,
-                },
               ]}
             >
               Vehicles with Defects: {defectCount}
@@ -325,9 +277,8 @@ export default function ServiceScreen() {
           {/* SECTION TITLE */}
           <View style={styles.sectionDivider}>
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.sectionTitle,
-                { color: colors.text || COLORS.textHigh },
               ]}
             >
               Upcoming Services & MOTs
@@ -343,17 +294,15 @@ export default function ServiceScreen() {
                 color={colors.textMuted || COLORS.textMid}
               />
               <Text
-                style={[
+                tone={"primary"} style={[
                   styles.emptyTitle,
-                  { color: colors.text || COLORS.textHigh },
                 ]}
               >
                 Nothing to action
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.emptySubtitle,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 No vehicles match this filter. Try switching to another view.
@@ -368,9 +317,9 @@ export default function ServiceScreen() {
 
               const borderAccent =
                 worstCode === "overdue"
-                  ? "#ED1C25"
+                  ? routeColors.hex_ed1c25_4py4qa
                   : worstCode === "due-soon"
-                  ? "#FF9500"
+                  ? routeColors.hex_ff9500_5c3jxm
                   : colors.border || COLORS.border;
 
               return (
@@ -390,18 +339,16 @@ export default function ServiceScreen() {
                   <View style={styles.vehicleHeaderRow}>
                     <View style={{ flex: 1 }}>
                       <Text
-                        style={[
+                        tone={"primary"} style={[
                           styles.vehicleTitle,
-                          { color: colors.text || COLORS.textHigh },
                         ]}
                       >
                         {name}
                       </Text>
                       {!!reg && (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.vehicleReg,
-                            { color: colors.textMuted || COLORS.textMid },
                           ]}
                         >
                           {reg}
@@ -425,7 +372,7 @@ export default function ServiceScreen() {
                           name="alert-triangle"
                           size={14}
                           color={COLORS.textHigh}
-                          style={{ marginRight: 4 }}
+                          style={{ marginRight: t.spacing.xxs }}
                         />
                         <Text style={styles.defectText}>
                           {defects.length} defect
@@ -439,9 +386,8 @@ export default function ServiceScreen() {
                   <View style={styles.metaRow}>
                     {typeof v.mileage === "number" && (
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.metaText,
-                          { color: colors.textMuted || COLORS.textLow },
                         ]}
                       >
                         Mileage: {v.mileage.toLocaleString()} miles
@@ -449,9 +395,8 @@ export default function ServiceScreen() {
                     )}
                     {!!v.location && (
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.metaText,
-                          { color: colors.textMuted || COLORS.textLow },
                         ]}
                       >
                         Location: {v.location}
@@ -464,32 +409,19 @@ export default function ServiceScreen() {
           )}
 
           <View style={{ height: 40 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
 /* ---------- SMALL COMPONENTS ---------- */
 
 function StatusPill({ label, status }) {
+  const { colorScheme } = useTheme();
   const code = status.code;
-  let bg = "rgba(74, 74, 74, 0.7)";
-  let fg = COLORS.textHigh;
-
-  if (code === "overdue") {
-    bg = "rgba(255,59,48,0.22)";
-    fg = "#ED1C25";
-  } else if (code === "due-soon") {
-    bg = "rgba(255,149,0,0.22)";
-    fg = "#FF9500";
-  } else if (code === "ok") {
-    bg = "rgba(52,199,89,0.22)";
-    fg = "#34C759";
-  } else if (code === "unknown") {
-    bg = "rgba(142,142,147,0.22)";
-    fg = COLORS.textMid;
-  }
+  const tone = { overdue: "danger", "due-soon": "warning", ok: "success" }[code] || "neutral";
+  const { background: bg, onBackground: fg } = getServiceStatusColors(tone, colorScheme);
 
   return (
     <View style={[styles.statusPill, { backgroundColor: bg }]}>
@@ -501,172 +433,3 @@ function StatusPill({ label, status }) {
 }
 
 /* ---------- STYLES (MATCHING RECCE STYLE) ---------- */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    color: COLORS.textHigh,
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  infoCard: {
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primaryAction,
-  },
-  infoTextTitle: {
-    color: COLORS.textHigh,
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 5,
-  },
-  infoTextDetail: {
-    color: COLORS.textMid,
-    fontSize: 14,
-  },
-  filterRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 10,
-  },
-  filterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: COLORS.card,
-  },
-  filterText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textMid,
-  },
-  sectionDivider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    color: COLORS.textHigh,
-    fontSize: 16,
-    fontWeight: "700",
-    paddingRight: 10,
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 12,
-    paddingHorizontal: 24,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    textAlign: "center",
-  },
-  vehicleCard: {
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 14,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.border,
-  },
-  vehicleHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  vehicleTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  vehicleReg: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 4,
-    marginBottom: 4,
-    alignItems: "center",
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  defectPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: COLORS.recceAction,
-    marginBottom: 4,
-  },
-  defectText: {
-    fontSize: 11,
-    color: COLORS.textHigh,
-    fontWeight: "600",
-  },
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 4,
-  },
-  metaText: {
-    fontSize: 11,
-    color: COLORS.textLow,
-    marginRight: 12,
-    marginTop: 2,
-  },
-});

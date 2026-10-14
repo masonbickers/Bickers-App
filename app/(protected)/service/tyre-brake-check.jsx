@@ -1,153 +1,48 @@
+import { styles } from "../../../lib/design/screenStyles/service-tyre-brake-check-jsx.js";
+import { SectionCard, AppText as Text } from "../../../components/ui/AppPrimitives";
 import { useRouter } from "expo-router";
 import {
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 
-import { useTheme } from "../../../providers/ThemeProvider";
+import PageShell from "../../../components/layout/PageShell";
 
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  primaryAction: "#ED1C25",
-};
+import { useTheme } from "../../../providers/ThemeProvider";
 
 export default function TyreBrakeCheckRoute() {
   const router = useRouter();
   const { colors } = useTheme();
 
-  return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity onPress={router.back} style={styles.backButton}>
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: colors.text || COLORS.textHigh }]}>
-            Tyre & Brake Check
-          </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Tyre tread, brake condition and pressure checks are coming soon.
-          </Text>
-        </View>
-      </View>
 
+  return (
+    <PageShell
+      header={{
+        variant: "compact",
+        title: "Tyre & Brake Check",
+        subtitle: "Tyre tread, brake condition and pressure checks are coming soon.",
+        onBack: router.back,
+      }}
+    >
       <View style={styles.content}>
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
+        <SectionCard
+          tone="subtle" layoutStyle={styles.card}
         >
           <View style={styles.iconCircle}>
-            <Icon name="disc" size={24} color={COLORS.primaryAction} />
+            <Icon name="disc" size={24} color={colors.accent} />
           </View>
-          <Text style={[styles.cardTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.cardTitle]}>
             Coming soon
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.cardText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             This workshop form is planned for a future update.
           </Text>
-        </View>
+        </SectionCard>
       </View>
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  subtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-    justifyContent: "center",
-  },
-  card: {
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 18,
-    paddingVertical: 28,
-  },
-  iconCircle: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-    backgroundColor: "rgba(237,28,37,0.12)",
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  cardText: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-    color: COLORS.textMid,
-  },
-});

@@ -1,0 +1,20 @@
+{
+  "firestore": {
+    "rules": "firebase/mobile-compat/firestore.rules"
+  },
+  "storage": {
+    "rules": "firebase/mobile-compat/storage.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8187
+    },
+    "storage": {
+      "port": 9297
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": false
+  }
+}

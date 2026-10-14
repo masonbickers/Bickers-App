@@ -1,35 +1,19 @@
+import { styles } from "../../../../lib/design/screenStyles/service-inspections-index-js.js";
+import { AppText as Text, AppPressable as TouchableOpacity } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../../lib/design/semantics";
 // app/(protected)/service/inspections/index.js
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { useServiceCollection } from "../../../../hooks/useServiceData";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-};
-
-const STATUS_COLORS = {
-  pass: { bg: "rgba(34,197,94,0.15)", fg: "#22C55E" },
-  fail: { bg: "rgba(239,68,68,0.15)", fg: "#EF4444" },
-  incomplete: { bg: "rgba(245,158,11,0.15)", fg: "#F59E0B" },
-};
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 function formatDate(raw) {
   if (!raw) return "—";
@@ -44,7 +28,7 @@ function formatDate(raw) {
 
 export default function InspectionsScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, colorScheme } = useTheme();
   const { rows: inspections, loading } = useServiceCollection(
     "equipmentInspections",
     {
@@ -59,15 +43,7 @@ export default function InspectionsScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      {/* HEADER */}
-      <View
+    <PageShell customHeader={<View
         style={[
           styles.header,
           { borderBottomColor: colors.border || COLORS.border },
@@ -75,14 +51,13 @@ export default function InspectionsScreen() {
       >
         <View style={{ flex: 1 }}>
           <Text
-            style={[styles.pageTitle, { color: colors.text || COLORS.textHigh }]}
+            tone={"primary"} style={[styles.pageTitle]}
           >
             Equipment Inspections
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Pre-use and periodic equipment condition checks.
@@ -96,14 +71,16 @@ export default function InspectionsScreen() {
           <Icon name="plus" size={18} color={COLORS.textHigh} />
           <Text style={styles.newButtonText}>New</Text>
         </TouchableOpacity>
-      </View>
+      </View>} customHeaderPlacement="fixed">
+      {/* HEADER */}
+      
 
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primaryAction} />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <>
           {inspections.length === 0 ? (
             <View style={styles.emptyState}>
               <Icon
@@ -112,17 +89,15 @@ export default function InspectionsScreen() {
                 color={colors.textMuted || COLORS.textLow}
               />
               <Text
-                style={[
+                tone={"primary"} style={[
                   styles.emptyTitle,
-                  { color: colors.text || COLORS.textHigh },
                 ]}
               >
                 No inspections yet
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.emptySubtitle,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 Tap New to record your first equipment inspection.
@@ -136,7 +111,7 @@ export default function InspectionsScreen() {
                   : insp.overallResult === "fail"
                   ? "fail"
                   : "incomplete";
-              const sc = STATUS_COLORS[statusKey];
+              const sc = getServiceStatusColors({ pass: "success", fail: "danger", incomplete: "warning" }[statusKey], colorScheme);
 
               return (
                 <TouchableOpacity
@@ -158,9 +133,8 @@ export default function InspectionsScreen() {
                   <View style={styles.cardHeader}>
                     <View style={{ flex: 1 }}>
                       <Text
-                        style={[
+                        tone={"primary"} style={[
                           styles.cardTitle,
-                          { color: colors.text || COLORS.textHigh },
                         ]}
                         numberOfLines={1}
                       >
@@ -168,17 +142,16 @@ export default function InspectionsScreen() {
                       </Text>
                       {!!insp.equipmentId && (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.cardSub,
-                            { color: colors.textMuted || COLORS.textMid },
                           ]}
                         >
                           ID: {insp.equipmentId}
                         </Text>
                       )}
                     </View>
-                    <View style={[styles.statusPill, { backgroundColor: sc.bg }]}>
-                      <Text style={[styles.statusPillText, { color: sc.fg }]}>
+                    <View style={[styles.statusPill, { backgroundColor: sc.background }]}>
+                      <Text style={[styles.statusPillText, { color: sc.onBackground }]}>
                         {statusKey.charAt(0).toUpperCase() + statusKey.slice(1)}
                       </Text>
                     </View>
@@ -190,12 +163,11 @@ export default function InspectionsScreen() {
                         name="calendar"
                         size={12}
                         color={colors.textMuted || COLORS.textLow}
-                        style={{ marginRight: 4 }}
+                        style={{ marginRight: t.spacing.xxs }}
                       />
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.metaText,
-                          { color: colors.textMuted || COLORS.textMid },
                         ]}
                       >
                         {formatDate(insp.createdAt)}
@@ -207,12 +179,11 @@ export default function InspectionsScreen() {
                           name="user"
                           size={12}
                           color={colors.textMuted || COLORS.textLow}
-                          style={{ marginRight: 4 }}
+                          style={{ marginRight: t.spacing.xxs }}
                         />
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.metaText,
-                            { color: colors.textMuted || COLORS.textMid },
                           ]}
                         >
                           {insp.inspectedBy}
@@ -232,72 +203,8 @@ export default function InspectionsScreen() {
             })
           )}
           <View style={{ height: 40 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  pageTitle: { fontSize: 22, fontWeight: "800" },
-  pageSubtitle: { marginTop: 2, fontSize: 13 },
-  newButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.primaryAction,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginLeft: 12,
-  },
-  newButtonText: {
-    color: COLORS.textHigh,
-    fontWeight: "700",
-    fontSize: 14,
-    marginLeft: 4,
-  },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  scrollContent: { padding: 16, paddingTop: 12 },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 60,
-    paddingHorizontal: 24,
-  },
-  emptyTitle: { marginTop: 14, fontSize: 17, fontWeight: "700" },
-  emptySubtitle: { marginTop: 6, fontSize: 13, textAlign: "center" },
-  card: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    marginBottom: 10,
-    position: "relative",
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 8,
-  },
-  cardTitle: { fontSize: 15, fontWeight: "700" },
-  cardSub: { fontSize: 12, marginTop: 2 },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    marginLeft: 8,
-    alignSelf: "flex-start",
-  },
-  statusPillText: { fontSize: 11, fontWeight: "700" },
-  cardMeta: { flexDirection: "row", gap: 14 },
-  metaItem: { flexDirection: "row", alignItems: "center" },
-  metaText: { fontSize: 12 },
-  cardChevron: { position: "absolute", right: 12, top: "50%" },
-});

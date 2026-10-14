@@ -1,33 +1,25 @@
+import { routeColors } from "../../../lib/design/routePresentation/service-defects-js.js";
+import { styles } from "../../../lib/design/screenStyles/service-defects-js.js";
+import { AppText as Text, AppPressable as TouchableOpacity } from "../../../components/ui/AppPrimitives";
+
 // app/(protected)/service/defects.jsx
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { designTokens as t } from "../../../lib/design/tokens";
 import { useServiceCollection } from "../../../hooks/useServiceData";
+import { isReportableCheckDefect } from "../../../lib/dailyVehicleCheck";
+import {
+  getVehicleDisplayName,
+  getVehicleRegistration,
+} from "../../../lib/fleetSchema";
 import { useTheme } from "../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  recceAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-  lightGray: "#4a4a4a",
-};
+import PageShell from "../../../components/layout/PageShell";
 
 /* ---------- DEFECT HELPERS ---------- */
 
@@ -73,6 +65,15 @@ function getVehicleLabel(record) {
   );
 }
 
+function getIssueAssetLabel(issue) {
+  if (issue?.assetType !== "equipment") return getVehicleLabel(issue);
+  return (
+    [issue?.equipmentName || issue?.assetName, issue?.serialNumber || issue?.equipmentId]
+      .filter(Boolean)
+      .join(" · ") || "Unknown equipment"
+  );
+}
+
 function cleanRegistration(value) {
   const text = String(value || "").trim();
   return text && text.toLowerCase() !== "n/a" ? text : "";
@@ -104,9 +105,10 @@ function buildApprovedCheckDefects(checkDocs) {
     const items = Array.isArray(check.items) ? check.items : [];
 
     return items
-      .filter((item) => isApprovedDefect(item?.review))
-      .filter((item) => isOpenMaintenance(item?.maintenance?.status))
-      .map((item, index) => {
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => isReportableCheckDefect(check, item))
+      .filter(({ item }) => isOpenMaintenance(item?.maintenance?.status))
+      .map(({ item, index }) => {
         const label = item?.label || item?.title || item?.category || "Vehicle check";
         const note = item?.note || item?.description || "";
         const text = note ? `${label}: ${note}` : label;
@@ -117,7 +119,7 @@ function buildApprovedCheckDefects(checkDocs) {
           source: "vehicleChecks",
           docId: check.id,
           itemIndex: index,
-          category: normaliseKey(item.review.category),
+          category: item.assessment === "dangerous" ? "immediate" : normaliseKey(item?.review?.category) || "general",
           text,
           vehicleId: check.vehicleId || check.vehicleDocId || null,
           vehicleName: getVehicleLabel(check),
@@ -147,9 +149,16 @@ function buildApprovedIssueDefects(issueDocs) {
         docId: issue.id,
         category: normaliseKey(issue.review.category),
         text,
-        vehicleId: issue.vehicleId || issue.vehicleDocId || null,
-        vehicleName: getVehicleLabel(issue),
-        registration: issue.registration || issue.reg || "",
+        assetType: issue.assetType || "vehicle",
+        vehicleId:
+          issue.assetType === "equipment"
+            ? null
+            : issue.vehicleId || issue.vehicleDocId || null,
+        vehicleName: getIssueAssetLabel(issue),
+        registration:
+          issue.assetType === "equipment"
+            ? issue.serialNumber || issue.equipmentId || issue.asset || ""
+            : issue.registration || issue.reg || "",
         reporter: issue.reporterName || issue.driverName || "",
         jobNumber: issue.jobNumber || "",
         dateValue: getDateValue(issue.createdAt || issue.dateISO || issue.date),
@@ -193,12 +202,11 @@ function buildManualDefectReports(reports) {
 export default function DefectsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const textColor = colors.text || COLORS.textHigh;
-  const mutedColor = colors.textMuted || COLORS.textMid;
-  const cardBg = colors.surfaceAlt || COLORS.card;
-  const borderColor = colors.border || COLORS.border;
-  const dangerColor = colors.danger || COLORS.primaryAction;
-  const warningColor = colors.warning || "#FFCC00";
+  const mutedColor = colors.textMuted;
+  const cardBg = colors.surfaceAlt;
+  const borderColor = colors.border;
+  const dangerColor = colors.danger || colors.accent;
+  const warningColor = colors.warning || routeColors.hex_ffcc00_5c6g4m;
 
   const { rows: vehicles, loading: vehiclesLoading } = useServiceCollection("vehicles", {
     label: "vehicles for defects",
@@ -230,17 +238,17 @@ export default function DefectsScreen() {
 
     approvedDefects.forEach((defect) => {
       const matchedVehicle = findVehicleForDefect(defect, vehicles);
-      const vehicleName =
-        matchedVehicle?.name ||
-        matchedVehicle?.vehicleName ||
-        defect.vehicleName ||
-        "Unknown vehicle";
+      const embeddedVehicle =
+        defect.vehicleName && defect.vehicleName !== defect.vehicleId
+          ? { vehicleName: defect.vehicleName, registration: defect.registration }
+          : {};
+      const vehicleName = getVehicleDisplayName(
+        matchedVehicle || embeddedVehicle,
+        vehicles
+      );
       const registration =
         cleanRegistration(
-          matchedVehicle?.registration ||
-            matchedVehicle?.reg ||
-            defect.registration ||
-            ""
+          getVehicleRegistration(matchedVehicle || embeddedVehicle) || ""
         );
       const groupKey =
         matchedVehicle?.id ||
@@ -298,69 +306,35 @@ export default function DefectsScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity onPress={router.back} style={styles.backButton}>
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.pageTitle,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-          >
-            Defects & Issues
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Split into immediate maintenance and general follow-up.
-          </Text>
-        </View>
-      </View>
+    <PageShell header={{
+      variant: "compact",
+      title: "Defects & Issues",
+      subtitle: "Split into immediate maintenance and general follow-up.",
+      onBack: router.back,
+    }}>
+
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primaryAction} />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       ) : withDefects.length === 0 ? (
         <View style={styles.emptyOuter}>
           <Icon
             name="check-circle"
             size={32}
-            color={colors.textMuted || COLORS.textMid}
+            color={colors.textMuted}
           />
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.emptyTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             No defects logged
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.emptySubtitle,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Approved general and immediate defects from vehicle checks and
@@ -368,12 +342,12 @@ export default function DefectsScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <>
           {/* SUMMARY CARD */}
           <View style={styles.summaryRow}>
             <View style={styles.summaryPill}>
               <View
-                style={[styles.summaryDot, { backgroundColor: "#ED1C25" }]}
+                style={[styles.summaryDot, { backgroundColor: routeColors.hex_ed1c25_4py4qa }]}
               />
               <Text style={styles.summaryText}>
                 {totalImmediate} immediate
@@ -381,7 +355,7 @@ export default function DefectsScreen() {
             </View>
             <View style={styles.summaryPill}>
               <View
-                style={[styles.summaryDot, { backgroundColor: "#FFCC00" }]}
+                style={[styles.summaryDot, { backgroundColor: routeColors.hex_ffcc00_5c6g4m }]}
               />
               <Text style={styles.summaryText}>
                 {totalGeneral} general
@@ -393,10 +367,10 @@ export default function DefectsScreen() {
           {immediateVehicles.length > 0 && (
             <>
               <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>
+                <Text tone={"primary"} style={[styles.sectionTitle]}>
                   Immediate maintenance
                 </Text>
-                <Text style={[styles.sectionHint, { color: mutedColor }]}>
+                <Text tone={"muted"} style={[styles.sectionHint]}>
                   Safety-critical / do not delay.
                 </Text>
               </View>
@@ -420,18 +394,18 @@ export default function DefectsScreen() {
                   >
                     <View style={styles.cardHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.cardTitle, { color: textColor }]}>{name}</Text>
+                        <Text tone={"primary"} style={[styles.cardTitle]}>{name}</Text>
                         {!!reg && (
-                          <Text style={[styles.cardReg, { color: mutedColor }]}>{reg}</Text>
+                          <Text tone={"muted"} style={[styles.cardReg]}>{reg}</Text>
                         )}
-                        <Text style={[styles.countImmediate, { color: dangerColor }]}>
+                        <Text tone={"danger"} style={[styles.countImmediate]}>
                           {immediate.length} immediate issue
                           {immediate.length > 1 ? "s" : ""} ·{" "}
                           {v.totalDefects} total
                         </Text>
                       </View>
                       <View style={[styles.badgeImmediate, { borderColor: dangerColor }]}>
-                        <Text style={[styles.badgeText, { color: dangerColor }]}>Immediate</Text>
+                        <Text tone={"danger"} style={[styles.badgeText]}>Immediate</Text>
                       </View>
                     </View>
 
@@ -446,22 +420,22 @@ export default function DefectsScreen() {
                           name="alert-triangle"
                           size={14}
                           color={dangerColor}
-                          style={{ marginRight: 6 }}
+                          style={{ marginRight: t.spacing.xxs }}
                         />
-                        <Text style={[styles.defectText, { color: textColor }]}>{defect.text}</Text>
+                        <Text tone={"primary"} style={[styles.defectText]}>{defect.text}</Text>
                         <Icon name="chevron-right" size={14} color={mutedColor} />
                       </TouchableOpacity>
                     ))}
 
                     {general.length > 0 && (
-                      <View style={{ marginTop: 6 }}>
-                        <Text style={[styles.subSectionLabel, { color: mutedColor }]}>
+                      <View style={{ marginTop: t.spacing.xxs }}>
+                        <Text tone={"muted"} style={[styles.subSectionLabel]}>
                           Related general issue{general.length > 1 ? "s" : ""}
                         </Text>
                         {general.slice(0, 2).map((defect) => (
                           <TouchableOpacity
                             key={defect.id}
-                            style={[styles.defectRow, { marginTop: 2 }]}
+                            style={[styles.defectRow, { marginTop: t.spacing.none }]}
                             onPress={() => goDefect(defect.routeId)}
                             activeOpacity={0.75}
                           >
@@ -469,14 +443,14 @@ export default function DefectsScreen() {
                               name="minus-circle"
                               size={13}
                               color={warningColor}
-                              style={{ marginRight: 6 }}
+                              style={{ marginRight: t.spacing.xxs }}
                             />
-                            <Text style={[styles.defectText, { color: textColor }]}>{defect.text}</Text>
+                            <Text tone={"primary"} style={[styles.defectText]}>{defect.text}</Text>
                             <Icon name="chevron-right" size={14} color={mutedColor} />
                           </TouchableOpacity>
                         ))}
                         {general.length > 2 && (
-                          <Text style={[styles.moreText, { color: mutedColor }]}>
+                          <Text tone={"muted"} style={[styles.moreText]}>
                             + {general.length - 2} more…
                           </Text>
                         )}
@@ -484,7 +458,7 @@ export default function DefectsScreen() {
                     )}
 
                     {immediate.length > 3 && general.length === 0 && (
-                      <Text style={[styles.moreText, { color: mutedColor }]}>
+                      <Text tone={"muted"} style={[styles.moreText]}>
                         + {immediate.length - 3} more…
                       </Text>
                     )}
@@ -498,10 +472,10 @@ export default function DefectsScreen() {
           {generalVehicles.length > 0 && (
             <>
               <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.sectionTitle, { color: textColor }]}>
+                <Text tone={"primary"} style={[styles.sectionTitle]}>
                   General defects & follow-up
                 </Text>
-                <Text style={[styles.sectionHint, { color: mutedColor }]}>
+                <Text tone={"muted"} style={[styles.sectionHint]}>
                   Plan into future workshop slots.
                 </Text>
               </View>
@@ -524,17 +498,17 @@ export default function DefectsScreen() {
                   >
                     <View style={styles.cardHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.cardTitle, { color: textColor }]}>{name}</Text>
+                        <Text tone={"primary"} style={[styles.cardTitle]}>{name}</Text>
                         {!!reg && (
-                          <Text style={[styles.cardReg, { color: mutedColor }]}>{reg}</Text>
+                          <Text tone={"muted"} style={[styles.cardReg]}>{reg}</Text>
                         )}
-                        <Text style={[styles.countGeneral, { color: mutedColor }]}>
+                        <Text tone={"muted"} style={[styles.countGeneral]}>
                           {general.length} general issue
                           {general.length > 1 ? "s" : ""} open
                         </Text>
                       </View>
                       <View style={[styles.badgeGeneral, { borderColor: warningColor }]}>
-                        <Text style={[styles.badgeText, { color: warningColor }]}>General</Text>
+                        <Text tone={"warning"} style={[styles.badgeText]}>General</Text>
                       </View>
                     </View>
 
@@ -549,15 +523,15 @@ export default function DefectsScreen() {
                           name="minus-circle"
                           size={14}
                           color={warningColor}
-                          style={{ marginRight: 6 }}
+                          style={{ marginRight: t.spacing.xxs }}
                         />
-                        <Text style={[styles.defectText, { color: textColor }]}>{defect.text}</Text>
+                        <Text tone={"primary"} style={[styles.defectText]}>{defect.text}</Text>
                         <Icon name="chevron-right" size={14} color={mutedColor} />
                       </TouchableOpacity>
                     ))}
 
                     {general.length > 3 && (
-                      <Text style={[styles.moreText, { color: mutedColor }]}>
+                      <Text tone={"muted"} style={[styles.moreText]}>
                         + {general.length - 3} more…
                       </Text>
                     )}
@@ -568,185 +542,10 @@ export default function DefectsScreen() {
           )}
 
           <View style={{ height: 40 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
 /* ---------- STYLES ---------- */
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-
-  scrollContent: { padding: t.spacing.md, paddingTop: 4, paddingBottom: 110 },
-
-  /* SUMMARY CARD */
-  summaryRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 12,
-  },
-  summaryPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: t.controls.chipMinHeight,
-    marginRight: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: COLORS.card,
-  },
-  summaryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  summaryText: {
-    fontSize: 12,
-    color: COLORS.textHigh,
-    fontWeight: "600",
-  },
-
-  /* SECTIONS */
-  sectionHeaderRow: {
-    marginTop: 8,
-    marginBottom: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  sectionHint: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-
-  /* VEHICLE CARDS */
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: t.controls.cardPadding,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  cardReg: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  countImmediate: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#ED1C25",
-  },
-  countGeneral: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textMid,
-  },
-  badgeImmediate: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#ED1C25",
-    marginRight: 8,
-  },
-  badgeGeneral: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,204,0,0.15)",
-    borderWidth: 1,
-    borderColor: "#FFCC00",
-    marginRight: 8,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-
-  defectRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 7,
-  },
-  defectText: {
-    fontSize: 13,
-    color: COLORS.textHigh,
-    flex: 1,
-  },
-  subSectionLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textMid,
-    marginBottom: 2,
-  },
-  moreText: {
-    marginTop: 4,
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-
-  /* EMPTY STATE */
-  emptyOuter: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-  },
-  emptyTitle: {
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    textAlign: "center",
-    color: COLORS.textMid,
-  },
-});

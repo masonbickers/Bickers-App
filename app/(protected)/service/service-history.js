@@ -1,15 +1,14 @@
+import { routeColors } from "../../../lib/design/routePresentation/service-service-history-js.js";
+import { styles, summaryStyles } from "../../../lib/design/screenStyles/service-service-history-js.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity } from "../../../components/ui/AppPrimitives";
+
 // app/(protected)/service-history.jsx
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import {
@@ -23,17 +22,8 @@ import {
 } from "../../../lib/fleetSchema";
 import { useServiceCollection } from "../../../hooks/useServiceData";
 import { useTheme } from "../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-};
+import { designTokens as t } from "../../../lib/design/tokens";
+import PageShell from "../../../components/layout/PageShell";
 
 function toDateMaybe(value) {
   if (!value) return null;
@@ -142,78 +132,38 @@ export default function ServiceHistoryScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
+    <PageShell header={{
+      variant: "compact",
+      title: "Service History",
+      subtitle: "Last MOT and service dates for each vehicle in the fleet.",
+      onBack: router.back,
+    }}>
       {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity onPress={router.back} style={styles.backButton}>
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.pageTitle,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-          >
-            Service History
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Last MOT and service dates for each vehicle in the fleet.
-          </Text>
-        </View>
-      </View>
+
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator
             size="large"
-            color={colors.accent || COLORS.primaryAction}
+            color={colors.accent || colors.accent}
           />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading service history…
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <>
           {/* SUMMARY CARD */}
-          <View
-            style={[
-              styles.summaryCard,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
+          <SectionCard
+            tone="subtle" layoutStyle={styles.summaryCard}
           >
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.summaryTitle,
-                { color: colors.text || COLORS.textHigh },
               ]}
             >
               Fleet Summary
@@ -241,7 +191,7 @@ export default function ServiceHistoryScreen() {
                 value={summary.recentServices}
               />
             </View>
-          </View>
+          </SectionCard>
 
           {/* VEHICLE CARDS */}
           {processed.length === 0 ? (
@@ -249,20 +199,18 @@ export default function ServiceHistoryScreen() {
               <Icon
                 name="file-text"
                 size={26}
-                color={colors.textMuted || COLORS.textMid}
+                color={colors.textMuted}
               />
               <Text
-                style={[
+                tone={"primary"} style={[
                   styles.emptyTitle,
-                  { color: colors.text || COLORS.textHigh },
                 ]}
               >
                 No vehicles found
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.emptySubtitle,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 Add vehicles in the main system to see service history here.
@@ -282,8 +230,8 @@ export default function ServiceHistoryScreen() {
 
               const hasHistory = v.lastMOT || v.lastService;
               const borderAccent = hasHistory
-                ? colors.accent || COLORS.primaryAction
-                : colors.border || COLORS.border;
+                ? colors.accent || colors.accent
+                : colors.border;
 
               return (
                 <View
@@ -292,26 +240,24 @@ export default function ServiceHistoryScreen() {
                     styles.vehicleCard,
                     {
                       borderLeftColor: borderAccent,
-                      backgroundColor: colors.surfaceAlt || COLORS.card,
-                      borderColor: colors.border || COLORS.border,
+                      backgroundColor: colors.surfaceAlt,
+                      borderColor: colors.border,
                     },
                   ]}
                 >
                   <View style={styles.vehicleHeaderRow}>
                     <View style={{ flex: 1 }}>
                       <Text
-                        style={[
+                        tone={"primary"} style={[
                           styles.vehicleTitle,
-                          { color: colors.text || COLORS.textHigh },
                         ]}
                       >
                         {name}
                       </Text>
                       {!!reg && (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.vehicleReg,
-                            { color: colors.textMuted || COLORS.textMid },
                           ]}
                         >
                           {reg}
@@ -319,9 +265,8 @@ export default function ServiceHistoryScreen() {
                       )}
                       {(manufacturer || model) && (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.vehicleSub,
-                            { color: colors.textMuted || COLORS.textLow },
                           ]}
                         >
                           {manufacturer}
@@ -334,9 +279,8 @@ export default function ServiceHistoryScreen() {
 
                   <View style={styles.historyBlock}>
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.blockTitle,
-                        { color: colors.textMuted || COLORS.textMid },
                       ]}
                     >
                       MOT
@@ -347,9 +291,8 @@ export default function ServiceHistoryScreen() {
 
                   <View style={styles.historyBlock}>
                     <Text
-                      style={[
+                      tone={"muted"} style={[
                         styles.blockTitle,
-                        { color: colors.textMuted || COLORS.textMid },
                       ]}
                     >
                       Service
@@ -367,9 +310,8 @@ export default function ServiceHistoryScreen() {
                   {typeof v.mileage === "number" && (
                     <View style={styles.historyBlock}>
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.blockTitle,
-                          { color: colors.textMuted || COLORS.textMid },
                         ]}
                       >
                         Odometer
@@ -384,17 +326,15 @@ export default function ServiceHistoryScreen() {
                   {v.notes ? (
                     <View style={styles.notesBlock}>
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.notesLabel,
-                          { color: colors.textMuted || COLORS.textLow },
                         ]}
                       >
                         Notes
                       </Text>
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.notesText,
-                          { color: colors.textMuted || COLORS.textMid },
                         ]}
                       >
                         {v.notes}
@@ -407,16 +347,15 @@ export default function ServiceHistoryScreen() {
                     style={[
                       styles.viewHistoryButton,
                       {
-                        backgroundColor: colors.surface || "#1F2933",
+                        backgroundColor: colors.surface || routeColors.hex_1f2933_8in7ju,
                       },
                     ]}
                     activeOpacity={0.85}
                     onPress={() => handleOpenVehicleHistory(v)}
                   >
                     <Text
-                      style={[
+                      tone={"primary"} style={[
                         styles.viewHistoryText,
-                        { color: colors.text || COLORS.textHigh },
                       ]}
                     >
                       View full history
@@ -424,7 +363,7 @@ export default function ServiceHistoryScreen() {
                     <Icon
                       name="chevron-right"
                       size={14}
-                      color={colors.text || COLORS.textHigh}
+                      color={colors.text}
                     />
                   </TouchableOpacity>
                 </View>
@@ -433,28 +372,26 @@ export default function ServiceHistoryScreen() {
           )}
 
           <View style={{ height: 40 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
 function SummaryItem({ label, value }) {
-  const { colors } = useTheme();
+
   return (
     <View style={summaryStyles.item}>
       <Text
-        style={[
+        tone={"primary"} style={[
           summaryStyles.value,
-          { color: colors.text || COLORS.textHigh },
         ]}
       >
         {value}
       </Text>
       <Text
-        style={[
+        tone={"muted"} style={[
           summaryStyles.label,
-          { color: colors.textMuted || COLORS.textMid },
         ]}
       >
         {label}
@@ -464,21 +401,19 @@ function SummaryItem({ label, value }) {
 }
 
 function HistoryRow({ label, value }) {
-  const { colors } = useTheme();
+
   return (
     <View style={styles.historyRow}>
       <Text
-        style={[
+        tone={"muted"} style={[
           styles.historyLabel,
-          { color: colors.textMuted || COLORS.textLow },
         ]}
       >
         {label}
       </Text>
       <Text
-        style={[
+        tone={"primary"} style={[
           styles.historyValue,
-          { color: colors.text || COLORS.textHigh },
         ]}
       >
         {value || "—"}
@@ -489,175 +424,3 @@ function HistoryRow({ label, value }) {
 
 /* ---------- STYLES ---------- */
 
-const summaryStyles = StyleSheet.create({
-  item: {
-    flex: 1,
-    minWidth: 0,
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  label: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    marginTop: 2,
-    flexShrink: 1,
-  },
-});
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 8,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  summaryCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-    marginBottom: 8,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 2,
-  },
-  vehicleCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderLeftWidth: 4,
-  },
-  vehicleHeaderRow: {
-    flexDirection: "row",
-    marginBottom: 6,
-  },
-  vehicleTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  vehicleReg: {
-    fontSize: 13,
-    color: COLORS.textMid,
-    marginTop: 2,
-  },
-  vehicleSub: {
-    fontSize: 12,
-    color: COLORS.textLow,
-    marginTop: 2,
-  },
-  historyBlock: {
-    marginTop: 8,
-  },
-  blockTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textMid,
-    marginBottom: 4,
-  },
-  historyRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 2,
-  },
-  historyLabel: {
-    fontSize: 12,
-    color: COLORS.textLow,
-  },
-  historyValue: {
-    fontSize: 12,
-    color: COLORS.textHigh,
-  },
-  notesBlock: {
-    marginTop: 10,
-  },
-  notesLabel: {
-    fontSize: 12,
-    color: COLORS.textLow,
-    marginBottom: 2,
-  },
-  notesText: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 30,
-    paddingHorizontal: 24,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    textAlign: "center",
-    color: COLORS.textMid,
-  },
-  viewHistoryButton: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-end",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: "#1F2933",
-  },
-  viewHistoryText: {
-    fontSize: 12,
-    color: COLORS.textHigh,
-    fontWeight: "600",
-    marginRight: 4,
-  },
-});

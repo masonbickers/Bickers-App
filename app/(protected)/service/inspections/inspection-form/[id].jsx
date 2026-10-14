@@ -1,7 +1,15 @@
+import AssetSelectField from "../../../../../components/ui/AssetSelectField";
+import { routeColors } from "../../../../../lib/design/routePresentation/service-inspections-inspection-form-id-jsx.js";
+import { styles } from "../../../../../lib/design/screenStyles/service-inspections-inspection-form-id-jsx.js";
+import { SectionCard, AppButton, AppModal, AppText as Text, AppPressable as TouchableOpacity, FormField as SharedFormField, TextArea } from "../../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../../../lib/design/semantics";
 // app/(protected)/service/inspections/inspection-form/[id].jsx
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams,
+  useNavigation,
+  useRouter } from "expo-router";
 import {
   collection,
   doc,
@@ -9,26 +17,25 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
-} from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-import { useEffect, useMemo, useRef, useState } from "react";
+  } from "firebase/firestore";
+import { getDownloadURL,
+  ref,
+  uploadBytesResumable } from "firebase/storage";
+import { useEffect,
+  useMemo,
+  useRef,
+  useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
-  Platform,
   ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { db, storage } from "../../../../../firebaseConfig";
+import { formatISODateDDMMYYYY, parseDDMMYYYYToISO } from "../../../../../lib/dateFormat";
 import {
   buildEquipmentCoreUpdate,
   getEquipmentCategory,
@@ -39,35 +46,26 @@ import {
 } from "../../../../../lib/fleetSchema";
 import { useServiceCacheActions, useServiceCollectionReader } from "../../../../../hooks/useServiceData";
 import { runOrQueueFirestoreMutations } from "../../../../../lib/sync/firestoreQueue";
+import { workshopCompletionMutation } from "../../../../../lib/workshopRequestSync";
 import { useTheme } from "../../../../../providers/ThemeProvider";
+import { designTokens as t } from "../../../../../lib/design/tokens";
+import PageShell from "../../../../../components/layout/PageShell";
 
 /* ------------------------------------------------------------------ */
 /*  CONSTANTS                                                           */
 /* ------------------------------------------------------------------ */
 
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-  lightGray: "#4a4a4a",
-};
-
 const CHECK_STATUS_OPTIONS = [
-  { value: "green", label: "Green", color: "#22C55E" },
-  { value: "amber", label: "Amber", color: "#F59E0B" },
-  { value: "red",   label: "Red",   color: "#EF4444" },
+  { value: "green", label: "Green", color: routeColors.hex_22c55e_740if4 },
+  { value: "amber", label: "Amber", color: routeColors.hex_f59e0b_4zbh7f },
+  { value: "red",   label: "Red",   color: routeColors.hex_ef4444_4oizhh },
 ];
 
 const NOTE_REQUIRED_STATUSES = new Set(["amber", "red"]);
 
 const OVERALL_RESULT_OPTIONS = [
-  { value: "pass", label: "Pass",    color: "#22C55E" },
-  { value: "fail", label: "Fail",    color: "#EF4444" },
+  { value: "pass", label: "Pass",    color: routeColors.hex_22c55e_740if4 },
+  { value: "fail", label: "Fail",    color: routeColors.hex_ef4444_4oizhh },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -308,9 +306,9 @@ export default function InspectionFormScreen() {
   const [hoursOrOdo, setHoursOrOdo]       = useState("");
   const [equipmentOptions, setEquipmentOptions] = useState([]);
   const [loadingEquipment, setLoadingEquipment] = useState(true);
-  const [equipmentSearch, setEquipmentSearch] = useState("");
   const [selectedEquipmentKey, setSelectedEquipmentKey] = useState(null);
   const [equipmentCollapsed, setEquipmentCollapsed] = useState(false);
+  const [equipmentDetailsOpen, setEquipmentDetailsOpen] = useState(false);
 
   /* ---- inspection meta ---- */
   const [inspectionDate, setInspectionDate] = useState(now.date);
@@ -362,23 +360,6 @@ export default function InspectionFormScreen() {
     [checkNotes, checkRatings]
   );
 
-  const filteredEquipment = useMemo(() => {
-    if (!equipmentSearch.trim()) return equipmentOptions;
-    const queryText = normaliseKey(equipmentSearch);
-    return equipmentOptions.filter((item) =>
-      [
-        item.name,
-        item.serialNumber,
-        item.asset,
-        item.notes,
-        item.status,
-        item.category,
-        item.location,
-      ]
-        .map(normaliseKey)
-        .some((value) => value.includes(queryText))
-    );
-  }, [equipmentOptions, equipmentSearch]);
 
   const selectedEquipment = useMemo(
     () => equipmentOptions.find((item) => item.key === selectedEquipmentKey) || null,
@@ -421,6 +402,7 @@ export default function InspectionFormScreen() {
     setInspectionFrequency(match.inspectionFrequency || "");
     setNextInspection(match.nextInspection || "");
     setEquipmentCollapsed(true);
+    setEquipmentDetailsOpen(!(match.name && (match.category || match.type)));
     setDirty(true);
   }, [equipmentOptions, isNew, preselectEquipmentDocId, selectedEquipmentKey]);
 
@@ -447,6 +429,7 @@ export default function InspectionFormScreen() {
         setNextInspection(d.nextInspection || "");
         setSelectedEquipmentKey(d.equipmentDocId || null);
         setEquipmentCollapsed(!!(d.equipmentName || d.equipmentId));
+        setEquipmentDetailsOpen(!(d.equipmentName && (d.equipmentType || d.category)));
         setLocation(d.location || "");
         setHoursOrOdo(d.hoursOrOdo || "");
         setInspectionDate(d.inspectionDate || loadedNow.date);
@@ -519,7 +502,11 @@ export default function InspectionFormScreen() {
   }
 
   function markNA(item) {
-    if (checkNA[item]) return;
+    if (checkNA[item]) {
+      setCheckNA((previous) => ({ ...previous, [item]: false }));
+      setDirty(true);
+      return;
+    }
     setCheckNA((p) => ({ ...p, [item]: true }));
     setCheckRatings((p) => {
       const { [item]: _omit, ...rest } = p;
@@ -546,6 +533,25 @@ export default function InspectionFormScreen() {
     setInspectionFrequency(item.inspectionFrequency || "");
     setNextInspection(item.nextInspection || "");
     setEquipmentCollapsed(true);
+    setEquipmentDetailsOpen(!(item.name && (item.category || item.type)));
+    setDirty(true);
+  }
+
+  function handleAddNewEquipment() {
+    setSelectedEquipmentKey(null);
+    setEquipmentDocId("");
+    setEquipmentName("");
+    setEquipmentId("");
+    setSerialNumber("");
+    setAsset("");
+    setEquipmentType("");
+    setEquipmentStatus("");
+    setLocation("");
+    setLastInspection("");
+    setInspectionFrequency("");
+    setNextInspection("");
+    setHoursOrOdo("");
+    setEquipmentDetailsOpen(true);
     setDirty(true);
   }
 
@@ -600,6 +606,10 @@ export default function InspectionFormScreen() {
   /*  Submit                                                           */
   /* ---------------------------------------------------------------- */
   async function handleSubmit() {
+    if (params.workshopRequestId && String(equipmentDocId) !== String(preselectEquipmentDocId)) {
+      Alert.alert("Wrong equipment", "Complete this request for its selected equipment.");
+      return;
+    }
     if (!equipmentName.trim()) {
       Alert.alert("Required", "Equipment name is required."); return;
     }
@@ -655,7 +665,7 @@ export default function InspectionFormScreen() {
             location: location.trim(),
             lastInspection: inspectionDateISO || "",
             inspectionFrequency: inspectionFrequency.trim(),
-            nextInspection: nextInspection.trim(),
+            nextInspection: parseDDMMYYYYToISO(nextInspection),
             notes: extraNotes.trim(),
           }),
           createdAt: serverTimestamp(),
@@ -664,6 +674,7 @@ export default function InspectionFormScreen() {
       }
 
       const payload = {
+        ...(params.workshopRequestId ? { workshopRequestId: String(params.workshopRequestId), workshopWorkType: "equipment_inspection" } : {}),
         equipmentDocId:  targetEquipmentDocId || null,
         equipmentName:   equipmentName.trim(),
         equipmentId:     serialNumber.trim() || asset.trim() || equipmentId.trim(),
@@ -675,9 +686,9 @@ export default function InspectionFormScreen() {
         status:          equipmentStatus.trim(),
         location:        location.trim(),
         hoursOrOdo:      hoursOrOdo.trim(),
-        lastInspection:  lastInspection.trim(),
+        lastInspection:  parseDDMMYYYYToISO(lastInspection),
         inspectionFrequency: inspectionFrequency.trim(),
-        nextInspection:  nextInspection.trim(),
+        nextInspection:  parseDDMMYYYYToISO(nextInspection),
         inspectionDate,
         inspectionDateISO,
         inspectionTime,
@@ -728,9 +739,9 @@ export default function InspectionFormScreen() {
             serialNumber: serialNumber.trim(),
             asset: asset.trim(),
             location: location.trim(),
-            lastInspection: inspectionDateISO || lastInspection.trim(),
+            lastInspection: inspectionDateISO || parseDDMMYYYYToISO(lastInspection),
             inspectionFrequency: inspectionFrequency.trim(),
-            nextInspection: nextInspection.trim(),
+            nextInspection: parseDDMMYYYYToISO(nextInspection),
           }),
           updatedAt: serverTimestamp(),
         };
@@ -747,6 +758,11 @@ export default function InspectionFormScreen() {
       };
 
       queueSaveInspectionToEquipment(targetEquipmentDocId);
+
+      if (params.workshopRequestId) firestoreMutations.push(workshopCompletionMutation({
+        requestId: String(params.workshopRequestId), workType: "equipment_inspection", assetId: targetEquipmentDocId,
+        collection: "equipmentInspections", recordId: docId, signedBy,
+      }));
 
       const { queued } = await runOrQueueFirestoreMutations(firestoreMutations);
       await upsertServiceRow("equipmentInspections", { ...payload, id: docId });
@@ -781,31 +797,18 @@ export default function InspectionFormScreen() {
   /*  RENDER                                                           */
   /* ---------------------------------------------------------------- */
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[styles.container, { backgroundColor: colors.background || COLORS.background }]}
-    >
+    <PageShell mode="form" width="form" header={{
+      variant: "compact",
+      title: isNew ? "Equipment Inspection" : "Edit Inspection",
+      subtitle: isNew
+        ? "Pre-use condition check. Mark every item and sign off."
+        : "Update inspection findings and sign off.",
+      onBack: () => confirmLeave(() => router.back()),
+    }}>
       {/* HEADER */}
-      <View style={[styles.header, { borderBottomColor: colors.border || COLORS.border }]}>
-        <TouchableOpacity
-          onPress={() => confirmLeave(() => router.back())}
-          style={styles.backButton}
-        >
-          <Icon name="chevron-left" size={22} color={colors.text || COLORS.textHigh} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.pageTitle, { color: colors.text || COLORS.textHigh }]}>
-            {isNew ? "Equipment Inspection" : "Edit Inspection"}
-          </Text>
-          <Text style={[styles.pageSubtitle, { color: colors.textMuted || COLORS.textMid }]}>
-            {isNew
-              ? "Pre-use condition check. Mark every item and sign off."
-              : "Update inspection findings and sign off."}
-          </Text>
-        </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+
+      <>
         {loadingRecord && (
           <View style={styles.centerRow}>
             <ActivityIndicator size="small" color={COLORS.primaryAction} />
@@ -815,105 +818,75 @@ export default function InspectionFormScreen() {
 
         {/* EQUIPMENT DETAILS */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.sectionTitle]}>
             Equipment
           </Text>
         </View>
-        <View style={[styles.card, {
-          backgroundColor: colors.surfaceAlt || COLORS.card,
-          borderColor: colors.border || COLORS.border,
-        }]}>
+        <View style={styles.flatSectionContent}>
           {equipmentCollapsed && (selectedEquipment || equipmentName) ? (
             <>
-              <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+              <Text tone={"muted"} style={[styles.fieldLabel]}>
                 Selected equipment
               </Text>
               <View style={styles.selectedEquipmentRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.selectedEquipmentName, { color: colors.text || COLORS.textHigh }]}>
+                  <Text tone={"primary"} style={[styles.selectedEquipmentName]}>
                     {equipmentName || selectedEquipment?.name || "Unnamed equipment"}
                   </Text>
-                  <Text style={[styles.selectedEquipmentMeta, { color: colors.textMuted || COLORS.textMid }]}>
+                  <Text tone={"muted"} style={[styles.selectedEquipmentMeta]}>
                     {[
                       serialNumber || selectedEquipment?.serialNumber,
-                      asset || selectedEquipment?.asset,
                       equipmentType || selectedEquipment?.category,
                       equipmentStatus || selectedEquipment?.status,
-                      location || selectedEquipment?.location,
                     ].filter(Boolean).join(" · ") || "-"}
                   </Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => setEquipmentCollapsed(false)}
+                  onPress={() => { setEquipmentCollapsed(false); setEquipmentDetailsOpen(false); }}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.changeText}>Change</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={equipmentDetailsOpen ? "Hide equipment details" : "Show equipment details"}
+                accessibilityState={{ expanded: equipmentDetailsOpen }}
+                onPress={() => setEquipmentDetailsOpen((open) => !open)}
+                style={styles.equipmentDetailsToggle}
+              >
+                <Text variant="link">{equipmentDetailsOpen ? "Hide equipment details" : "Equipment details"}</Text>
+              </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
-                Search equipment
-              </Text>
-              <View style={styles.searchBox}>
-                <Icon name="search" size={16} color={colors.textMuted || COLORS.textLow} style={{ marginRight: 7 }} />
-                <TextInput
-                  style={[styles.searchInput, { color: colors.text || COLORS.textHigh }]}
-                  placeholder="Name, serial, asset, category or location..."
-                  placeholderTextColor={colors.textMuted || COLORS.textLow}
-                  value={equipmentSearch}
-                  onChangeText={setEquipmentSearch}
-                />
-              </View>
-
-              {loadingEquipment ? (
-                <View style={styles.centerRow}>
-                  <ActivityIndicator size="small" color={COLORS.primaryAction} />
-                  <Text style={styles.loadingText}>Loading equipment...</Text>
-                </View>
-              ) : filteredEquipment.length === 0 ? (
-                <Text style={[styles.selectorEmptyText, { color: colors.textMuted || COLORS.textMid }]}>
-                  No previous equipment found. Enter details below.
-                </Text>
-              ) : (
-                <ScrollView style={styles.selectorList} nestedScrollEnabled>
-                  {filteredEquipment.map((item) => {
-                    const active = item.key === selectedEquipmentKey;
-                    return (
-                      <TouchableOpacity
-                        key={item.key}
-                        style={[styles.equipmentOptionRow, active && styles.equipmentOptionActive]}
-                        onPress={() => handleSelectEquipment(item)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.equipmentOptionName,
-                              { color: active ? COLORS.primaryAction : colors.text || COLORS.textHigh },
-                            ]}
-                          >
-                            {item.name || "Unnamed equipment"}
-                          </Text>
-                          <Text style={[styles.equipmentOptionMeta, { color: colors.textMuted || COLORS.textMid }]}>
-                            {[
-                              item.serialNumber || item.asset,
-                              item.category,
-                              item.status,
-                              item.location,
-                            ].filter(Boolean).join(" · ")}
-                          </Text>
-                        </View>
-                        {active ? <Icon name="check-circle" size={17} color={COLORS.primaryAction} /> : null}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
+              <AssetSelectField
+                hideLabel
+                type="equipment"
+                records={equipmentOptions}
+                value={selectedEquipmentKey}
+                onChange={(key) => {
+                  const item = equipmentOptions.find((option) => String(option.key) === String(key));
+                  if (item) handleSelectEquipment(item);
+                }}
+                loading={loadingEquipment}
+                emptyMessage="No previous equipment found. Use Enter new equipment below."
+                testID="inspection-equipment-select"
+              />
+              {!equipmentDetailsOpen && !params.workshopRequestId ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Enter new equipment"
+                  onPress={handleAddNewEquipment}
+                  style={styles.equipmentDetailsToggle}
+                >
+                  <Text variant="link">Enter new equipment</Text>
+                </TouchableOpacity>
+              ) : null}
             </>
           )}
 
+          {equipmentDetailsOpen && <>
           <FormField
             label="Equipment name *"
             placeholder="e.g. Ramp car, Stunt bike #3, Hero rig"
@@ -958,8 +931,8 @@ export default function InspectionFormScreen() {
           />
           <FormField
             label="Last inspection"
-            placeholder="YYYY-MM-DD"
-            value={lastInspection}
+            placeholder="DD-MM-YYYY"
+            value={formatISODateDDMMYYYY(lastInspection)}
             onChangeText={(v) => { setLastInspection(v); setDirty(true); }}
             colors={colors}
           />
@@ -972,8 +945,8 @@ export default function InspectionFormScreen() {
           />
           <FormField
             label="Next inspection"
-            placeholder="YYYY-MM-DD"
-            value={nextInspection}
+            placeholder="DD-MM-YYYY"
+            value={formatISODateDDMMYYYY(nextInspection)}
             onChangeText={(v) => { setNextInspection(v); setDirty(true); }}
             colors={colors}
           />
@@ -984,32 +957,36 @@ export default function InspectionFormScreen() {
             onChangeText={(v) => { setHoursOrOdo(v); setDirty(true); }}
             colors={colors}
           />
+          </>}
         </View>
 
         {/* INSPECTION DETAILS */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.sectionTitle]}>
             Inspection details
           </Text>
         </View>
-        <View style={[styles.card, {
-          backgroundColor: colors.surfaceAlt || COLORS.card,
-          borderColor: colors.border || COLORS.border,
-        }]}>
+        <View style={styles.flatSectionContent}>
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Inspection date (auto)
             </Text>
-            <View style={styles.readonlyField}>
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>{inspectionDate}</Text>
+            <View style={[styles.readonlyField, {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.inputBorder,
+            }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>{inspectionDate}</Text>
             </View>
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Inspection time (auto)
             </Text>
-            <View style={styles.readonlyField}>
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>{inspectionTime}</Text>
+            <View style={[styles.readonlyField, {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.inputBorder,
+            }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>{inspectionTime}</Text>
             </View>
           </View>
           <FormField
@@ -1117,7 +1094,7 @@ export default function InspectionFormScreen() {
           title="Defect report"
           items={defectReport}
           badge="R"
-          badgeColor="#EF4444"
+          badgeColor={routeColors.hex_ef4444_4oizhh}
           emptyText="No red equipment defects recorded."
           colors={colors}
         />
@@ -1126,21 +1103,18 @@ export default function InspectionFormScreen() {
           title="Monitor report"
           items={monitorReport}
           badge="M"
-          badgeColor="#F59E0B"
+          badgeColor={routeColors.hex_f59e0b_4zbh7f}
           emptyText="No amber equipment advisories recorded."
           colors={colors}
         />
 
         {/* FINDINGS & NOTES */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.sectionTitle]}>
             Findings & notes
           </Text>
         </View>
-        <View style={[styles.card, {
-          backgroundColor: colors.surfaceAlt || COLORS.card,
-          borderColor: colors.border || COLORS.border,
-        }]}>
+        <SectionCard tone="subtle" layoutStyle={styles.card}>
           <FormField
             label="Findings"
             placeholder="Describe any faults, defects or concerns found during inspection."
@@ -1165,21 +1139,18 @@ export default function InspectionFormScreen() {
             multiline
             colors={colors}
           />
-        </View>
+        </SectionCard>
 
         {/* OVERALL RESULT */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.sectionTitle]}>
             Overall result
           </Text>
-          <Text style={[styles.sectionHint, { color: colors.textMuted || COLORS.textMid }]}>
+          <Text tone={"muted"} style={[styles.sectionHint]}>
             Required to complete inspection.
           </Text>
         </View>
-        <View style={[styles.card, {
-          backgroundColor: colors.surfaceAlt || COLORS.card,
-          borderColor: colors.border || COLORS.border,
-        }]}>
+        <SectionCard tone="subtle" layoutStyle={styles.card}>
           <View style={styles.resultRow}>
             {OVERALL_RESULT_OPTIONS.map((opt) => {
               const active = overallResult === opt.value;
@@ -1197,7 +1168,7 @@ export default function InspectionFormScreen() {
                 >
                   <Text style={[
                     styles.resultButtonText,
-                    { color: active ? "#FFFFFF" : colors.textMuted || COLORS.textMid },
+                    { color: active ? routeColors.hex_ffffff_5c2ocm : colors.textMuted || COLORS.textMid },
                   ]}>
                     {opt.label}
                   </Text>
@@ -1205,21 +1176,18 @@ export default function InspectionFormScreen() {
               );
             })}
           </View>
-        </View>
+        </SectionCard>
 
         {/* SIGN-OFF */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.sectionTitle]}>
             Sign-off
           </Text>
-          <Text style={[styles.sectionHint, { color: colors.textMuted || COLORS.textMid }]}>
+          <Text tone={"muted"} style={[styles.sectionHint]}>
             Required to complete inspection.
           </Text>
         </View>
-        <View style={[styles.card, {
-          backgroundColor: colors.surfaceAlt || COLORS.card,
-          borderColor: colors.border || COLORS.border,
-        }]}>
+        <SectionCard tone="subtle" layoutStyle={styles.card}>
           <FormField
             label="Inspector signature (name) *"
             placeholder="Type name as signature"
@@ -1227,35 +1195,32 @@ export default function InspectionFormScreen() {
             onChangeText={(v) => { setSignedBy(v); setDirty(true); }}
             colors={colors}
           />
-          <View style={{ marginTop: 4 }}>
+          <View style={{ marginTop: t.spacing.xxs }}>
             <Text style={styles.signatureInfo}>
               By entering your name you confirm all checks above have been
               carried out to the best of your ability.
             </Text>
           </View>
-        </View>
+        </SectionCard>
 
         {/* PHOTOS */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+          <Text tone={"primary"} style={[styles.sectionTitle]}>
             Photos / attachments
           </Text>
-          <Text style={[styles.sectionHint, { color: colors.textMuted || COLORS.textMid }]}>
+          <Text tone={"muted"} style={[styles.sectionHint]}>
             General photos not tied to a single check.
           </Text>
         </View>
-        <View style={[styles.card, {
-          backgroundColor: colors.surfaceAlt || COLORS.card,
-          borderColor: colors.border || COLORS.border,
-        }]}>
+        <SectionCard tone="subtle" layoutStyle={styles.card}>
           <View style={styles.photoButtonsRow}>
             <TouchableOpacity style={styles.photoButton} onPress={handleAddPhotoFromLibrary} activeOpacity={0.85}>
-              <Icon name="image" size={18} color={colors.text || COLORS.textHigh} style={{ marginRight: 6 }} />
-              <Text style={[styles.photoAddText, { color: colors.text || COLORS.textHigh }]}>Add from library</Text>
+              <Icon name="image" size={18} color={colors.text || COLORS.textHigh} style={{ marginRight: t.spacing.xxs }} />
+              <Text tone={"primary"} style={[styles.photoAddText]}>Add from library</Text>
             </TouchableOpacity>
           </View>
           {photos.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: t.spacing.xs }}>
               {photos.map((p) => (
                 <View key={p.uri} style={styles.photoThumbWrapper}>
                   <Image source={{ uri: p.uri }} style={styles.photoThumb} />
@@ -1270,7 +1235,7 @@ export default function InspectionFormScreen() {
               ))}
             </ScrollView>
           )}
-        </View>
+        </SectionCard>
 
         {/* SUBMIT */}
         <TouchableOpacity
@@ -1283,7 +1248,7 @@ export default function InspectionFormScreen() {
             <ActivityIndicator size="small" color={COLORS.textHigh} />
           ) : (
             <>
-              <Icon name="save" size={18} color={COLORS.textHigh} style={{ marginRight: 6 }} />
+              <Icon name="save" size={18} color={COLORS.textHigh} style={{ marginRight: t.spacing.xxs }} />
               <Text style={styles.submitText}>
                 {isNew ? "Save inspection" : "Save changes"}
               </Text>
@@ -1292,45 +1257,19 @@ export default function InspectionFormScreen() {
         </TouchableOpacity>
 
         <View style={{ height: 20 }} />
-      </ScrollView>
+      </>
 
       {/* PER-CHECK PHOTO PICKER MODAL */}
-      <Modal
+      <AppModal
         visible={!!photoModalLabel}
-        transparent
-        animationType="fade"
+        title="Add photo"
         onRequestClose={() => setPhotoModalLabel(null)}
+        presentation="adaptive"
+        actions={<AppButton label="Cancel" variant="secondary" onPress={() => setPhotoModalLabel(null)} />}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setPhotoModalLabel(null)}
-        >
-          <View style={[styles.modalSheet, { backgroundColor: colors.surfaceAlt || COLORS.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text || COLORS.textHigh }]}>
-              Add photo
-            </Text>
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={handleCheckPhotoSource}
-            >
-              <Icon name="image" size={20} color={COLORS.primaryAction} style={{ marginRight: 12 }} />
-              <Text style={[styles.modalOptionText, { color: colors.text || COLORS.textHigh }]}>
-                Choose from library
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalOption, { marginTop: 4 }]}
-              onPress={() => setPhotoModalLabel(null)}
-            >
-              <Text style={[styles.modalCancelText, { color: colors.textMuted || COLORS.textMid }]}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </SafeAreaView>
+        <AppButton label="Choose from library" icon="image" variant="secondary" onPress={handleCheckPhotoSource} />
+      </AppModal>
+    </PageShell>
   );
 }
 
@@ -1348,17 +1287,14 @@ function ChecklistSection({
   return (
     <>
       <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+        <Text tone={"primary"} style={[styles.sectionTitle]}>
           {title}
         </Text>
-        <Text style={[styles.sectionHint, { color: colors.textMuted || COLORS.textMid }]}>
+        <Text tone={"muted"} style={[styles.sectionHint]}>
           {hint}
         </Text>
       </View>
-      <View style={[styles.card, {
-        backgroundColor: colors.surfaceAlt || COLORS.card,
-        borderColor: colors.border || COLORS.border,
-      }]}>
+      <SectionCard tone="subtle" layoutStyle={styles.card}>
         {items.map((item) => (
           <ChecklistRow
             key={item}
@@ -1375,16 +1311,19 @@ function ChecklistSection({
             colors={colors}
           />
         ))}
-      </View>
+      </SectionCard>
     </>
   );
 }
 
-function ChecklistRow({
+export function ChecklistRow({
   label, rating, na, note, photos,
   onChangeRating, onMarkNA, onChangeNote, onPressPhoto, onRemovePhoto,
   colors,
 }) {
+  const { colorScheme } = useTheme();
+  const paletteFor = (value) => getServiceStatusColors({ green: "success", amber: "warning", red: "danger" }[value] || "neutral", colorScheme);
+  const neutralPalette = paletteFor("");
   const needsNote = !na && NOTE_REQUIRED_STATUSES.has(rating);
   const isComplete = !!rating || na;
 
@@ -1400,7 +1339,7 @@ function ChecklistRow({
             <View style={styles.checkIconEmpty} />
           )}
         </View>
-        <Text style={[styles.checkLabel, { color: colors.text || COLORS.textHigh }]}>
+        <Text tone={"primary"} style={[styles.checkLabel]}>
           {label}
         </Text>
       </View>
@@ -1408,23 +1347,28 @@ function ChecklistRow({
       <View style={styles.ratingRow}>
         {CHECK_STATUS_OPTIONS.map((opt) => {
           const active = rating === opt.value;
+          const palette = paletteFor(opt.value);
           return (
             <TouchableOpacity
               key={opt.value}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}: ${opt.label}`}
+              aria-pressed={active}
+              accessibilityState={{ selected: active, disabled: na }}
               onPress={() => onChangeRating(opt.value)}
               disabled={na}
               style={[
                 styles.conditionPill,
                 na && { opacity: 0.35 },
                 active
-                  ? { backgroundColor: opt.color, borderColor: opt.color }
+                  ? { backgroundColor: palette.background, borderColor: palette.border }
                   : { borderColor: colors.border || COLORS.border },
               ]}
               activeOpacity={0.75}
             >
               <Text style={[
                 styles.conditionText,
-                active && styles.conditionTextActive,
+                active && { color: palette.onBackground },
                 !active && { color: colors.textMuted || COLORS.textLow },
               ]}>
                 {opt.label}
@@ -1435,19 +1379,24 @@ function ChecklistRow({
 
         <TouchableOpacity
           onPress={onMarkNA}
-          disabled={na}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: Not applicable`}
+          aria-pressed={na}
+          accessibilityState={{ selected: na }}
           style={[
             styles.naPill,
             { borderColor: colors.border || COLORS.border },
-            na && styles.naPillActive,
+            na && { backgroundColor: neutralPalette.background, borderColor: neutralPalette.border },
           ]}
           activeOpacity={0.75}
         >
-          <Text style={[styles.naText, na && styles.naTextActive]}>N/A</Text>
+          <Text style={[styles.naText, na && styles.naTextActive, { color: neutralPalette.foreground }]}>N/A</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={onPressPhoto}
+          accessibilityRole="button"
+          accessibilityLabel={`Add photo for ${label}`}
           style={[styles.photoIconButton, { borderColor: colors.border || COLORS.border }]}
           activeOpacity={0.75}
         >
@@ -1462,26 +1411,18 @@ function ChecklistRow({
 
       {/* Note input */}
       {needsNote && (
-        <TextInput
-          style={[
-            styles.checkNoteInput,
-            styles.checkNoteInputRequired,
-            {
-              color: colors.text || COLORS.textHigh,
-              borderColor: CHECK_STATUS_OPTIONS.find((opt) => opt.value === rating)?.color,
-            },
-          ]}
+        <TextArea
+          label="Inspection note"
+          error={!String(note || "").trim() ? `Note required for ${rating}` : undefined}
           placeholder={`Note required for ${rating}`}
-          placeholderTextColor={colors.textMuted || COLORS.textLow}
           value={note}
           onChangeText={onChangeNote}
-          multiline
         />
       )}
 
       {/* Check photos */}
       {photos.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: t.spacing.xxs }}>
           {photos.map((p) => (
             <View key={p.uri} style={styles.photoThumbWrapper}>
               <Image source={{ uri: p.uri }} style={styles.photoThumb} />
@@ -1506,18 +1447,12 @@ function InspectionReportSection({ title, items, badge, badgeColor, colors }) {
   return (
     <>
       <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: colors.text || COLORS.textHigh }]}>
+        <Text tone={"primary"} style={[styles.sectionTitle]}>
           {title}
         </Text>
       </View>
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: colors.surfaceAlt || COLORS.card,
-            borderColor: colors.border || COLORS.border,
-          },
-        ]}
+      <SectionCard
+        tone="subtle" layoutStyle={styles.card}
       >
         {items.map((item) => (
           <View key={item.key} style={styles.reportRow}>
@@ -1525,16 +1460,16 @@ function InspectionReportSection({ title, items, badge, badgeColor, colors }) {
               <Text style={styles.reportBadgeText}>{badge}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.reportTitle, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.reportTitle]}>
                 {item.title}
               </Text>
-              <Text style={[styles.reportDetails, { color: colors.textMuted || COLORS.textMid }]}>
+              <Text tone={"muted"} style={[styles.reportDetails]}>
                 {item.details}
               </Text>
             </View>
           </View>
         ))}
-      </View>
+      </SectionCard>
     </>
   );
 }
@@ -1542,26 +1477,11 @@ function InspectionReportSection({ title, items, badge, badgeColor, colors }) {
 function FormField({ label, placeholder, value, onChangeText, multiline, colors }) {
   return (
     <View style={styles.fieldGroup}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
-        {label}
-      </Text>
-      <TextInput
-        style={[
-          styles.input,
-          multiline && styles.inputMultiline,
-          {
-            color: colors.text || COLORS.textHigh,
-            backgroundColor: colors.inputBackground || "#FFFFFF",
-            borderColor: colors.inputBorder || colors.border || COLORS.border,
-          },
-        ]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted || COLORS.textLow}
-        value={value}
-        onChangeText={onChangeText}
-        multiline={multiline}
-        returnKeyType={multiline ? "default" : "done"}
-      />
+      {multiline ? (
+        <TextArea label={label} placeholder={placeholder} value={value} onChangeText={onChangeText} />
+      ) : (
+        <SharedFormField label={label} placeholder={placeholder} value={value} onChangeText={onChangeText} />
+      )}
     </View>
   );
 }
@@ -1569,357 +1489,3 @@ function FormField({ label, placeholder, value, onChangeText, multiline, colors 
 /* ------------------------------------------------------------------ */
 /*  STYLES                                                              */
 /* ------------------------------------------------------------------ */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-
-  scrollContent: { padding: 16, paddingTop: 8, paddingBottom: 110 },
-  centerRow: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-  },
-  loadingText: { color: COLORS.textMid, marginLeft: 8, fontSize: 13 },
-
-  sectionHeaderRow: {
-    marginTop: 4,
-    marginBottom: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  sectionHint: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    flexShrink: 1,
-  },
-
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  fieldGroup:    { marginBottom: 12 },
-  fieldLabel:    { fontSize: 13, fontWeight: "600", color: COLORS.textMid, marginBottom: 4 },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    color: COLORS.textHigh,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  inputMultiline: {
-    minHeight: 110,
-    textAlignVertical: "top",
-  },
-  readonlyField: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  readonlyText: { color: COLORS.textHigh, fontSize: 14 },
-  selectedEquipmentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  selectedEquipmentName: {
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  selectedEquipmentMeta: {
-    marginTop: 2,
-    fontSize: 12,
-  },
-  changeText: {
-    color: COLORS.primaryAction,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    color: COLORS.textHigh,
-    fontSize: 15,
-  },
-  selectorList: {
-    maxHeight: 180,
-    marginBottom: 12,
-  },
-  selectorEmptyText: {
-    marginBottom: 12,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  equipmentOptionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
-  },
-  equipmentOptionActive: {
-    backgroundColor: "rgba(237,28,37,0.08)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-  },
-  equipmentOptionName: {
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  equipmentOptionMeta: {
-    marginTop: 2,
-    fontSize: 12,
-  },
-
-  checkRowWrapper: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  checkRowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: 6,
-    marginBottom: 6,
-  },
-  checkIconWrap: {
-    paddingRight: 8,
-  },
-  checkIconEmpty: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2.5,
-    borderColor: COLORS.textMid,
-  },
-  checkIconFilled: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.textLow,
-  },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 6,
-  },
-  conditionPill: {
-    minHeight: 32,
-    borderRadius: 999,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  conditionText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  conditionTextActive: {
-    color: COLORS.textHigh,
-  },
-  naPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-  },
-  naPillActive: {
-    backgroundColor: "rgba(142,142,147,0.2)",
-    borderColor: COLORS.textMid,
-  },
-  naText: {
-    fontSize: 13,
-    color: COLORS.textLow,
-  },
-  naTextActive: {
-    color: COLORS.textMid,
-    fontWeight: "600",
-  },
-  photoIconButton: {
-    marginLeft: 6,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoBadge: {
-    position: "absolute", top: -5, right: -5,
-    minWidth: 15, height: 15, borderRadius: 8,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center", justifyContent: "center",
-    paddingHorizontal: 3,
-  },
-  photoBadgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
-  checkNoteInput: {
-    marginTop: 4,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: COLORS.textHigh,
-    textAlignVertical: "top",
-    minHeight: 48,
-  },
-  checkNoteInputRequired: {
-    borderWidth: 2,
-  },
-  reportRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  reportBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  reportBadgeText: {
-    color: COLORS.textHigh,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  reportTitle: {
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  reportDetails: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: "600",
-    lineHeight: 17,
-  },
-
-  resultRow: { flexDirection: "row", gap: 10 },
-  resultButton: {
-    flex: 1, borderWidth: 2, borderRadius: 8,
-    paddingVertical: 14, alignItems: "center",
-  },
-  resultButtonText: { fontSize: 16, fontWeight: "700" },
-
-  signatureInfo: {
-    fontSize: 11,
-    color: COLORS.textMid,
-  },
-
-  photoButtonsRow: { flexDirection: "row", gap: 8 },
-  photoButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 10,
-    backgroundColor: "#FFFFFF",
-  },
-  photoAddText: { color: COLORS.textHigh, fontSize: 14, fontWeight: "600" },
-  photoThumbWrapper: { marginRight: 10, position: "relative" },
-  photoThumb: { width: 70, height: 70, borderRadius: 8 },
-  photoRemoveBadge: {
-    position: "absolute", top: -4, right: -4,
-    width: 18, height: 18, borderRadius: 9,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    alignItems: "center", justifyContent: "center",
-  },
-
-  submitButton: {
-    marginTop: 10,
-    backgroundColor: COLORS.primaryAction,
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  submitText: { color: COLORS.textHigh, fontSize: 15, fontWeight: "700" },
-
-  modalOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    borderTopLeftRadius: 16, borderTopRightRadius: 16,
-    padding: 20, paddingBottom: Platform.OS === "ios" ? 36 : 20,
-  },
-  modalTitle: { fontSize: 15, fontWeight: "700", marginBottom: 16 },
-  modalOption: {
-    flexDirection: "row", alignItems: "center",
-    paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
-  },
-  modalOptionText: { fontSize: 15 },
-  modalCancelText: { fontSize: 14, textAlign: "center", flex: 1 },
-});

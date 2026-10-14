@@ -1,42 +1,27 @@
 import { Stack } from "expo-router";
-import { useCallback } from "react";
+import { Platform } from "react-native";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 
 import { useEmployeeNotifications } from "../../hooks/useEmployeeNotifications";
-import { useSyncManager } from "../../hooks/useSyncManager";
 import { useAuth } from "../../providers/AuthProvider";
-import { useDataCache } from "../../providers/DataCacheProvider";
 
 export default function ProtectedLayout() {
-  const { user, isAuthed, loading, setJobsUpdatedAt } = useAuth();
-  const { invalidate } = useDataCache();
-
-  const getAuthToken = useCallback(async () => {
-    if (!user || user.isAnonymous) return null;
-    return user.getIdToken();
-  }, [user]);
-
-  const handleRemoteChangesApplied = useCallback(
-    (applied) => {
-      if (applied <= 0) return;
-      setJobsUpdatedAt(Date.now());
-      invalidate().catch(() => {});
-    },
-    [invalidate, setJobsUpdatedAt]
-  );
-
-  useSyncManager({
-    enabled: isAuthed && !loading,
-    getAuthToken,
-    onRemoteChangesApplied: handleRemoteChangesApplied,
-  });
-  useEmployeeNotifications();
+  const reduceMotion = useReducedMotion();
+  const { workingTermsAccepted } = useAuth();
+  useEmployeeNotifications({ enabled: workingTermsAccepted });
 
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        animation: "none",
+        animation: reduceMotion ? "none" : Platform.OS === "android" ? "default" : "slide_from_right",
+        gestureEnabled: true,
+        fullScreenGestureEnabled: true,
+        animationMatchesGesture: true,
       }}
-    />
+    >
+      <Stack.Screen name="(main-tabs)" options={{ animation: "none", gestureEnabled: false }} />
+      <Stack.Screen name="(service-tabs)" options={{ animation: "none", gestureEnabled: false }} />
+    </Stack>
   );
 }

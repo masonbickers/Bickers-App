@@ -26,7 +26,8 @@
       "environment": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://bickers-mobile-api.onrender.com"
       },
       "ios": {
         "image": "latest",
@@ -42,7 +43,8 @@
       "environment": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://bickers-mobile-api.onrender.com"
       },
       "ios": {
         "image": "latest",

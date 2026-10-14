@@ -1,53 +1,45 @@
+import AssetSelectField from "../../../../components/ui/AssetSelectField";
+import { routeColors } from "../../../../lib/design/routePresentation/service-mot-precheck-id-jsx.js";
+import { styles } from "../../../../lib/design/screenStyles/service-mot-precheck-id-jsx.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity, FormField as SharedFormField, TextArea } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../../lib/design/semantics";
 //app/(protected)/service/mot-precheck/[id].jsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams,
+  useNavigation,
+  useRouter } from "expo-router";
 import {
-    collection,
-    doc,
-    serverTimestamp,
-    setDoc,
-    updateDoc,
-} from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+  doc,
+  serverTimestamp,
+  } from "firebase/firestore";
+import { useEffect,
+  useMemo,
+  useRef,
+  useState } from "react";
 import {
     ActivityIndicator,
-    Alert,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  Alert,
+  Platform,
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { db } from "../../../../firebaseConfig";
 import { formatShortDate } from "../../../../lib/dateDisplay";
+import { formatISODateDDMMYYYY } from "../../../../lib/dateFormat";
 import {
-  buildVehicleIdentityMirrorUpdate,
-  buildVehicleOdometerMirrorUpdate,
   getVehicleManufacturer,
   getVehicleMileage,
   getVehicleName,
   getVehicleRegistration,
 } from "../../../../lib/fleetSchema";
 import { useServiceCacheActions, useServiceCollectionReader } from "../../../../hooks/useServiceData";
-import { runOrQueueFirestoreMutations } from "../../../../lib/sync/firestoreQueue";
+import { submitOrQueueWorkshopRecord } from "../../../../lib/workshopSubmissionApi";
+import { useAuth } from "../../../../providers/AuthProvider";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-  lightGray: "#4a4a4a",
-};
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 const PRECHECK_STATUS_OPTIONS = [
   "Ready for MOT",
@@ -105,11 +97,7 @@ function getNowParts() {
   };
 }
 
-function addPresent(target, key, value) {
-  if (value !== undefined && value !== null && value !== "") {
-    target[key] = value;
-  }
-}
+
 
 // 🔑 Local storage key for drafts
 const MOT_PRECHECK_DRAFTS_KEY = "motPrecheckDrafts_v1";
@@ -117,8 +105,9 @@ const MOT_PRECHECK_DRAFTS_KEY = "motPrecheckDrafts_v1";
 export default function MotPrecheckScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { id } = useLocalSearchParams();
+  const { id, workshopRequestId, vehicleId: requestedVehicleId } = useLocalSearchParams();
   const formId = Array.isArray(id) ? id[0] : id;
+  const { employee } = useAuth();
   const allowLeaveRef = useRef(false);
 
   const { colors } = useTheme();
@@ -129,8 +118,7 @@ export default function MotPrecheckScreen() {
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const [vehicleSearch, setVehicleSearch] = useState("");
-  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(requestedVehicleId ? String(requestedVehicleId) : null);
   const [vehicleCollapsed, setVehicleCollapsed] = useState(false);
 
   const now = getNowParts();
@@ -180,22 +168,6 @@ export default function MotPrecheckScreen() {
     loadVehicles();
   }, [readServiceCollection]);
 
-  const filteredVehicles = useMemo(() => {
-    if (!vehicleSearch.trim()) return vehicles;
-    const q = vehicleSearch.toLowerCase();
-    return vehicles.filter((v) => {
-      const name = String(getVehicleName(v)).toLowerCase();
-      const reg = String(getVehicleRegistration(v)).toLowerCase();
-      const manufacturer = String(getVehicleManufacturer(v)).toLowerCase();
-      const model = (v.model || "").toLowerCase();
-      return (
-        name.includes(q) ||
-        reg.includes(q) ||
-        manufacturer.includes(q) ||
-        model.includes(q)
-      );
-    });
-  }, [vehicles, vehicleSearch]);
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.id === selectedVehicleId) || null,
@@ -205,7 +177,6 @@ export default function MotPrecheckScreen() {
   const hasUnsavedChanges = useMemo(
     () =>
       !!selectedVehicleId ||
-      !!vehicleSearch.trim() ||
       !!odometer.trim() ||
       precheckStatus !== "Ready for MOT" ||
       !!summary.trim() ||
@@ -225,7 +196,6 @@ export default function MotPrecheckScreen() {
       selectedVehicleId,
       signedBy,
       summary,
-      vehicleSearch,
       workRecommended,
     ]
   );
@@ -308,7 +278,6 @@ export default function MotPrecheckScreen() {
           setSelectedVehicleId(draft.selectedVehicleId);
           setVehicleCollapsed(true);
         }
-        if (draft.vehicleSearch) setVehicleSearch(draft.vehicleSearch);
         if (draft.odometer) setOdometer(String(draft.odometer));
         if (draft.precheckStatus) setPrecheckStatus(draft.precheckStatus);
         if (draft.summary) setSummary(draft.summary);
@@ -369,7 +338,6 @@ export default function MotPrecheckScreen() {
           selectedVehicleId,
           vehicleName,
           registration,
-          vehicleSearch,
           odometer,
           precheckStatus,
           precheckDate,
@@ -398,7 +366,6 @@ export default function MotPrecheckScreen() {
     formId,
     selectedVehicle,
     selectedVehicleId,
-    vehicleSearch,
     odometer,
     precheckStatus,
     precheckDate,
@@ -500,6 +467,11 @@ export default function MotPrecheckScreen() {
   /* ---------------- SUBMIT ---------------- */
 
   const handleSubmit = async () => {
+    if (workshopRequestId && String(selectedVehicleId) !== String(requestedVehicleId)) {
+      Alert.alert("Wrong vehicle", "Complete this request for its selected vehicle.");
+      return;
+    }
+    if (submitting) return;
     if (!validate()) return;
 
     setSubmitting(true);
@@ -511,6 +483,8 @@ export default function MotPrecheckScreen() {
       const recordRegistration = getVehicleRegistration(v) || "";
 
       const record = {
+        companyId: employee?.companyId,
+        ...(workshopRequestId ? { workshopRequestId: String(workshopRequestId), workshopWorkType: "mot_precheck" } : {}),
         vehicleId: selectedVehicleId,
         vehicleName: recordVehicleName,
         registration: recordRegistration,
@@ -531,63 +505,12 @@ export default function MotPrecheckScreen() {
         createdAt: serverTimestamp(),
       };
 
-      const motRef = doc(collection(db, "motPreChecks"));
-
-      const vehicleRef = doc(db, "vehicles", selectedVehicleId);
-      const updatePayload = {
-        motPrecheckStatus: precheckStatus.trim(),
-        motPrecheckDate: precheckDateTime,
-        preChecks: {
-          checks,
-          checkRatings,
-          checkNA,
-        },
-      };
-      addPresent(updatePayload, "preChecksSummary", summary.trim());
-      addPresent(
-        updatePayload,
-        "preChecksNotes",
-        [faultsFound.trim(), workRecommended.trim()].filter(Boolean).join(" ")
-      );
-      Object.assign(
-        updatePayload,
-        buildVehicleIdentityMirrorUpdate({
-          ...v,
-          name: recordVehicleName,
-          registration: recordRegistration,
-          manufacturer: getVehicleManufacturer(v) || "",
-        })
-      );
-      if (odoNumber && !Number.isNaN(odoNumber)) {
-        Object.assign(updatePayload, buildVehicleOdometerMirrorUpdate(odoNumber));
-      }
-
-      const { queued } = await runOrQueueFirestoreMutations([
-        {
-          run: () => setDoc(motRef, record),
-          mutation: {
-            operation: "set",
-            docPath: `motPreChecks/${motRef.id}`,
-            data: record,
-            options: { merge: false },
-            entityType: "motPreCheck",
-            entityId: motRef.id,
-          },
-        },
-        {
-          run: () => updateDoc(vehicleRef, updatePayload),
-          mutation: {
-            operation: "update",
-            docPath: `vehicles/${selectedVehicleId}`,
-            data: updatePayload,
-            entityType: "vehicle",
-            entityId: selectedVehicleId,
-          },
-        },
-      ]);
-      await Promise.all([
-        upsertServiceRow("motPreChecks", { ...record, id: motRef.id }),
-        patchServiceRow("vehicles", selectedVehicleId, updatePayload),
+      const motRef = doc(db, "motPreChecks", String(workshopRequestId || formId));
+      const result = await submitOrQueueWorkshopRecord({ kind: "mot", recordId: motRef.id, record });
+      const { queued } = result;
+      await Promise.allSettled([
+        upsertServiceRow("motPreChecks", { ...(result.record || record), id: motRef.id }),
+        ...(result.vehiclePatch ? [patchServiceRow("vehicles", selectedVehicleId, result.vehiclePatch)] : []),
       ]);
 
       // Clear this draft
@@ -628,7 +551,7 @@ export default function MotPrecheckScreen() {
       );
     } catch (err) {
       console.error("Failed to save MOT pre-check:", err);
-      Alert.alert("Error", "Could not save MOT pre-check. Please try again.");
+      Alert.alert("Error", err.message || "Could not save MOT pre-check. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -686,57 +609,21 @@ export default function MotPrecheckScreen() {
   /* ---------------- RENDER ---------------- */
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
+    <PageShell mode="form" width="form" header={{
+      variant: "compact",
+      title: "MOT Pre-check",
+      subtitle: "Quick safety check before sending vehicle for MOT.",
+      onBack: () => confirmLeave(() => router.back()),
+    }}>
       {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => confirmLeave(() => router.back())}
-          style={styles.backButton}
-        >
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.pageTitle,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-          >
-            MOT Pre-check
-          </Text>
-          <Text
-            style={[
-              styles.pageSubtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Quick safety check before sending vehicle for MOT.
-          </Text>
-        </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+
+      <>
         {/* VEHICLE SECTION */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Vehicle
@@ -754,9 +641,8 @@ export default function MotPrecheckScreen() {
             </TouchableOpacity>
           ) : loadingVehicles ? (
             <Text
-              style={[
+              tone={"muted"} style={[
                 styles.sectionHint,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Loading fleet…
@@ -764,143 +650,48 @@ export default function MotPrecheckScreen() {
           ) : null}
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
-        >
+        <View style={styles.flatSectionContent}>
           {vehicleCollapsed && selectedVehicle ? (
             <>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.fieldLabel,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 Selected vehicle
               </Text>
               <View style={styles.selectedVehicleRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.vehicleName, { color: colors.text || COLORS.textHigh }]}>
+                  <Text tone={"primary"} style={[styles.vehicleName]}>
                     {getVehicleName(selectedVehicle) || "Unnamed vehicle"}
                   </Text>
-                  <Text style={[styles.vehicleReg, { color: colors.textMuted || COLORS.textMid }]}>
+                  <Text tone={"muted"} style={[styles.vehicleReg]}>
                     {getVehicleRegistration(selectedVehicle) || "—"}
                   </Text>
                 </View>
               </View>
               <View style={styles.vehicleMetaRow}>
-                <Text style={[styles.vehicleMeta, { color: colors.textMuted || COLORS.textMid }]}>
+                <Text tone={"muted"} style={[styles.vehicleMeta]}>
                   Current mileage:{" "}
                   {typeof getVehicleMileage(selectedVehicle) === "number"
                     ? `${getVehicleMileage(selectedVehicle).toLocaleString("en-GB")} mi`
                     : "—"}
                 </Text>
-                <Text style={[styles.vehicleMeta, { color: colors.textMuted || COLORS.textMid }]}>
+                <Text tone={"muted"} style={[styles.vehicleMeta]}>
                   Last MOT pre-check: {formatShortDate(selectedVehicle.motPrecheckDate) || selectedVehicle.motPrecheckDate || "—"}
                 </Text>
               </View>
             </>
           ) : (
             <>
-              <Text
-                style={[
-                  styles.fieldLabel,
-                  { color: colors.textMuted || COLORS.textMid },
-                ]}
-              >
-                Search vehicle
-              </Text>
-              <View
-                style={[
-                  styles.searchBox,
-                  {
-                    backgroundColor: colors.inputBackground || "#FFFFFF",
-                    borderColor: colors.inputBorder || colors.border || COLORS.border,
-                  },
-                ]}
-              >
-                <Icon
-                  name="search"
-                  size={16}
-                  color={colors.textMuted || COLORS.textMid}
-                  style={{ marginRight: 6 }}
-                />
-                <TextInput
-                  style={[styles.searchInput, { color: colors.text || COLORS.textHigh }]}
-                  placeholder="Name, reg, manufacturer or model…"
-                  placeholderTextColor={colors.textMuted || COLORS.textLow}
-                  value={vehicleSearch}
-                  onChangeText={setVehicleSearch}
-                />
-              </View>
-
-              {loadingVehicles ? (
-                <View style={styles.centerRow}>
-                  <ActivityIndicator size="small" color={COLORS.primaryAction} />
-                </View>
-              ) : filteredVehicles.length === 0 ? (
-                <View style={styles.centerRow}>
-                  <Text style={styles.emptyText}>
-                    No vehicles match this search.
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ maxHeight: 180, marginTop: 8 }}
-                  nestedScrollEnabled
-                >
-                  {filteredVehicles.map((v) => {
-                    const name = getVehicleName(v) || "Unnamed vehicle";
-                    const reg = getVehicleRegistration(v);
-                    const manufacturer = getVehicleManufacturer(v);
-                    const isActive = v.id === selectedVehicleId;
-
-                    return (
-                      <TouchableOpacity
-                        key={v.id}
-                        style={[
-                          styles.vehicleRow,
-                          isActive && styles.vehicleRowActive,
-                        ]}
-                        onPress={() => handleSelectVehicle(v.id)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.vehicleName,
-                              { color: colors.text || COLORS.textHigh },
-                              isActive && { color: COLORS.primaryAction },
-                            ]}
-                          >
-                            {name}
-                          </Text>
-                          <Text style={[styles.vehicleReg, { color: colors.textMuted || COLORS.textMid }]}>
-                            {reg}
-                            {manufacturer || v.model
-                              ? ` · ${manufacturer || ""}${
-                                  manufacturer && v.model ? " " : ""
-                                }${v.model || ""}`
-                              : ""}
-                          </Text>
-                        </View>
-                        {isActive && (
-                          <Icon
-                            name="check-circle"
-                            size={18}
-                            color={COLORS.primaryAction}
-                          />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
+              <AssetSelectField
+                hideLabel
+                records={vehicles}
+                value={selectedVehicleId}
+                onChange={handleSelectVehicle}
+                loading={loadingVehicles}
+                testID="service-vehicle-select"
+              />
             </>
           )}
         </View>
@@ -908,57 +699,48 @@ export default function MotPrecheckScreen() {
         {/* PRE-CHECK DETAILS */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Pre-check details
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
-        >
+        <View style={styles.flatSectionContent}>
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Date (auto)
             </Text>
             <View
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
-                {precheckDate}
+              <Text tone={"primary"} style={[styles.readonlyText]}>
+                {formatISODateDDMMYYYY(precheckDate)}
               </Text>
             </View>
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               Time (auto)
             </Text>
             <View
               style={[
                 styles.readonlyField,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
             >
-              <Text style={[styles.readonlyText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.readonlyText]}>
                 {precheckTime}
               </Text>
             </View>
@@ -973,21 +755,21 @@ export default function MotPrecheckScreen() {
           />
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: colors.textMuted || COLORS.textMid }]}>
+            <Text tone={"primary"} style={[styles.fieldLabel]}>
               MOT readiness
             </Text>
             <TouchableOpacity
               style={[
                 styles.dropdownHeader,
                 {
-                  backgroundColor: colors.inputBackground || "#FFFFFF",
+                  backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                   borderColor: colors.inputBorder || colors.border || COLORS.border,
                 },
               ]}
               onPress={() => setStatusOpen((prev) => !prev)}
               activeOpacity={0.8}
             >
-              <Text style={[styles.dropdownText, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.dropdownText]}>
                 {precheckStatus}
               </Text>
               <Icon
@@ -1001,7 +783,7 @@ export default function MotPrecheckScreen() {
                 style={[
                   styles.dropdownList,
                   {
-                    backgroundColor: colors.inputBackground || "#FFFFFF",
+                    backgroundColor: colors.inputBackground || routeColors.hex_ffffff_5c2ocm,
                     borderColor: colors.border || COLORS.border,
                   },
                 ]}
@@ -1090,23 +872,16 @@ export default function MotPrecheckScreen() {
         {/* NOTES */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Notes
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
+        <SectionCard
+          tone="subtle" layoutStyle={styles.card}
         >
           <FormField
             label="Summary"
@@ -1129,36 +904,28 @@ export default function MotPrecheckScreen() {
             onChangeText={setWorkRecommended}
             multiline
           />
-        </View>
+        </SectionCard>
 
         {/* SIGN-OFF */}
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Sign-off
           </Text>
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.sectionHint,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Required before vehicle goes for MOT.
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceAlt || COLORS.card,
-              borderColor: colors.border || COLORS.border,
-            },
-          ]}
+        <SectionCard
+          tone="subtle" layoutStyle={styles.card}
         >
           <FormField
             label="Technician signature (name)"
@@ -1166,13 +933,13 @@ export default function MotPrecheckScreen() {
             value={signedBy}
             onChangeText={setSignedBy}
           />
-          <View style={{ marginTop: 6 }}>
-            <Text style={[styles.signatureInfo, { color: colors.textMuted || COLORS.textMid }]}>
+          <View style={{ marginTop: t.spacing.xxs }}>
+            <Text tone={"muted"} style={[styles.signatureInfo]}>
               By entering your name you confirm this pre-check has been carried
               out to the best of your ability.
             </Text>
           </View>
-        </View>
+        </SectionCard>
 
         {/* SUBMIT */}
         <TouchableOpacity
@@ -1189,7 +956,7 @@ export default function MotPrecheckScreen() {
                 name="check-circle"
                 size={16}
                 color={COLORS.textHigh}
-                style={{ marginRight: 6 }}
+                style={{ marginRight: t.spacing.xxs }}
               />
               <Text style={styles.submitText}>
                 Save MOT pre-check & update vehicle
@@ -1208,14 +975,14 @@ export default function MotPrecheckScreen() {
             name="trash-2"
             size={16}
             color={COLORS.textHigh}
-            style={{ marginRight: 6 }}
+            style={{ marginRight: t.spacing.xxs }}
           />
           <Text style={styles.deleteText}>Delete pre-check draft</Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
-    </SafeAreaView>
+      </>
+    </PageShell>
   );
 }
 
@@ -1229,35 +996,19 @@ function FormField({
   multiline = false,
   keyboardType = "default",
 }) {
-  const { colors } = useTheme();
-
   return (
     <View style={styles.fieldGroup}>
-      <Text
-        style={[
-          styles.fieldLabel,
-          { color: colors.textMuted || COLORS.textMid },
-        ]}
-      >
-        {label}
-      </Text>
-      <TextInput
-        style={[
-          styles.input,
-          {
-            backgroundColor: colors.inputBackground || "#FFFFFF",
-            borderColor: colors.inputBorder || colors.border || COLORS.border,
-            color: colors.text || COLORS.textHigh,
-          },
-          multiline && styles.inputMultiline,
-        ]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted || COLORS.textLow}
-        value={value}
-        onChangeText={onChangeText}
-        multiline={multiline}
-        keyboardType={keyboardType}
-      />
+      {multiline ? (
+        <TextArea label={label} placeholder={placeholder} value={value} onChangeText={onChangeText} />
+      ) : (
+        <SharedFormField
+          label={label}
+          placeholder={placeholder}
+          value={value}
+          onChangeText={onChangeText}
+          inputProps={{ keyboardType }}
+        />
+      )}
     </View>
   );
 }
@@ -1273,36 +1024,28 @@ function ChecklistSection({
   toggleNA,
   updateRating,
 }) {
-  const { colors } = useTheme();
+
   return (
     <>
       <View style={styles.sectionHeaderRow}>
         <Text
-          style={[
+          tone={"primary"} style={[
             styles.sectionTitle,
-            { color: colors.text || COLORS.textHigh },
           ]}
         >
           {title}
         </Text>
         <Text
-          style={[
+          tone={"muted"} style={[
             styles.sectionHint,
-            { color: colors.textMuted || COLORS.textMid },
           ]}
         >
           {hint}
         </Text>
       </View>
 
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: colors.surfaceAlt || COLORS.card,
-            borderColor: colors.border || COLORS.border,
-          },
-        ]}
+      <SectionCard
+        tone="subtle" layoutStyle={styles.card}
       >
         {items.map((item) => (
           <ChecklistRow
@@ -1318,12 +1061,12 @@ function ChecklistSection({
             onChangeRating={(val) => updateRating(item, val)}
           />
         ))}
-      </View>
+      </SectionCard>
     </>
   );
 }
 
-function ChecklistRow({
+export function ChecklistRow({
   label,
   checked,
   na,
@@ -1332,7 +1075,9 @@ function ChecklistRow({
   rating,
   onChangeRating,
 }) {
-  const { colors } = useTheme();
+  const { colors, colorScheme } = useTheme();
+  const paletteFor = (value) => getServiceStatusColors({ green: "success", amber: "warning", red: "danger" }[value] || "neutral", colorScheme);
+  const neutralPalette = paletteFor("");
   const disabled = na;
 
   return (
@@ -1361,10 +1106,10 @@ function ChecklistRow({
           )}
         </View>
         <Text
-          style={[
+          tone={(checked) ? "primary" : ("muted")} style={[
             styles.checkLabel,
-            { color: colors.textMuted || COLORS.textLow },
-            checked && { color: colors.text || COLORS.textHigh },
+            null,
+            checked && null,
             disabled && { opacity: 0.5 },
           ]}
         >
@@ -1379,9 +1124,14 @@ function ChecklistRow({
           return (
             <TouchableOpacity
               key={n}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}: ${n}`}
+              disabled={disabled}
+              aria-pressed={isActive}
+              accessibilityState={{ selected: isActive, disabled }}
               style={[
                 styles.ratingDot,
-                isActive && styles.ratingDotActive,
+                isActive && { backgroundColor: neutralPalette.background, borderColor: neutralPalette.border },
                 disabled && { opacity: 0.25 },
               ]}
               onPress={disabled ? undefined : () => onChangeRating(n)}
@@ -1391,7 +1141,7 @@ function ChecklistRow({
                 style={[
                   styles.ratingText,
                   { color: colors.textMuted || COLORS.textLow },
-                  isActive && styles.ratingTextActive,
+                  { color: neutralPalette.foreground },
                 ]}
               >
                 {n}
@@ -1401,11 +1151,15 @@ function ChecklistRow({
         })}
 
         <TouchableOpacity
-          style={[styles.naPill, na && styles.naPillActive]}
+          style={[styles.naPill, na && styles.naPillActive, { borderColor: neutralPalette.border }, na && { backgroundColor: neutralPalette.background }]}
           onPress={onToggleNA}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: Not applicable`}
+          aria-pressed={na}
+          accessibilityState={{ selected: na }}
           activeOpacity={0.7}
         >
-          <Text style={[styles.naText, na && styles.naTextActive]}>N/A</Text>
+          <Text style={[styles.naText, na && styles.naTextActive, { color: neutralPalette.foreground }]}>N/A</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1413,301 +1167,3 @@ function ChecklistRow({
 }
 
 /* ---------------- STYLES ---------------- */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingTop: 8,
-    paddingBottom: 110,
-  },
-  sectionHeaderRow: {
-    marginTop: 4,
-    marginBottom: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  sectionHint: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  fieldGroup: {
-    marginBottom: 10,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textMid,
-    marginBottom: 4,
-  },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    color: COLORS.textHigh,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-  },
-  inputMultiline: {
-    minHeight: 90,
-    textAlignVertical: "top",
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  searchInput: {
-    flex: 1,
-    color: COLORS.textHigh,
-    fontSize: 14,
-  },
-  centerRow: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  vehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  vehicleRowActive: {
-    backgroundColor: "rgba(255,59,48,0.12)",
-  },
-  vehicleName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textHigh,
-  },
-  vehicleReg: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  vehicleMetaRow: {
-    marginTop: 8,
-  },
-  vehicleMeta: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  selectedVehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  readonlyField: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  readonlyText: {
-    fontSize: 14,
-    color: COLORS.textHigh,
-  },
-  checkRowWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 7,
-  },
-  checkRowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: 6,
-  },
-  checkIconWrap: {
-    paddingRight: 8,
-  },
-  checkIconEmpty: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 2,
-    borderColor: COLORS.textMid,
-  },
-  checkIconFilled: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkLabel: {
-    flex: 1,
-    fontSize: 13,
-    color: COLORS.textLow,
-  },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  ratingDot: {
-    minWidth: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1.5,
-    borderColor: COLORS.lightGray,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-  },
-  ratingDotActive: {
-    backgroundColor: "rgba(255,59,48,0.16)",
-    borderColor: COLORS.primaryAction,
-  },
-  ratingText: {
-    fontSize: 12,
-    color: COLORS.textLow,
-  },
-  ratingTextActive: {
-    color: COLORS.primaryAction,
-    fontWeight: "700",
-  },
-  naPill: {
-    marginLeft: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: COLORS.lightGray,
-  },
-  naPillActive: {
-    backgroundColor: "rgba(142,142,147,0.2)",
-    borderColor: COLORS.textMid,
-  },
-  naText: {
-    fontSize: 12,
-    color: COLORS.textLow,
-  },
-  naTextActive: {
-    color: COLORS.textMid,
-    fontWeight: "600",
-  },
-  dropdownHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    justifyContent: "space-between",
-  },
-  dropdownText: {
-    color: COLORS.textHigh,
-    fontSize: 14,
-    flex: 1,
-    marginRight: 8,
-  },
-  dropdownList: {
-    marginTop: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#FFFFFF",
-    overflow: "hidden",
-  },
-  dropdownItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  dropdownItemActive: {
-    backgroundColor: "rgba(255,59,48,0.12)",
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: COLORS.textHigh,
-  },
-  signatureInfo: {
-    fontSize: 11,
-    color: COLORS.textMid,
-  },
-  submitButton: {
-    marginTop: 10,
-    backgroundColor: COLORS.primaryAction,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  submitText: {
-    color: COLORS.textHigh,
-    fontWeight: "700",
-    fontSize: 15,
-  },
-  deleteButton: {
-    marginTop: 10,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.primaryAction,
-    backgroundColor: "rgba(255,59,48,0.08)",
-  },
-  deleteText: {
-    color: COLORS.textHigh,
-    fontWeight: "600",
-    fontSize: 14,
-  },
-});

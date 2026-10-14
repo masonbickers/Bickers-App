@@ -1,22 +1,36 @@
-import { useRouter } from "expo-router";
-import { collection, getDocs } from "firebase/firestore";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCardSurfaceStyle } from "../../lib/design/cardSurface";
+import { routeColors } from "../../lib/design/routePresentation/work-diary-board-js.js";
+import { styles } from "../../lib/design/screenStyles/work-diary-board-js.js";
+import { AppModal, AppText as Text, AppPressable as TouchableOpacity } from "../../components/ui/AppPrimitives";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import WorkDiaryAccessGate from "../../components/WorkDiaryAccessGate";
+import { collection,
+  getDocs, query, where } from "firebase/firestore";
+import { useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
-  RefreshControl,
   ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
-  useWindowDimensions,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  useWindowDimensions } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { db } from "../../firebaseConfig";
+import { getVehicleDisplayLabel } from "../../lib/fleetSchema";
+import { useAuth } from "../../providers/AuthProvider";
 import { useTheme } from "../../providers/ThemeProvider";
+import { withAlpha } from "../../lib/design/color";
+import { designTokens as t } from "../../lib/design/tokens";
+import PageShell from "../../components/layout/PageShell";
+import {
+  getBookingLifecycle,
+  getBookingLifecycleLabel,
+  shouldShowDiaryBooking,
+} from "../../lib/bookingLifecycle";
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const COL_WIDTH = 290;
@@ -25,16 +39,8 @@ const ROW_HEIGHT = 260;
 
 let cachedBoardData = null;
 let boardDataRequest = null;
-
-function withAlpha(hex, alpha) {
-  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
-  const raw = String(hex || "").replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return `rgba(255,255,255,${safeAlpha})`;
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${safeAlpha})`;
-}
+let boardDataRequestCompanyId = null;
+let boardDataRequestIdentity = null;
 
 function getISO(value) {
   if (!value) return null;
@@ -77,14 +83,8 @@ function formatDayHeader(iso) {
   return `${DAY_NAMES[(d.getDay() + 6) % 7]} ${d.getDate()}`;
 }
 
-function formatVehicle(v, vehicleNameById = {}) {
-  if (typeof v === "string") return vehicleNameById[v] || v;
-  if (!v || typeof v !== "object") return "";
-  const id = v.id || v.vehicleId || v.docId;
-  if (id && vehicleNameById[id]) return vehicleNameById[id];
-  const name = v.name || v.label || v.title || "";
-  const reg = v.reg || v.registration || v.numberPlate || "";
-  return reg ? `${name} ${reg}`.trim() : name;
+function formatVehicle(vehicle, vehicleDirectory = []) {
+  return getVehicleDisplayLabel(vehicle, vehicleDirectory);
 }
 
 function toArray(val) {
@@ -160,48 +160,48 @@ function cardTone(job) {
 
   if (isMaintenance) {
     return {
-      bg: "#A7D091",
-      border: "#6E9D5E",
-      text: "#142214",
+      bg: routeColors.hex_a7d091_7z1amk,
+      border: routeColors.hex_6e9d5e_48qwvs,
+      text: routeColors.hex_142214_a6j16u,
     };
   }
 
   if (status.includes("complete")) {
     return {
-      bg: "#A7D091",
-      border: "#6E9D5E",
-      text: "#142214",
+      bg: routeColors.hex_a7d091_7z1amk,
+      border: routeColors.hex_6e9d5e_48qwvs,
+      text: routeColors.hex_142214_a6j16u,
     };
   }
 
   if (status.includes("confirmed")) {
     return {
-      bg: "#F5F57A",
-      border: "#A9A944",
-      text: "#232323",
+      bg: routeColors.hex_f5f57a_4xffkg,
+      border: routeColors.hex_a9a944_8bjrly,
+      text: routeColors.hex_232323_72yy4n,
     };
   }
 
   if (status.includes("first pencil")) {
     return {
-      bg: "#CFE7FF",
-      border: "#7FA9D6",
-      text: "#1C2A3A",
+      bg: routeColors.hex_cfe7ff_8cg5td,
+      border: routeColors.hex_7fa9d6_7g0531,
+      text: routeColors.hex_1c2a3a_8m3it1,
     };
   }
 
   if (status.includes("second pencil")) {
     return {
-      bg: "#F6C9CC",
-      border: "#D28790",
-      text: "#3A1E23",
+      bg: routeColors.hex_f6c9cc_4y74y4,
+      border: routeColors.hex_d28790_63pgd2,
+      text: routeColors.hex_3a1e23_9vcdmp,
     };
   }
 
   return {
-    bg: "#E9EDF3",
-    border: "#98A6BB",
-    text: "#1D2430",
+    bg: routeColors.hex_e9edf3_5qi9vy,
+    border: routeColors.hex_98a6bb_f7qsvk,
+    text: routeColors.hex_1d2430_8jyunq,
   };
 }
 
@@ -333,15 +333,27 @@ function DetailRow({ icon, label, value, colors }) {
         <Icon name={icon} size={14} color={colors.textMuted} />
       </View>
       <View style={styles.detailTextWrap}>
-        <Text style={[styles.detailLabel, { color: colors.textMuted }]}>{label}</Text>
-        <Text style={[styles.detailValue, { color: colors.text }]}>{value}</Text>
+        <Text tone={"muted"} style={[styles.detailLabel]}>{label}</Text>
+        <Text tone={"primary"} style={[styles.detailValue]}>{value}</Text>
       </View>
     </View>
   );
 }
 
 export default function WorkDiaryBoardPage() {
+  return <WorkDiaryAccessGate><WorkDiaryBoardContent /></WorkDiaryAccessGate>;
+}
+
+function WorkDiaryBoardContent() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const { user, employee, isAuthed, loading: authLoading } = useAuth();
+  const companyId = String(employee?.companyId || "").trim();
+  const boardIdentity = !authLoading && isAuthed && user?.uid && companyId
+    ? `${user.uid}:${companyId}`
+    : "";
+  const boardIdentityRef = useRef(boardIdentity);
+  boardIdentityRef.current = boardIdentity;
   const { colors } = useTheme();
   const scrollRef = useRef(null);
   const verticalScrollRef = useRef(null);
@@ -349,63 +361,75 @@ export default function WorkDiaryBoardPage() {
   const { width: screenWidth } = useWindowDimensions();
 
   const [weekStart, setWeekStart] = useState(() => isoFromDate(mondayFor(new Date())));
-  const [bookings, setBookings] = useState(() => cachedBoardData?.bookings || []);
-  const [vehicleNameById, setVehicleNameById] = useState(
-    () => cachedBoardData?.vehicleNameById || {}
+  const [bookings, setBookings] = useState(() => (boardIdentity && cachedBoardData?.identity === boardIdentity ? cachedBoardData.bookings : []));
+  const [vehicleDirectory, setVehicleDirectory] = useState(
+    () => (boardIdentity && cachedBoardData?.identity === boardIdentity ? cachedBoardData.vehicles : [])
   );
   const [loading, setLoading] = useState(() => !cachedBoardData);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [selectedJob, setSelectedJob] = useState(null);
+  const [includeInactive, setIncludeInactive] = useState(
+    () => String(params.includeInactive || "") === "1"
+  );
 
   const applyBoardData = useCallback((data) => {
     setBookings(data.bookings);
-    setVehicleNameById(data.vehicleNameById);
+    setVehicleDirectory(data.vehicles);
   }, []);
 
   const loadBookings = useCallback(async ({ force = false } = {}) => {
-    if (cachedBoardData && !force) {
+    if (!boardIdentity) {
+      applyBoardData({ bookings: [], vehicles: [] });
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    if (cachedBoardData?.identity === boardIdentity && !force) {
       applyBoardData(cachedBoardData);
       setLoading(false);
       setRefreshing(false);
       return;
     }
 
+    let request = null;
     try {
       setError("");
       if (!cachedBoardData) setLoading(true);
 
-      if (!boardDataRequest || force) {
+      if (!boardDataRequest || boardDataRequestCompanyId !== companyId || boardDataRequestIdentity !== boardIdentity || force) {
+        boardDataRequestCompanyId = companyId;
+        boardDataRequestIdentity = boardIdentity;
         boardDataRequest = Promise.all([
-          getDocs(collection(db, "bookings")),
-          getDocs(collection(db, "vehicles")),
+          getDocs(query(collection(db, "bookings"), where("companyId", "==", companyId))),
+          getDocs(query(collection(db, "vehicles"), where("companyId", "==", companyId))),
         ]);
       }
 
-      const [bookingSnap, vehiclesSnap] = await boardDataRequest;
+      request = boardDataRequest;
+      const [bookingSnap, vehiclesSnap] = await request;
+      if (!mountedRef.current || boardIdentityRef.current !== boardIdentity) return;
       const rows = bookingSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const vehicleMap = {};
-      vehiclesSnap.docs.forEach((doc) => {
-        const data = doc.data() || {};
-        const name = data.name || data.label || data.title || "Vehicle";
-        const reg = data.reg || data.registration || data.numberPlate || "";
-        vehicleMap[doc.id] = reg ? `${name} (${reg})` : name;
-      });
+      const vehicles = vehiclesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-      const nextData = { bookings: rows, vehicleNameById: vehicleMap };
+      const nextData = { companyId, identity: boardIdentity, bookings: rows, vehicles };
       cachedBoardData = nextData;
       if (mountedRef.current) applyBoardData(nextData);
     } catch (e) {
       console.error("work diary board load failed", e);
-      if (mountedRef.current) setError("Could not load work diary board.");
+      if (mountedRef.current && boardIdentityRef.current === boardIdentity) setError("Could not load work diary board.");
     } finally {
-      boardDataRequest = null;
-      if (mountedRef.current) {
+      if (boardDataRequest === request) {
+        boardDataRequest = null;
+        boardDataRequestCompanyId = null;
+        boardDataRequestIdentity = null;
+      }
+      if (mountedRef.current && boardIdentityRef.current === boardIdentity) {
         setLoading(false);
         setRefreshing(false);
       }
     }
-  }, [applyBoardData]);
+  }, [applyBoardData, companyId, boardIdentity]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -422,7 +446,12 @@ export default function WorkDiaryBoardPage() {
 
   const boardItems = useMemo(() => {
     const matches = bookings
-      .filter(shouldShowBoardJob)
+      .filter((job) => shouldShowDiaryBooking(job, includeInactive))
+      .filter(
+        (job) =>
+          shouldShowBoardJob(job) ||
+          (includeInactive && getBookingLifecycle(job) !== "active")
+      )
       .map((job) => {
         const dates = extractBookingDates(job);
         const span = overlapSpan(dates, weekDates);
@@ -432,7 +461,12 @@ export default function WorkDiaryBoardPage() {
       .filter(Boolean);
 
     return buildRows(matches);
-  }, [bookings, weekDates]);
+  }, [bookings, includeInactive, weekDates]);
+
+  const inactiveCount = useMemo(
+    () => bookings.filter((job) => getBookingLifecycle(job) !== "active").length,
+    [bookings]
+  );
 
   const boardHeight = HEADER_HEIGHT + boardItems.rowCount * ROW_HEIGHT;
   const boardWidth = COL_WIDTH * 7;
@@ -444,7 +478,7 @@ export default function WorkDiaryBoardPage() {
 
     const dates = extractBookingDates(selectedJob);
     const vehicles = toArray(selectedJob?.vehicles || selectedJob?.vehicle)
-      .map((vehicle) => formatVehicle(vehicle, vehicleNameById))
+      .map((vehicle) => formatVehicle(vehicle, vehicleDirectory))
       .filter(Boolean);
     const people = formatPeople(selectedJob?.employees);
     const callTimes = formatObjectMap(
@@ -475,7 +509,7 @@ export default function WorkDiaryBoardPage() {
       notes: [...new Set([...notesByDate, ...dayNotes])],
       generalNotes: firstText(selectedJob?.notes, selectedJob?.note, selectedJob?.description),
     };
-  }, [selectedJob, vehicleNameById]);
+  }, [selectedJob, vehicleDirectory]);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -485,35 +519,55 @@ export default function WorkDiaryBoardPage() {
   }, [weekStart, loading]);
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[styles.safeArea, { backgroundColor: colors.background }]}
+    <PageShell
+      appearance="grouped"
+      header={{
+        variant: "compact",
+        eyebrow: "Operations",
+        title: "Work Diary Board",
+        onBack: router.back,
+      }}
+      refresh={{
+        refreshing,
+        onRefresh: () => {
+          setRefreshing(true);
+          loadBookings({ force: true });
+        },
+      }}
     >
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.toolbar}>
           <View style={styles.toolbarLeft}>
             <TouchableOpacity
-              onPress={() => router.back()}
-              activeOpacity={0.85}
-              style={[
-                styles.backBtn,
-                {
-                  backgroundColor: withAlpha(colors.surface, 0.9),
-                  borderColor: withAlpha(colors.border, 0.85),
-                },
-              ]}
-            >
-              <Icon name="arrow-left" size={15} color={colors.text} />
-            </TouchableOpacity>
-
-            <Text style={[styles.pageTitle, { color: colors.text }]}>Work Diary</Text>
-
-            <TouchableOpacity
               onPress={() => setWeekStart(isoFromDate(mondayFor(new Date())))}
               activeOpacity={0.85}
               style={[styles.todayBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
-              <Text style={[styles.todayText, { color: colors.text }]}>Today</Text>
+              <Text tone={"primary"} style={[styles.todayText]}>Today</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setIncludeInactive((value) => !value)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityState={{ selected: includeInactive }}
+              style={[
+                styles.todayBtn,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+                includeInactive && {
+                  backgroundColor: colors.accentSoft,
+                  borderColor: colors.accent,
+                },
+              ]}
+            >
+              <Icon
+                name={includeInactive ? "eye-off" : "eye"}
+                size={14}
+                color={includeInactive ? colors.accent : colors.textMuted}
+              />
+              <Text style={[styles.todayText, { color: includeInactive ? colors.accent : colors.textMuted }]}>
+                {includeInactive ? "Hide inactive" : `Show inactive (${inactiveCount})`}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -524,7 +578,7 @@ export default function WorkDiaryBoardPage() {
               style={[styles.navBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
               <Icon name="arrow-left" size={14} color={colors.text} />
-              <Text style={[styles.navText, { color: colors.text }]}>Previous Week</Text>
+              <Text tone={"primary"} style={[styles.navText]}>Previous Week</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -532,7 +586,7 @@ export default function WorkDiaryBoardPage() {
               activeOpacity={0.85}
               style={[styles.navBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
-              <Text style={[styles.navText, { color: colors.text }]}>Next Week</Text>
+              <Text tone={"primary"} style={[styles.navText]}>Next Week</Text>
               <Icon name="arrow-right" size={14} color={colors.text} />
             </TouchableOpacity>
 
@@ -542,11 +596,11 @@ export default function WorkDiaryBoardPage() {
         {loading ? (
           <View style={styles.centerState}>
             <ActivityIndicator size="large" color={colors.accent} />
-            <Text style={[styles.stateText, { color: colors.textMuted }]}>Loading weekly board…</Text>
+            <Text tone={"muted"} style={[styles.stateText]}>Loading weekly board…</Text>
           </View>
         ) : error ? (
-          <View style={[styles.errorCard, { backgroundColor: withAlpha(colors.danger, 0.12), borderColor: colors.danger }]}>
-            <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+          <View style={[styles.errorCard, getCardSurfaceStyle(colors, {"borderTone":"danger"})]}>
+            <Text tone={"danger"} style={[styles.errorText]}>{error}</Text>
             <TouchableOpacity
               onPress={() => {
                 setRefreshing(true);
@@ -554,31 +608,11 @@ export default function WorkDiaryBoardPage() {
               }}
               style={[styles.retryBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
-              <Text style={[styles.retryText, { color: colors.text }]}>Retry</Text>
+              <Text tone={"primary"} style={[styles.retryText]}>Retry</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <ScrollView
-            ref={verticalScrollRef}
-            style={styles.boardViewport}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => {
-                  setRefreshing(true);
-                  loadBookings({ force: true });
-                }}
-                tintColor={colors.accent}
-              />
-            }
-            contentOffset={{ x: 0, y: 0 }}
-            contentContainerStyle={styles.verticalContent}
-            showsVerticalScrollIndicator
-            nestedScrollEnabled
-            bounces={false}
-            alwaysBounceVertical={false}
-            overScrollMode="never"
-          >
+          <>
             <ScrollView
               ref={scrollRef}
               style={styles.boardViewport}
@@ -620,17 +654,19 @@ export default function WorkDiaryBoardPage() {
                           },
                         ]}
                       >
-                        <Text style={[styles.dayHeaderText, { color: colors.text }]}>{formatDayHeader(date)}</Text>
+                        <Text tone={"primary"} style={[styles.dayHeaderText]}>{formatDayHeader(date)}</Text>
                       </View>
                     </View>
                   ))}
 
                   {boardItems.placed.map(({ job, span, row }) => {
                     const tone = cardTone(job);
+                    const lifecycle = getBookingLifecycle(job);
+                    const inactive = lifecycle !== "active";
                     const notes = dayNotesFor(job, weekDates).slice(0, 3);
                     const employees = formatPeople(job?.employees).slice(0, 3).join(", ");
                     const vehicles = toArray(job?.vehicles || job?.vehicle)
-                      .map((vehicle) => formatVehicle(vehicle, vehicleNameById))
+                      .map((vehicle) => formatVehicle(vehicle, vehicleDirectory))
                       .filter(Boolean)
                       .slice(0, 3)
                       .join(" • ");
@@ -651,6 +687,7 @@ export default function WorkDiaryBoardPage() {
                             width,
                             backgroundColor: tone.bg,
                             borderColor: tone.border,
+                            opacity: inactive ? 0.72 : 1,
                           },
                         ]}
                       >
@@ -666,7 +703,11 @@ export default function WorkDiaryBoardPage() {
 
                           <View style={styles.statusWrap}>
                             <Text style={[styles.statusText, { color: tone.text }]}>
-                              {String(job?.status || "").toLowerCase().includes("confirmed") ? "CONFIRMED" : String(job?.status || "BOOKED").toUpperCase()}
+                              {inactive
+                                ? getBookingLifecycleLabel(job).toUpperCase()
+                                : String(job?.status || "").toLowerCase().includes("confirmed")
+                                  ? "CONFIRMED"
+                                  : String(job?.status || "BOOKED").toUpperCase()}
                             </Text>
                             <Text style={[styles.statusText, { color: tone.text }]}>
                               {String(job?.status || "").toLowerCase().includes("crewed") ? "CREWED" : employees ? "CREWED" : ""}
@@ -719,52 +760,26 @@ export default function WorkDiaryBoardPage() {
                 </View>
               </View>
             </ScrollView>
-          </ScrollView>
+          </>
         )}
 
-        <Modal
+        <AppModal
           visible={!!selectedJob}
-          transparent
-          animationType="fade"
+          title={selectedJob ? titleForJob(selectedJob) : "Booking details"}
           onRequestClose={() => setSelectedJob(null)}
+          scrollable
         >
-          <View style={styles.modalBackdrop}>
-            <View
-              style={[
-                styles.detailModalCard,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
               {selectedJob && selectedJobDetails ? (
                 <>
                   <View style={styles.detailHeader}>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.detailJobNumber, { color: colors.textMuted }]}>
+                      <Text tone={"muted"} style={[styles.detailJobNumber]}>
                         {selectedJob.jobNumber || "Booking"}
                       </Text>
-                      <Text style={[styles.detailTitle, { color: colors.text }]}>
-                        {titleForJob(selectedJob)}
-                      </Text>
                     </View>
-                    <TouchableOpacity
-                      onPress={() => setSelectedJob(null)}
-                      activeOpacity={0.85}
-                      style={[
-                        styles.modalCloseBtn,
-                        {
-                          backgroundColor: withAlpha(colors.surfaceAlt, 0.9),
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <Icon name="x" size={18} color={colors.text} />
-                    </TouchableOpacity>
                   </View>
 
-                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailModalContent}>
+                  <View style={styles.detailModalContent}>
                     <View style={styles.detailPillRow}>
                       {selectedJob.status ? (
                         <View
@@ -776,7 +791,7 @@ export default function WorkDiaryBoardPage() {
                             },
                           ]}
                         >
-                          <Text style={[styles.detailPillText, { color: colors.text }]}>
+                          <Text tone={"primary"} style={[styles.detailPillText]}>
                             {String(selectedJob.status).toUpperCase()}
                           </Text>
                         </View>
@@ -791,7 +806,7 @@ export default function WorkDiaryBoardPage() {
                             },
                           ]}
                         >
-                          <Text style={[styles.detailPillText, { color: colors.text }]}>
+                          <Text tone={"primary"} style={[styles.detailPillText]}>
                             {selectedJob.bookingType || selectedJob.type}
                           </Text>
                         </View>
@@ -871,334 +886,12 @@ export default function WorkDiaryBoardPage() {
                         .join("\n")}
                       colors={colors}
                     />
-                  </ScrollView>
+                  </View>
                 </>
               ) : null}
-            </View>
-          </View>
-        </Modal>
+        </AppModal>
       </View>
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  container: { flex: 1 },
-  toolbar: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 12,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  toolbarLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  toolbarRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  todayBtn: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  todayText: {
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  navBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  navText: {
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  horizontalContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-    alignItems: "flex-start",
-    justifyContent: "flex-start",
-  },
-  verticalContent: {
-    paddingBottom: 20,
-    alignItems: "flex-start",
-    justifyContent: "flex-start",
-  },
-  boardViewport: {
-    flex: 1,
-  },
-  boardWrap: {
-    borderRadius: 18,
-    overflow: "hidden",
-  },
-  boardGrid: {
-    position: "relative",
-    borderWidth: 1,
-    backgroundColor: "#fff",
-  },
-  dayColumn: {
-    position: "absolute",
-    top: 0,
-    borderRightWidth: 1,
-  },
-  dayHeader: {
-    height: HEADER_HEIGHT,
-    alignItems: "center",
-    justifyContent: "center",
-    borderBottomWidth: 1,
-  },
-  dayHeaderText: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  bookingCard: {
-    position: "absolute",
-    minHeight: ROW_HEIGHT - 12,
-    borderWidth: 2,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  bookingTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  initialsWrap: {
-    backgroundColor: "#F9F9F9",
-    borderWidth: 1,
-    borderColor: "#707070",
-    borderRadius: 8,
-    maxWidth: "42%",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  initialsText: {
-    fontSize: 12,
-    fontWeight: "800",
-    flexWrap: "wrap",
-  },
-  statusWrap: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: "900",
-    lineHeight: 11,
-  },
-  jobNumberPill: {
-    backgroundColor: "#F9F9F9",
-    borderWidth: 1,
-    borderColor: "#707070",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  jobNumberText: {
-    fontSize: 12,
-    fontWeight: "900",
-    color: "#1F1F1F",
-  },
-  bookingTitle: {
-    marginTop: 6,
-    fontSize: 17,
-    fontWeight: "900",
-    lineHeight: 20,
-    textTransform: "uppercase",
-  },
-  bookingLine: {
-    marginTop: 3,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 15,
-  },
-  notesBlock: {
-    marginTop: 8,
-    minHeight: 34,
-  },
-  noteText: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontStyle: "italic",
-  },
-  tagsRow: {
-    marginTop: 8,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  tagPill: {
-    backgroundColor: "#E56A54",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  tagText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  centerState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  stateText: {
-    marginTop: 8,
-    fontSize: 13,
-  },
-  errorCard: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-  },
-  errorText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  retryBtn: {
-    alignSelf: "flex-start",
-    marginTop: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  retryText: {
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.62)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 28,
-  },
-  detailModalCard: {
-    width: "100%",
-    maxWidth: 620,
-    maxHeight: "86%",
-    borderWidth: 1,
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-  detailHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 14,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 12,
-  },
-  detailJobNumber: {
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-  },
-  detailTitle: {
-    marginTop: 4,
-    fontSize: 24,
-    lineHeight: 29,
-    fontWeight: "900",
-  },
-  modalCloseBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  detailModalContent: {
-    paddingHorizontal: 18,
-    paddingBottom: 20,
-  },
-  detailPillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-  },
-  detailPill: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  detailPillText: {
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  detailRow: {
-    flexDirection: "row",
-    gap: 11,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(130,130,130,0.28)",
-  },
-  detailIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  detailTextWrap: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  detailValue: {
-    marginTop: 3,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "700",
-  },
-});

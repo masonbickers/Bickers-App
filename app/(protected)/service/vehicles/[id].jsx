@@ -1,17 +1,22 @@
+import { routeColors } from "../../../../lib/design/routePresentation/service-vehicles-id-jsx.js";
+import { styles } from "../../../../lib/design/screenStyles/service-vehicles-id-jsx.js";
+import { AppText as Text, AppPressable as TouchableOpacity } from "../../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../../lib/design/semantics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams,
+  useRouter } from "expo-router";
+import { doc,
+  serverTimestamp,
+  updateDoc } from "firebase/firestore";
+import { useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import { db } from "../../../../firebaseConfig";
@@ -25,26 +30,16 @@ import {
   getVehicleName,
   getVehicleNextMot,
   getVehicleNextService,
-  getVehicleOperationalStatus,
   getVehicleRegistration,
   isVehicleActiveForMaintenance,
   isVehicleMotApplicable,
   isVehicleServiceApplicable,
 } from "../../../../lib/fleetSchema";
 import { useTheme } from "../../../../providers/ThemeProvider";
+import { designTokens as t } from "../../../../lib/design/tokens";
+import PageShell from "../../../../components/layout/PageShell";
 
 /* ---------- CONSTANTS ---------- */
-
-const COLORS = {
-  background: "#000000",
-  card: "#151517",
-  border: "#2B2B31",
-  textHigh: "#F5F5F5",
-  textMid: "#D4D4D8",
-  textLow: "#A1A1AA",
-  chipBg: "#1D1D21",
-  primaryAction: "#D94B52",
-};
 
 const SERVICE_DRAFTS_KEY = "serviceFormDrafts_v1";
 const MINOR_SERVICE_DRAFTS_KEY = "minorServiceFormDrafts_v1";
@@ -190,7 +185,6 @@ export default function VehicleDetailScreen() {
   const activeForMaintenance = vehicle
     ? isVehicleActiveForMaintenance(vehicle)
     : true;
-  const operationalStatus = getVehicleOperationalStatus(vehicle) || "Active";
 
   const isLorry = useMemo(() => {
     const cat = (vehicle?.category || "").toLowerCase();
@@ -456,59 +450,22 @@ export default function VehicleDetailScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
+    <PageShell header={{
+      variant: "compact",
+      title: vehicle ? getVehicleName(vehicle) || "Unnamed vehicle" : "Vehicle overview",
+      titleLines: 2,
+      subtitle: "Maintenance, history and documents.",
+      onBack: router.back,
+    }}>
       {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-          activeOpacity={0.8}
-        >
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
 
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.title,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-          >
-            Vehicle overview
-          </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Snapshot of maintenance, status and notes.
-          </Text>
-        </View>
-      </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primaryAction} />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading vehicle…
@@ -517,42 +474,23 @@ export default function VehicleDetailScreen() {
       ) : !vehicle ? (
         <View style={styles.loadingContainer}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.loadingText,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Vehicle not found.
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* OVERVIEW CARD */}
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+        <>
+          {/* VEHICLE OVERVIEW */}
+          <View style={styles.sectionContent}>
             <View style={styles.overviewHeaderRow}>
               <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.mainName,
-                    { color: colors.text || COLORS.textHigh },
-                  ]}
-                >
-                  {getVehicleName(vehicle) || "Unnamed vehicle"}
-                </Text>
-
                 {!!getVehicleRegistration(vehicle) && (
                   <Text
-                    style={[
+                    tone={"muted"} style={[
                       styles.reg,
-                      { color: colors.textMuted || COLORS.textMid },
                     ]}
                   >
                     {getVehicleRegistration(vehicle)}
@@ -561,9 +499,8 @@ export default function VehicleDetailScreen() {
 
                 {(getVehicleManufacturer(vehicle) || vehicle.model) && (
                   <Text
-                    style={[
+                    tone={"muted"} style={[
                       styles.sub,
-                      { color: colors.textMuted || COLORS.textLow },
                     ]}
                   >
                     {getVehicleManufacturer(vehicle)}
@@ -580,17 +517,17 @@ export default function VehicleDetailScreen() {
                       name="truck"
                       size={12}
                       color={COLORS.textMid}
-                      style={{ marginRight: 4 }}
+                      style={{ marginRight: t.spacing.xxs }}
                     />
                     <Text style={styles.chipText}>{vehicle.category}</Text>
                   </View>
                 )}
-                <View style={[styles.chip, { marginTop: 6 }]}>
+                <View style={[styles.chip, { marginTop: t.spacing.xxs }]}>
                   <Icon
                     name="activity"
                     size={12}
                     color={COLORS.textMid}
-                    style={{ marginRight: 4 }}
+                    style={{ marginRight: t.spacing.xxs }}
                   />
                   <Text style={styles.chipText}>{mileageDisplay}</Text>
                 </View>
@@ -598,43 +535,36 @@ export default function VehicleDetailScreen() {
             </View>
           </View>
 
-          <View
-            style={[
-              styles.statusControlCard,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
-            <View style={{ flex: 1 }}>
+          <View style={styles.statusControlRow}>
+            <View>
               <Text
-                style={[
+                tone={"primary"} style={[
                   styles.statusControlTitle,
-                  { color: colors.text || COLORS.textHigh },
                 ]}
               >
                 Maintenance status
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.statusControlSub,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
-                {operationalStatus}: {activeForMaintenance
+                {activeForMaintenance
                   ? "Active vehicles appear in MOT and service attention."
                   : "Inactive vehicles are hidden from MOT and service attention."}
               </Text>
             </View>
 
-            <View style={styles.statusToggle}>
+            <View style={styles.statusToggle} accessibilityRole="radiogroup">
               {["Active", "Inactive"].map((option) => {
                 const selected =
                   option === "Active" ? activeForMaintenance : !activeForMaintenance;
                 return (
                   <TouchableOpacity
                     key={option}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${option} for maintenance attention`}
+                    accessibilityState={{ selected, disabled: savingStatus || selected }}
                     style={[
                       styles.statusToggleButton,
                       selected && styles.statusToggleButtonActive,
@@ -658,6 +588,8 @@ export default function VehicleDetailScreen() {
           </View>
 
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="View full vehicle timeline"
             style={[
               styles.timelineButton,
               {
@@ -673,17 +605,15 @@ export default function VehicleDetailScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text
-                style={[
+                tone={"primary"} style={[
                   styles.timelineButtonTitle,
-                  { color: colors.text || COLORS.textHigh },
                 ]}
               >
                 View full timeline
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.timelineButtonSub,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 Services, repairs, defects, MOT checks and prep history
@@ -698,19 +628,10 @@ export default function VehicleDetailScreen() {
 
           {/* QUICK ACTIONS – SERVICE BUTTONS */}
           <SectionHeader label="Quick maintenance actions" colors={colors} />
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+          <View style={styles.sectionContent}>
             <Text
-              style={[
+              tone={"muted"} style={[
                 styles.actionsHint,
-                { color: colors.textMuted || COLORS.textMid },
               ]}
             >
               Start a service form for this vehicle. If a draft already exists,
@@ -719,6 +640,8 @@ export default function VehicleDetailScreen() {
 
             <View style={styles.actionsRow}>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Start full service"
                 style={[styles.actionButton, styles.actionFull]}
                 activeOpacity={0.9}
                 onPress={handleStartFullService}
@@ -727,7 +650,7 @@ export default function VehicleDetailScreen() {
                   name="tool"
                   size={16}
                   color={COLORS.textHigh}
-                  style={{ marginRight: 6 }}
+                  style={{ marginRight: t.spacing.xxs }}
                 />
                 <View>
                   <Text style={styles.actionLabel}>Full service</Text>
@@ -738,6 +661,8 @@ export default function VehicleDetailScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Start minor or interim service"
                 style={[styles.actionButton, styles.actionMinor]}
                 activeOpacity={0.9}
                 onPress={handleStartMinorService}
@@ -746,7 +671,7 @@ export default function VehicleDetailScreen() {
                   name="refresh-ccw"
                   size={16}
                   color={COLORS.textHigh}
-                  style={{ marginRight: 6 }}
+                  style={{ marginRight: t.spacing.xxs }}
                 />
                 <View>
                   <Text style={styles.actionLabel}>Minor / interim</Text>
@@ -760,15 +685,7 @@ export default function VehicleDetailScreen() {
 
           {/* MAINTENANCE SECTION */}
           <SectionHeader label="Maintenance" colors={colors} />
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+          <View style={styles.sectionContent}>
             {hasMaintenanceStatusPills && (
               <>
                 <View style={styles.statusRow}>
@@ -805,16 +722,9 @@ export default function VehicleDetailScreen() {
           {/* SERVICE HISTORY */}
           <SectionHeader label="Service history" colors={colors} />
 
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+          <View style={styles.sectionContent}>
             <TouchableOpacity
+              accessibilityRole="button"
               onPress={handleViewAllServiceHistory}
               style={styles.viewAllButton}
               activeOpacity={0.9}
@@ -823,7 +733,7 @@ export default function VehicleDetailScreen() {
                 name="list"
                 size={16}
                 color={COLORS.textHigh}
-                style={{ marginRight: 8 }}
+                style={{ marginRight: t.spacing.xs }}
               />
               <Text style={styles.viewAllButtonText}>
                 View all service history
@@ -834,11 +744,10 @@ export default function VehicleDetailScreen() {
               <>
                 {serviceHistorySummary && (
                   <Text
-                    style={[
+                    tone={"muted"} style={[
                       styles.notesText,
                       {
-                        marginBottom: 8,
-                        color: colors.textMuted || COLORS.textMid,
+                        marginBottom: t.spacing.xs,
                       },
                     ]}
                   >
@@ -861,17 +770,15 @@ export default function VehicleDetailScreen() {
                     <View key={index} style={styles.historyItem}>
                       <View style={styles.historyHeaderRow}>
                         <Text
-                          style={[
+                          tone={"primary"} style={[
                             styles.historyTitle,
-                            { color: colors.text || COLORS.textHigh },
                           ]}
                         >
                           {item?.type || "Service"}
                         </Text>
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.historyMeta,
-                            { color: colors.textMuted || COLORS.textLow },
                           ]}
                         >
                           {dateLabel}
@@ -880,9 +787,8 @@ export default function VehicleDetailScreen() {
                       </View>
                       {!!summaryText && (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.historySummary,
-                            { color: colors.textMuted || COLORS.textMid },
                           ]}
                           numberOfLines={2}
                         >
@@ -906,15 +812,7 @@ export default function VehicleDetailScreen() {
           {repairHistory.length > 0 && (
             <>
               <SectionHeader label="Repair history" colors={colors} />
-              <View
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: colors.surfaceAlt || COLORS.card,
-                    borderColor: colors.border || COLORS.border,
-                  },
-                ]}
-              >
+              <View style={styles.sectionContent}>
                 {repairHistory.slice(0, 5).map((item, index) => {
                 const dateValue =
                   item?.completedDate || item?.date || item?.recordedAt;
@@ -940,17 +838,15 @@ export default function VehicleDetailScreen() {
                   >
                     <View style={styles.historyHeaderRow}>
                       <Text
-                        style={[
+                        tone={"primary"} style={[
                           styles.historyTitle,
-                          { color: colors.text || COLORS.textHigh },
                         ]}
                       >
                         {item?.type || "General repair"}
                       </Text>
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.historyMeta,
-                          { color: colors.textMuted || COLORS.textLow },
                         ]}
                       >
                         {dateLabel}
@@ -959,9 +855,8 @@ export default function VehicleDetailScreen() {
                     </View>
                     {!!summaryText && (
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.historySummary,
-                          { color: colors.textMuted || COLORS.textMid },
                         ]}
                         numberOfLines={2}
                       >
@@ -970,9 +865,8 @@ export default function VehicleDetailScreen() {
                     )}
                     {!!partsText && (
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.historySummary,
-                          { color: colors.textMuted || COLORS.textMid },
                         ]}
                         numberOfLines={2}
                       >
@@ -988,15 +882,7 @@ export default function VehicleDetailScreen() {
 
           {/* DEFECT HISTORY */}
           <SectionHeader label="Defect history" colors={colors} />
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+          <View style={styles.sectionContent}>
             {defectHistory.length > 0 ? (
               defectHistory.slice(0, 5).map((item, index) => {
                 const dateValue =
@@ -1029,17 +915,15 @@ export default function VehicleDetailScreen() {
                   >
                     <View style={styles.historyHeaderRow}>
                       <Text
-                        style={[
+                        tone={"primary"} style={[
                           styles.historyTitle,
-                          { color: colors.text || COLORS.textHigh },
                         ]}
                       >
                         {item?.title || "Resolved defect"}
                       </Text>
                       <Text
-                        style={[
+                        tone={"muted"} style={[
                           styles.historyMeta,
-                          { color: colors.textMuted || COLORS.textLow },
                         ]}
                       >
                         {category} · {dateLabel}
@@ -1047,9 +931,8 @@ export default function VehicleDetailScreen() {
                     </View>
                     {!!summaryText && (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.historySummary,
-                            { color: colors.textMuted || COLORS.textMid },
                           ]}
                           numberOfLines={2}
                         >
@@ -1061,9 +944,8 @@ export default function VehicleDetailScreen() {
               })
             ) : (
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.notesText,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 No completed defects recorded for this vehicle.
@@ -1078,20 +960,11 @@ export default function VehicleDetailScreen() {
                 label="Pre-checks & daily inspections"
                 colors={colors}
               />
-              <View
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: colors.surfaceAlt || COLORS.card,
-                    borderColor: colors.border || COLORS.border,
-                  },
-                ]}
-              >
+              <View style={styles.sectionContent}>
                 {!!preChecksText && (
                   <Text
-                    style={[
+                    tone={"muted"} style={[
                       styles.notesText,
-                      { color: colors.textMuted || COLORS.textMid },
                     ]}
                   >
                     {preChecksText}
@@ -1111,15 +984,7 @@ export default function VehicleDetailScreen() {
           {hasPaperwork && (
             <>
               <SectionHeader label="Paperwork & certificates" colors={colors} />
-              <View
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: colors.surfaceAlt || COLORS.card,
-                    borderColor: colors.border || COLORS.border,
-                  },
-                ]}
-              >
+              <View style={styles.sectionContent}>
                 {paperworkRows.map(([label, value]) => (
                   <Field key={label} label={label} value={value} colors={colors} />
                 ))}
@@ -1142,15 +1007,7 @@ export default function VehicleDetailScreen() {
           {isLorry && (
             <>
               <SectionHeader label="Lorry inspections & tacho" colors={colors} />
-              <View
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: colors.surfaceAlt || COLORS.card,
-                    borderColor: colors.border || COLORS.border,
-                  },
-                ]}
-              >
+              <View style={styles.sectionContent}>
                 <Field
                   label="Inspection interval (weeks)"
                   value={
@@ -1227,15 +1084,7 @@ export default function VehicleDetailScreen() {
 
           {/* STATUS SECTION */}
           <SectionHeader label="Status & compliance" colors={colors} />
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
-          >
+          <View style={styles.sectionContent}>
             <Field label="Tax status" value={taxStatus} colors={colors} />
             <Field
               label="Insurance status"
@@ -1262,19 +1111,10 @@ export default function VehicleDetailScreen() {
           {hasVehicleNotes && (
             <>
               <SectionHeader label="Notes" colors={colors} />
-              <View
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: colors.surfaceAlt || COLORS.card,
-                    borderColor: colors.border || COLORS.border,
-                  },
-                ]}
-              >
+              <View style={styles.sectionContent}>
                 <Text
-                  style={[
+                  tone={"muted"} style={[
                     styles.notesText,
-                    { color: colors.textMuted || COLORS.textMid },
                   ]}
                 >
                   {vehicle.notes}
@@ -1284,9 +1124,9 @@ export default function VehicleDetailScreen() {
           )}
 
           <View style={{ height: 40 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
@@ -1296,6 +1136,7 @@ function SectionHeader({ label, colors }) {
   return (
     <View style={styles.sectionHeaderRow}>
       <Text
+        accessibilityRole="header"
         style={[
           styles.sectionTitle,
           { color: colors?.text || COLORS.textHigh },
@@ -1311,7 +1152,7 @@ function Field({ label, value, colors }) {
   const display = formatFieldValue(value);
 
   return (
-    <View style={styles.fieldRow}>
+    <View style={styles.fieldRow} accessible accessibilityLabel={`${label}, ${display}`}>
       <Text
         style={[
           styles.fieldLabel,
@@ -1323,7 +1164,7 @@ function Field({ label, value, colors }) {
       <Text
         style={[
           styles.fieldValue,
-          { color: colors?.textMuted || COLORS.textMid },
+          { color: colors?.text || COLORS.textHigh },
         ]}
       >
         {display}
@@ -1333,24 +1174,14 @@ function Field({ label, value, colors }) {
 }
 
 function StatusPill({ label, status }) {
+  const { colorScheme } = useTheme();
   if (!status) return null;
 
   const code = status.code;
   if (code === "unknown") return null;
 
-  let bg = "rgba(74,74,74,0.7)";
-  let fg = COLORS.textHigh;
-
-  if (code === "overdue") {
-    bg = "rgba(255,59,48,0.22)";
-    fg = "#ED1C25";
-  } else if (code === "due-soon") {
-    bg = "rgba(255,149,0,0.22)";
-    fg = "#FF9500";
-  } else if (code === "ok") {
-    bg = "rgba(52,199,89,0.22)";
-    fg = "#34C759";
-  }
+  const tone = { overdue: "danger", "due-soon": "warning", ok: "success" }[code] || "neutral";
+  const { background: bg, onBackground: fg } = getServiceStatusColors(tone, colorScheme);
 
   return (
     <View style={[styles.statusPill, { backgroundColor: bg }]}>
@@ -1380,7 +1211,7 @@ function AttachmentList({ label, files, colors }) {
   };
 
   return (
-    <View style={{ marginTop: 12 }}>
+    <View style={{ marginTop: t.spacing.sm }}>
       <Text
         style={[
           styles.attachmentsLabel,
@@ -1395,7 +1226,7 @@ function AttachmentList({ label, files, colors }) {
           style={[
             styles.attachmentButton,
             {
-              backgroundColor: colors?.surfaceAlt || "#191919",
+              backgroundColor: colors?.surfaceAlt || routeColors.hex_191919_acxwha,
               borderColor: colors?.border || COLORS.border,
             },
           ]}
@@ -1439,324 +1270,3 @@ function AttachmentList({ label, files, colors }) {
 }
 
 /* ---------- STYLES ---------- */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  subtitle: {
-    fontSize: 13,
-    marginTop: 2,
-    color: COLORS.textMid,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: COLORS.textMid,
-  },
-  content: {
-    padding: 16,
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  overviewHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  mainName: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  reg: {
-    marginTop: 4,
-    fontSize: 14,
-    color: COLORS.textMid,
-  },
-  sub: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textLow,
-  },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.chipBg,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  chipText: {
-    fontSize: 11,
-    color: COLORS.textMid,
-    fontWeight: "600",
-  },
-  statusControlCard: {
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  statusControlTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  statusControlSub: {
-    marginTop: 2,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  statusToggle: {
-    flexDirection: "row",
-    padding: 3,
-    borderRadius: 999,
-    backgroundColor: "rgba(100,116,139,0.14)",
-  },
-  statusToggleButton: {
-    minWidth: 72,
-    minHeight: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-  },
-  statusToggleButtonActive: {
-    backgroundColor: COLORS.primaryAction,
-  },
-  statusToggleText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: COLORS.textLow,
-  },
-  statusToggleTextActive: {
-    color: COLORS.textHigh,
-  },
-  sectionHeaderRow: {
-    marginTop: 6,
-    marginBottom: 4,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  fieldRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    color: COLORS.textLow,
-  },
-  fieldValue: {
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  notesText: {
-    fontSize: 13,
-    color: COLORS.textMid,
-    lineHeight: 18,
-    marginTop: 6,
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 8,
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 8,
-    opacity: 0.6,
-  },
-
-  /* ACTIONS */
-  actionsHint: {
-    fontSize: 12,
-    color: COLORS.textMid,
-    marginBottom: 10,
-  },
-  actionsRow: {
-    flexDirection: "row",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  actionButton: {
-    flex: 1,
-    minWidth: "48%",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  actionFull: {
-    backgroundColor: COLORS.primaryAction,
-  },
-  actionMinor: {
-    backgroundColor: "#444",
-  },
-  actionLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  actionSub: {
-    fontSize: 11,
-    color: COLORS.textMid,
-    marginTop: 1,
-  },
-  timelineButton: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-  },
-  timelineIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-    backgroundColor: COLORS.primaryAction,
-  },
-  timelineButtonTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  timelineButtonSub: {
-    marginTop: 2,
-    fontSize: 12,
-  },
-
-  /* SERVICE HISTORY LIST */
-  historyItem: {
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.03)",
-  },
-  historyHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 2,
-  },
-  historyTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  historyMeta: {
-    fontSize: 11,
-    color: COLORS.textLow,
-  },
-  historySummary: {
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-
-  /* FULL-WIDTH VIEW ALL BUTTON */
-  viewAllButton: {
-    width: "100%",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#191919",
-  },
-  viewAllButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-
-  /* ATTACHMENTS */
-  attachmentsLabel: {
-    marginTop: 12,
-    marginBottom: 4,
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textLow,
-  },
-  attachmentButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: "#191919",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: 6,
-  },
-  attachmentIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.chipBg,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-  },
-  attachmentName: {
-    fontSize: 13,
-    color: COLORS.textHigh,
-    fontWeight: "600",
-  },
-  attachmentSub: {
-    fontSize: 11,
-    color: COLORS.textLow,
-    marginTop: 1,
-  },
-  attachmentChevron: {
-    marginLeft: 8,
-  },
-});

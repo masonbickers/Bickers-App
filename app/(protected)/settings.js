@@ -1,17 +1,18 @@
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { AppButton, ListRow, PageSection, SegmentedControl, ToggleRow } from "../../components/ui/AppPrimitives";
+import {
+  useRouter } from "expo-router";
+import * as Application from "expo-application";
+import Constants from "expo-constants";
+import { useCallback,
+  useEffect,
+  useState } from "react";
 import {
   Alert,
+  AppState,
   Linking,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TouchableOpacity,
+  Platform,
   View,
 } from "react-native";
-import Icon from "react-native-vector-icons/Feather";
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -22,33 +23,33 @@ import { doc, getDoc } from "firebase/firestore";
 
 import ChangePasswordModal from "../../components/ChangePasswordModal";
 import { auth, db } from "../../firebaseConfig";
+import { registerDeviceToken } from "../../lib/authApi";
+import { openPrivacyPolicy } from "../../lib/privacyPolicy";
 import {
   getNotificationPermissionStatus,
   NOTIFICATIONS_ENABLED,
   registerForPushNotificationsAsync,
   requestNotificationPermission,
-  scheduleLocalNotification,
 } from "../../lib/notifications";
 import { useAuth } from "../../providers/AuthProvider";
 import { useNotificationPreferences } from "../../providers/NotificationPreferencesProvider";
 import { useTheme } from "../../providers/ThemeProvider";
+import { designTokens as t } from "../../lib/design/tokens";
+import PageShell from "../../components/layout/PageShell";
 
-function withAlpha(hex, alpha) {
-  const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
-  const raw = String(hex || "").replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return `rgba(255,255,255,${safeAlpha})`;
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${safeAlpha})`;
+function getCurrentAppVersion() {
+  return (
+    Application.nativeApplicationVersion ||
+    Constants.expoConfig?.version ||
+    Constants.manifest2?.extra?.expoClient?.version ||
+    Constants.manifest?.version ||
+    "0.0.0"
+  );
 }
 
 export default function SettingsPage() {
   const router = useRouter();
   const { user, employee } = useAuth();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(
-    !!NOTIFICATIONS_ENABLED
-  );
   const {
     maintenanceRemindersEnabled: maintenanceReminderEnabled,
     maintenanceReminderTime,
@@ -59,7 +60,6 @@ export default function SettingsPage() {
     setMaintenanceRemindersEnabled,
     setMaintenanceReminderTime,
   } = useNotificationPreferences();
-  const [testNotificationSaving, setTestNotificationSaving] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
@@ -69,7 +69,6 @@ export default function SettingsPage() {
   });
   const [securityStatus, setSecurityStatus] = useState({
     loading: true,
-    refreshing: false,
     passwordEnabled: true,
     notificationsGranted: false,
     notificationStatus: "unknown",
@@ -79,11 +78,6 @@ export default function SettingsPage() {
 
   const handleSetTheme = (mode) => {
     setTheme(mode);
-  };
-
-  const handleNotificationsToggle = (next) => {
-    if (!NOTIFICATIONS_ENABLED) return;
-    setNotificationsEnabled(next);
   };
 
   const passwordEmail = () =>
@@ -104,20 +98,12 @@ export default function SettingsPage() {
   };
 
   const refreshAccountSetupStatus = useCallback(
-    async ({ silent = false } = {}) => {
+    async () => {
       const firebaseUser = user || auth.currentUser;
       const employeeId = employee?.employeeId;
       const hasPasswordProvider =
         firebaseUser?.providerData?.some((provider) => provider?.providerId === "password") ||
         false;
-
-      if (!silent) {
-        setSecurityStatus((current) => ({
-          ...current,
-          loading: current.loading,
-          refreshing: true,
-        }));
-      }
 
       try {
         const [userSnap, employeeSnap, notificationPermission] = await Promise.all([
@@ -140,7 +126,6 @@ export default function SettingsPage() {
 
         setSecurityStatus({
           loading: false,
-          refreshing: false,
           passwordEnabled,
           notificationsGranted: notificationPermission.granted,
           notificationStatus: notificationPermission.status || "unknown",
@@ -149,7 +134,6 @@ export default function SettingsPage() {
         setSecurityStatus((current) => ({
           ...current,
           loading: false,
-          refreshing: false,
         }));
       }
     },
@@ -157,7 +141,14 @@ export default function SettingsPage() {
   );
 
   useEffect(() => {
-    refreshAccountSetupStatus({ silent: true });
+    refreshAccountSetupStatus();
+  }, [refreshAccountSetupStatus]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") refreshAccountSetupStatus();
+    });
+    return () => subscription.remove();
   }, [refreshAccountSetupStatus]);
 
   const handleMaintenanceReminderToggle = async (next) => {
@@ -183,41 +174,6 @@ export default function SettingsPage() {
         "Could not update reminder time",
         e?.message || "Please try again."
       );
-    }
-  };
-
-  const handleTestNotification = async () => {
-    if (testNotificationSaving) return;
-
-    try {
-      setTestNotificationSaving(true);
-      await registerForPushNotificationsAsync();
-      const id = await scheduleLocalNotification({
-        title: "Bickers test notification",
-        body: "Notifications are working.",
-        seconds: 10,
-        data: {
-          type: "test-notification",
-        },
-        writeToInbox: false,
-      });
-
-      if (!id) {
-        Alert.alert(
-          "Notification not scheduled",
-          "Check notification permissions for this app in iOS Settings."
-        );
-        return;
-      }
-
-      Alert.alert("Test scheduled", "A test notification will arrive in 10 seconds.");
-    } catch (e) {
-      Alert.alert(
-        "Could not send test",
-        e?.message || "Please check notification permissions and try again."
-      );
-    } finally {
-      setTestNotificationSaving(false);
     }
   };
 
@@ -248,22 +204,44 @@ export default function SettingsPage() {
       return;
     }
 
-    const result = await requestNotificationPermission();
-    await refreshAccountSetupStatus();
+    try {
+      const result = await requestNotificationPermission();
+      await refreshAccountSetupStatus();
 
-    if (result.granted) {
-      Alert.alert("Notifications enabled", "App notifications are ready.");
-      return;
+      if (result.granted) {
+        const firebaseUser = user || auth.currentUser;
+        const token = await registerForPushNotificationsAsync();
+        if (!firebaseUser || !token) {
+          throw new Error("This device could not be registered for push notifications.");
+        }
+
+        await registerDeviceToken({
+          idToken: await firebaseUser.getIdToken(),
+          token,
+          platform: Platform.OS,
+          appVersion: getCurrentAppVersion(),
+          employeeId: employee?.employeeId,
+          employeeCode: employee?.userCode,
+          email: employee?.email || firebaseUser.email,
+        });
+        Alert.alert("Notifications enabled", "This device is registered for reminders.");
+        return;
+      }
+
+      Alert.alert(
+        "Notifications blocked",
+        `Enable notifications for this app in ${Platform.OS === "ios" ? "iOS" : Platform.OS === "android" ? "Android" : "Device"} Settings.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+        ]
+      );
+    } catch (error) {
+      Alert.alert(
+        "Could not enable notifications",
+        error?.message || "Please try again."
+      );
     }
-
-    Alert.alert(
-      "Notifications blocked",
-      "Enable notifications for this app in iOS Settings.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Open Settings", onPress: () => Linking.openSettings() },
-      ]
-    );
   };
 
   const handleChangePassword = () => {
@@ -336,7 +314,7 @@ export default function SettingsPage() {
       await updatePassword(firebaseUser, newPassword);
       setPasswordModalVisible(false);
       resetPasswordForm();
-      await refreshAccountSetupStatus({ silent: true });
+      await refreshAccountSetupStatus();
       Alert.alert("Password changed", "Your password has been updated.");
     } catch (err) {
       if (
@@ -368,20 +346,9 @@ export default function SettingsPage() {
       actionLabel: "Send",
       onPress: () => handleSendPasswordSetupEmail(),
     },
-    {
-      key: "notifications",
-      label: "Notifications",
-      icon: "bell",
-      complete: securityStatus.notificationsGranted,
-      subLabel: securityStatus.notificationsGranted
-        ? "Device notifications are allowed"
-        : securityStatus.notificationStatus === "denied"
-          ? "Notifications are blocked in device settings"
-          : "Allow notifications for alerts and reminders",
-      actionLabel: securityStatus.notificationStatus === "denied" ? "Open" : "Enable",
-      onPress: () => handleEnableNotifications(),
-    },
   ];
+
+  const incompleteSetupItems = accountSetupItems.filter((item) => !item.complete);
 
   const settings = [
     {
@@ -402,45 +369,61 @@ export default function SettingsPage() {
       ],
     },
     {
-      group: "App",
+      group: "Notifications",
       items: [
         {
-          label: "Notifications",
+          label: "Device Notifications",
           icon: "bell",
-          type: "toggle",
-          subLabel: NOTIFICATIONS_ENABLED
-            ? "Control in-app notification alerts"
-            : "Temporarily disabled across the app",
+          type: "notification-permission",
+          complete: securityStatus.notificationsGranted,
+          subLabel: securityStatus.notificationsGranted
+            ? "Alerts are allowed on this device"
+            : securityStatus.notificationStatus === "denied"
+              ? "Blocked in device settings"
+              : "Allow job and reminder alerts",
+          actionLabel: securityStatus.notificationsGranted || securityStatus.notificationStatus === "denied" ? "Open Settings" : "Turn on",
+          onPress: securityStatus.notificationsGranted || securityStatus.notificationStatus === "denied"
+            ? () => Linking.openSettings()
+            : handleEnableNotifications,
         },
         {
-          label: "Maintenance Job Reminders",
+          label: "Maintenance Reminders",
           icon: "clock",
           type: "maintenance-reminder-toggle",
-          subLabel: "Day-before alerts for booked maintenance jobs",
+          subLabel: securityStatus.notificationsGranted
+            ? "Alert me the day before booked maintenance"
+            : "Enable device notifications first",
         },
+        ...(maintenanceReminderEnabled && securityStatus.notificationsGranted
+          ? [{
+              label: "Reminder Time",
+              icon: "watch",
+              type: "maintenance-reminder-time",
+              subLabel: "When the day-before alert arrives",
+            }]
+          : []),
+      ],
+    },
+    {
+      group: "Appearance",
+      items: [
         {
-          label: "Reminder Time",
-          icon: "watch",
-          type: "maintenance-reminder-time",
-          subLabel: "When maintenance job alerts should arrive",
-        },
-        {
-          label: "Test Notification",
-          icon: "send",
-          type: "test-notification",
-          subLabel: "Sends a test alert after 10 seconds",
-        },
-        {
-          label: "Appearance",
+          label: "Theme",
           icon: "moon",
           type: "theme",
-          subLabel: "Choose system, light, or dark mode",
+          subLabel: "Use system, light, or dark mode",
         },
       ],
     },
     {
       group: "Support",
       items: [
+        {
+          label: "Privacy policy",
+          icon: "shield",
+          subLabel: "How Bickers uses your information",
+          onPress: openPrivacyPolicy,
+        },
         {
           label: "Help Centre",
           icon: "help-circle",
@@ -453,394 +436,85 @@ export default function SettingsPage() {
           subLabel: "Version and company information",
           onPress: () => router.push("/about"),
         },
+        {
+          label: "Working Terms",
+          icon: "file-text",
+          subLabel: "View the terms you have signed",
+          onPress: () => router.push("/working-terms"),
+        },
       ],
     },
   ];
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.heroCard}>
-          <View style={styles.heroContent}>
-            <View style={styles.heroTopRow}>
-              <TouchableOpacity
-                onPress={() => router.back()}
-                activeOpacity={0.85}
-                style={[
-                  styles.backBtn,
-                  {
-                    backgroundColor: withAlpha(colors.surfaceAlt, 0.75),
-                    borderColor: withAlpha(colors.border, 0.75),
-                  },
-                ]}
-              >
-                <Icon name="arrow-left" size={15} color={colors.text} />
-              </TouchableOpacity>
-
-              <View style={styles.heroTitleWrap}>
-                <Text style={[styles.heroEyebrow, { color: colors.textMuted }]}>
-                  Profile & App
-                </Text>
-                <Text style={[styles.heroTitle, { color: colors.text }]}>Settings</Text>
-              </View>
-
-              <View style={styles.heroSpacer} />
-            </View>
-
-          </View>
-        </View>
-
-        {!securityStatus.loading ? (
-          <View style={[styles.sectionCard, { borderColor: colors.border }]}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Account Setup
-              </Text>
-              <View style={styles.sectionHeaderActions}>
-                <TouchableOpacity
-                  onPress={() => refreshAccountSetupStatus()}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  disabled={securityStatus.refreshing}
-                  style={[
-                    styles.refreshButton,
-                    {
-                      borderColor: colors.border,
-                      backgroundColor: colors.surfaceAlt,
-                    },
-                  ]}
-                >
-                  <Icon
-                    name="refresh-cw"
-                    size={13}
-                    color={securityStatus.refreshing ? colors.textMuted : colors.text}
-                  />
-                </TouchableOpacity>
-                <View
-                  style={[
-                    styles.sectionCountPill,
-                    {
-                      backgroundColor: withAlpha(
-                        accountSetupItems.every((item) => item.complete)
-                          ? colors.success
-                          : colors.warning,
-                        0.16
-                      ),
-                      borderColor: withAlpha(
-                        accountSetupItems.every((item) => item.complete)
-                          ? colors.success
-                          : colors.warning,
-                        0.42
-                      ),
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sectionCountText,
-                      {
-                        color: accountSetupItems.every((item) => item.complete)
-                          ? colors.success
-                          : colors.warning,
-                      },
-                    ]}
-                  >
-                    {accountSetupItems.filter((item) => item.complete).length}/
-                    {accountSetupItems.length}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {accountSetupItems.map((item) => {
-              const statusColor = item.complete ? colors.success : colors.warning;
-              return (
-              <View
-                key={item.key}
-                style={[
-                  styles.itemRow,
-                  {
-                    backgroundColor: item.complete
-                      ? colors.surfaceAlt
-                      : withAlpha(colors.warning, 0.08),
-                    borderColor: item.complete
-                      ? colors.border
-                      : withAlpha(colors.warning, 0.38),
-                  },
-                ]}
-              >
-                <View style={styles.itemLeftWrap}>
-                  <View
-                    style={[
-                      styles.itemIconWrap,
-                      {
-                        backgroundColor: withAlpha(statusColor, 0.14),
-                        borderColor: withAlpha(statusColor, 0.38),
-                      },
-                    ]}
-                  >
-                    <Icon name={item.icon} size={16} color={statusColor} />
+    <PageShell
+      appearance="grouped"
+      mode="form"
+      width="form"
+      header={{
+        variant: "compact",
+        eyebrow: "Profile & App",
+        title: "Settings",
+        onBack: router.back,
+      }}
+    >
+      <View style={{ gap: t.spacing.md }}>
+      {!securityStatus.loading && incompleteSetupItems.length > 0 ? (
+        <PageSection title="Finish Setup" divided={false}>
+          {incompleteSetupItems.map((item) => (
+            <ListRow key={item.key} title={item.label} subtitle={item.subLabel} leadingIcon={item.icon} onPress={item.onPress} />
+          ))}
+        </PageSection>
+      ) : null}
+      {settings.map((section) => (
+        <PageSection key={section.group} title={section.group} divided={false}>
+          <View>
+            {section.items.map((item, index) => {
+              const divider = index < section.items.length - 1;
+              if (item.type === "theme" || item.type === "maintenance-reminder-time") {
+                const isTheme = item.type === "theme";
+                return (
+                  <View key={item.label}>
+                    <ListRow title={item.label} subtitle={item.subLabel} leadingIcon={item.icon} />
+                    <SegmentedControl
+                      accessibilityLabel={item.label}
+                      selectionRole="radio"
+                      pill
+                      subtle
+                      density="compact"
+                      options={isTheme
+                        ? [{ label: "System", value: "system" }, { label: "Light", value: "light" }, { label: "Dark", value: "dark" }]
+                        : maintenanceReminderTimes.map((time) => ({ label: time, value: time }))}
+                      value={isTheme ? theme : maintenanceReminderTime}
+                      onChange={isTheme ? handleSetTheme : handleMaintenanceReminderTimeChange}
+                      disabled={!isTheme && maintenanceReminderSaving}
+                    />
                   </View>
-
-                  <View style={styles.itemTextWrap}>
-                    <Text style={[styles.itemText, { color: colors.text }]}>
-                      {item.label}
-                    </Text>
-                    <Text style={[styles.itemSubText, { color: colors.textMuted }]}>
-                      {item.subLabel}
-                    </Text>
-                  </View>
-                </View>
-
-                {item.complete ? (
-                  <View
-                    style={[
-                      styles.securityStatusBadge,
-                      {
-                        borderColor: colors.success,
-                        backgroundColor: withAlpha(colors.success, 0.14),
-                      },
-                    ]}
-                  >
-                    <Icon name="check" size={13} color={colors.success} />
-                    <Text
-                      style={[styles.securityStatusText, { color: colors.success }]}
-                    >
-                      Done
-                    </Text>
-                  </View>
+                );
+              }
+              if (item.type === "maintenance-reminder-toggle") {
+                return maintenanceReminderError ? (
+                  <ListRow key={item.label} title={item.label} subtitle="Could not load reminder preferences" leadingIcon={item.icon}
+                    trailing={<AppButton label="Retry" variant="secondary" onPress={() => refreshMaintenancePreferences().catch(() => {})} />} />
                 ) : (
-                  <TouchableOpacity
-                    onPress={item.onPress}
-                    accessibilityRole="button"
-                    activeOpacity={0.85}
-                    style={[
-                      styles.securityActionButton,
-                      {
-                        borderColor: colors.warning,
-                        backgroundColor: withAlpha(colors.warning, 0.14),
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.securityActionText, { color: colors.warning }]}>
-                      {item.actionLabel}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+                  <ToggleRow key={item.label} label={item.label} description={item.subLabel}
+                    leadingIcon={item.icon}
+                    value={maintenanceReminderEnabled} onChange={handleMaintenanceReminderToggle}
+                    disabled={maintenanceReminderSaving || maintenanceReminderLoading || !securityStatus.notificationsGranted} />
+                );
+              }
+              return (
+                <ListRow key={item.label} title={item.label} subtitle={item.subLabel} leadingIcon={item.icon} divider={divider}
+                  onPress={item.type === "notification-permission" ? undefined : item.onPress}
+                  trailing={item.type === "notification-permission"
+                    ? <AppButton label={item.actionLabel} variant="secondary" pill density="compact" onPress={item.onPress} accessibilityLabel={`${item.actionLabel} device notifications`} />
+                    : undefined} />
               );
             })}
           </View>
-        ) : null}
-
-        {settings.map((section, idx) => (
-          <View
-            key={idx}
-            style={[
-              styles.sectionCard,
-              { borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>{section.group}</Text>
-              <View
-                style={[
-                  styles.sectionCountPill,
-                  {
-                    backgroundColor: withAlpha(colors.accent, 0.16),
-                    borderColor: withAlpha(colors.accent, 0.42),
-                  },
-                ]}
-              >
-                <Text style={[styles.sectionCountText, { color: colors.accent }]}>
-                  {section.items.length}
-                </Text>
-              </View>
-            </View>
-
-            {section.items.map((item, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.itemRow,
-                  {
-                    backgroundColor: colors.surfaceAlt,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <View style={styles.itemLeftWrap}>
-                  <View
-                    style={[
-                      styles.itemIconWrap,
-                      {
-                        backgroundColor: withAlpha(colors.accent, 0.12),
-                        borderColor: withAlpha(colors.accent, 0.35),
-                      },
-                    ]}
-                  >
-                    <Icon name={item.icon} size={16} color={colors.accent} />
-                  </View>
-
-                  <View style={styles.itemTextWrap}>
-                    <Text style={[styles.itemText, { color: colors.text }]}>{item.label}</Text>
-                    {!!item.subLabel && (
-                      <Text style={[styles.itemSubText, { color: colors.textMuted }]}>
-                        {item.subLabel}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-
-                {item.type === "toggle" ? (
-                  <Switch
-                    value={notificationsEnabled}
-                    onValueChange={handleNotificationsToggle}
-                    disabled={!NOTIFICATIONS_ENABLED}
-                    trackColor={{
-                      false: withAlpha(colors.textMuted, 0.45),
-                      true: colors.accent,
-                    }}
-                    thumbColor={notificationsEnabled ? "#fff" : "#888"}
-                  />
-                ) : item.type === "maintenance-reminder-toggle" ? (
-                  maintenanceReminderError ? (
-                    <TouchableOpacity
-                      onPress={() => refreshMaintenancePreferences().catch(() => {})}
-                      accessibilityRole="button"
-                      accessibilityLabel="Retry loading maintenance reminder settings"
-                      style={{ paddingHorizontal: 12, paddingVertical: 9 }}
-                    >
-                      <Text style={{ color: colors.warning, fontWeight: "700" }}>Retry</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <Switch
-                      value={maintenanceReminderEnabled}
-                      onValueChange={handleMaintenanceReminderToggle}
-                      disabled={maintenanceReminderSaving || maintenanceReminderLoading}
-                      trackColor={{
-                        false: withAlpha(colors.textMuted, 0.45),
-                        true: colors.accent,
-                      }}
-                      thumbColor={maintenanceReminderEnabled ? "#fff" : "#888"}
-                    />
-                  )
-                ) : item.type === "maintenance-reminder-time" ? (
-                  <View style={styles.timeButtonsRow}>
-                    {maintenanceReminderTimes.map((time) => {
-                      const active = maintenanceReminderTime === time;
-                      return (
-                        <TouchableOpacity
-                          key={time}
-                          onPress={() => handleMaintenanceReminderTimeChange(time)}
-                          activeOpacity={0.85}
-                          disabled={maintenanceReminderSaving}
-                          style={[
-                            styles.timeButton,
-                            {
-                              borderColor: active ? colors.accent : colors.border,
-                              backgroundColor: active
-                                ? withAlpha(colors.accent, 0.18)
-                                : colors.surface,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.timeButtonText,
-                              {
-                                color: active ? colors.accent : colors.textMuted,
-                              },
-                            ]}
-                          >
-                            {time}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ) : item.type === "theme" ? (
-                  <View style={styles.themeButtonsRow}>
-                    {["system", "light", "dark"].map((mode) => {
-                      const active = theme === mode;
-                      return (
-                        <TouchableOpacity
-                          key={mode}
-                          onPress={() => handleSetTheme(mode)}
-                          activeOpacity={0.85}
-                          style={[
-                            styles.themeButton,
-                            {
-                              borderColor: active ? colors.accent : colors.border,
-                              backgroundColor: active
-                                ? withAlpha(colors.accent, 0.15)
-                                : colors.surface,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.themeButtonText,
-                              {
-                                color: active ? colors.accent : colors.textMuted,
-                              },
-                            ]}
-                          >
-                            {mode}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ) : item.type === "test-notification" ? (
-                  <TouchableOpacity
-                    onPress={handleTestNotification}
-                    accessibilityRole="button"
-                    activeOpacity={0.85}
-                    disabled={testNotificationSaving || !NOTIFICATIONS_ENABLED}
-                    style={[
-                      styles.testButton,
-                      {
-                        borderColor: colors.accent,
-                        backgroundColor: testNotificationSaving
-                          ? withAlpha(colors.textMuted, 0.12)
-                          : withAlpha(colors.accent, 0.14),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.testButtonText,
-                        {
-                          color: testNotificationSaving
-                            ? colors.textMuted
-                            : colors.accent,
-                        },
-                      ]}
-                    >
-                      {testNotificationSaving ? "Sending" : "Send"}
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={item.onPress}
-                    accessibilityRole="button"
-                    activeOpacity={0.8}
-                    style={styles.itemAction}
-                  >
-                    <Icon name="chevron-right" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
-          </View>
-        ))}
-
-        <View style={{ height: 24 }} />
-      </ScrollView>
+        </PageSection>
+      ))}
+      </View>
       <ChangePasswordModal
         visible={passwordModalVisible}
         colors={colors}
@@ -851,256 +525,6 @@ export default function SettingsPage() {
         onSubmit={handleSubmitPasswordChange}
         onForgotPassword={handleForgotCurrentPassword}
       />
-    </SafeAreaView>
+    </PageShell>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  scrollContent: { paddingHorizontal: 14, paddingBottom: 24, paddingTop: 8 },
-
-  heroCard: {
-    position: "relative",
-    marginBottom: 8,
-  },
-  heroContent: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroTitleWrap: {
-    flex: 1,
-    paddingTop: 1,
-    alignItems: "center",
-  },
-  heroSpacer: {
-    width: 34,
-    height: 34,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  heroTitle: {
-    marginTop: 2,
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
-  heroSubTitle: {
-    marginTop: 2,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  heroMetaRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    justifyContent: "center",
-  },
-  heroMetaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  heroMetaText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-
-  sectionCard: {
-    marginBottom: 12,
-    borderWidth: 0,
-    borderRadius: 14,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-    paddingHorizontal: 2,
-  },
-  sectionHeaderActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  refreshButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "900",
-    letterSpacing: 0.2,
-  },
-  sectionCountPill: {
-    minWidth: 30,
-    height: 26,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  sectionCountText: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  itemRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderWidth: 1,
-    gap: 10,
-  },
-  itemLeftWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    minWidth: 0,
-  },
-  itemIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  itemTextWrap: {
-    marginLeft: 10,
-    flex: 1,
-    minWidth: 0,
-  },
-  itemAction: {
-    width: 28,
-    alignItems: "flex-end",
-    justifyContent: "center",
-  },
-  itemText: {
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 18,
-  },
-  itemSubText: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-
-  timeButtonsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    gap: 6,
-    maxWidth: 180,
-  },
-  timeButton: {
-    minWidth: 54,
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  timeButtonText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  themeButtonsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-  },
-  themeButton: {
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  themeButtonText: {
-    fontSize: 12,
-    fontWeight: "800",
-    textTransform: "capitalize",
-    letterSpacing: 0.1,
-  },
-  testButton: {
-    minWidth: 64,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  testButtonText: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  securityActionButton: {
-    minWidth: 64,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  securityActionText: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  securityStatusBadge: {
-    minWidth: 70,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  securityStatusText: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
-});

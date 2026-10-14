@@ -1,5 +1,8 @@
 {
+  "firestore": {
+    "rules": "firebase/mobile-compat/firestore.rules"
+  },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "firebase/mobile-compat/storage.rules"
   }
 }

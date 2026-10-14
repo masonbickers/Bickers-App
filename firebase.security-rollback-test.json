@@ -1,0 +1,26 @@
+{
+  "firestore": {
+    "rules": "firebase/security-rollback-2026-10-14/firestore.rules"
+  },
+  "storage": {
+    "rules": "firebase/security-rollback-2026-10-14/storage.rules"
+  },
+  "emulators": {
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 9398
+    },
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8287
+    },
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 9397
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  }
+}

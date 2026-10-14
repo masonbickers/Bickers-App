@@ -1,15 +1,17 @@
+import { routeColors } from "../../../lib/design/routePresentation/service-index-js.js";
+import { styles, quickStyles, summaryStyles } from "../../../lib/design/screenStyles/service-index-js.js";
+import { getServiceOverviewState } from "../../../lib/serviceOverview";
+import { selectServiceAttention } from "../../../lib/serviceAttention";
+import { AppText as Text, AppPressable as TouchableOpacity, AppButton, Banner, StateView } from "../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS, getServiceStatusColors } from "../../../lib/design/semantics";
 // app/(protected)/service/index.jsx
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import {
     ActivityIndicator,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 
 import {
@@ -22,19 +24,8 @@ import {
 } from "../../../lib/fleetSchema";
 import { useServiceCollection } from "../../../hooks/useServiceData";
 import { useTheme } from "../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#2176FF",
-  recceAction: "#ED1C25",
-  inputBg: "#2a2a2a",
-  lightGray: "#4a4a4a",
-};
+import { designTokens as t } from "../../../lib/design/tokens";
+import PageShell from "../../../components/layout/PageShell";
 
 function toDateMaybe(value) {
   if (!value) return null;
@@ -80,12 +71,20 @@ function pickWorstStatusCode(motCode, serviceCode) {
 
 export default function ServiceOverviewScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
 
-  const { rows: vehicles, loading } = useServiceCollection("vehicles", {
+  const resource = useServiceCollection("vehicles", {
     label: "vehicles for service overview",
     orderByField: "name",
   });
+  return <ServiceLandingView resource={resource} router={router} />;
+}
+
+export function ServiceLandingView({ resource, router }) {
+  const { colors, colorScheme } = useTheme();
+  const danger = getServiceStatusColors("danger", colorScheme);
+  const warning = getServiceStatusColors("warning", colorScheme);
+  const { rows: vehicles, loading } = resource;
+  const dataState = getServiceOverviewState([resource]);
 
   const processed = useMemo(() => {
     return vehicles.map((v) => {
@@ -124,66 +123,47 @@ export default function ServiceOverviewScreen() {
     return { total, overdue, dueSoon, defects };
   }, [processed]);
 
-  const attentionVehicles = useMemo(() => {
-    const overdue = processed.filter(
-      (v) =>
-        v.motStatus.code === "overdue" || v.serviceStatus.code === "overdue"
-    );
-    const dueSoon = processed.filter(
-      (v) =>
-        v.motStatus.code === "due-soon" || v.serviceStatus.code === "due-soon"
-    );
-
-    return [...overdue, ...dueSoon].slice(0, 5);
-  }, [processed]);
+  const attentionVehicles = useMemo(() => selectServiceAttention(processed), [processed]);
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      {/* HEADER */}
-      <View
+    <PageShell customHeader={<View
         style={[
           styles.header,
           { borderBottomColor: colors.border || COLORS.border },
         ]}
       >
         <Text
-          style={[
+          tone={"primary"} style={[
             styles.pageTitle,
-            { color: colors.text || COLORS.textHigh },
           ]}
         >
           Service & Maintenance
         </Text>
         <Text
-          style={[
+          tone={"muted"} style={[
             styles.pageSubtitle,
-            { color: colors.textMuted || COLORS.textMid },
           ]}
         >
           Overview of MOT, servicing, defects and workshop activity.
         </Text>
-      </View>
+      </View>} customHeaderPlacement="fixed">
+      {/* HEADER */}
 
-      {loading ? (
+
+      {dataState === "error" ? <StateView state="error" title="Couldn’t load fleet data" actionLabel="Retry fleet data" onAction={resource.refresh} /> : loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primaryAction} />
           <Text
-            style={[
+            tone={"muted"} style={[
               styles.loadingText,
-              { color: colors.textMuted || COLORS.textMid },
             ]}
           >
             Loading fleet data…
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <>
+          {dataState === "partial" ? <Banner tone="warning" title="Fleet data may be out of date"><AppButton label="Retry fleet data" variant="secondary" onPress={resource.refresh} /></Banner> : null}
           {/* FLEET SUMMARY CARD */}
           <View
             style={[
@@ -196,9 +176,8 @@ export default function ServiceOverviewScreen() {
             ]}
           >
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.infoTextTitle,
-                { color: colors.text || COLORS.textHigh },
               ]}
             >
               Fleet Overview
@@ -216,20 +195,20 @@ export default function ServiceOverviewScreen() {
                 value={summary.overdue}
                 color={
                   summary.overdue > 0
-                    ? colors.danger || "#ED1C25"
+                    ? danger.foreground
                     : colors.textMuted || COLORS.textMid
                 }
                 labelColor={colors.textMuted || COLORS.textMid}
               />
             </View>
 
-            <View style={[styles.summaryRow, { marginTop: 10 }]}>
+            <View style={[styles.summaryRow, { marginTop: t.spacing.xs }]}>
               <SummaryItem
                 label="Due soon (30d)"
                 value={summary.dueSoon}
                 color={
                   summary.dueSoon > 0
-                    ? "#FF9500"
+                    ? warning.foreground
                     : colors.textMuted || COLORS.textMid
                 }
                 labelColor={colors.textMuted || COLORS.textMid}
@@ -239,7 +218,7 @@ export default function ServiceOverviewScreen() {
                 value={summary.defects}
                 color={
                   summary.defects > 0
-                    ? colors.danger || "#ED1C25"
+                    ? danger.foreground
                     : colors.textMuted || COLORS.textMid
                 }
                 labelColor={colors.textMuted || COLORS.textMid}
@@ -250,9 +229,8 @@ export default function ServiceOverviewScreen() {
           {/* QUICK ACTIONS */}
           <View style={styles.sectionDivider}>
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.sectionTitle,
-                { color: colors.text || COLORS.textHigh },
               ]}
             >
               Quick Actions
@@ -274,7 +252,7 @@ export default function ServiceOverviewScreen() {
             />
           </View>
 
-          <View style={[styles.quickRow, { marginTop: 10 }]}>
+          <View style={[styles.quickRow, { marginTop: t.spacing.xs }]}>
             <QuickActionCard
               icon="tool"
               title="Book Workshop"
@@ -286,9 +264,8 @@ export default function ServiceOverviewScreen() {
           {/* ATTENTION NEEDED */}
           <View style={styles.sectionDivider}>
             <Text
-              style={[
+              tone={"primary"} style={[
                 styles.sectionTitle,
-                { color: colors.text || COLORS.textHigh },
               ]}
             >
               Attention Needed
@@ -303,17 +280,15 @@ export default function ServiceOverviewScreen() {
                 color={colors.textMuted || COLORS.textMid}
               />
               <Text
-                style={[
+                tone={"primary"} style={[
                   styles.emptyTitle,
-                  { color: colors.text || COLORS.textHigh },
                 ]}
               >
                 Nothing urgent
               </Text>
               <Text
-                style={[
+                tone={"muted"} style={[
                   styles.emptySubtitle,
-                  { color: colors.textMuted || COLORS.textMid },
                 ]}
               >
                 No MOT or service items are overdue or due soon.
@@ -326,12 +301,15 @@ export default function ServiceOverviewScreen() {
               const worstCode = v.worstCode;
 
               let borderAccent = COLORS.border;
-              if (worstCode === "overdue") borderAccent = "#ED1C25";
-              else if (worstCode === "due-soon") borderAccent = "#FF9500";
+              if (worstCode === "overdue") borderAccent = routeColors.hex_ed1c25_4py4qa;
+              else if (worstCode === "due-soon") borderAccent = routeColors.hex_ff9500_5c3jxm;
 
               return (
                 <TouchableOpacity
                   key={v.id}
+                  testID={`attention-${v.id}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${name}`}
                   style={[
                     styles.vehicleCard,
                     {
@@ -345,18 +323,16 @@ export default function ServiceOverviewScreen() {
                   <View style={styles.vehicleHeaderRow}>
                     <View style={{ flex: 1 }}>
                       <Text
-                        style={[
+                        tone={"primary"} style={[
                           styles.vehicleTitle,
-                          { color: colors.text || COLORS.textHigh },
                         ]}
                       >
                         {name}
                       </Text>
                       {!!reg && (
                         <Text
-                          style={[
+                          tone={"muted"} style={[
                             styles.vehicleReg,
-                            { color: colors.textMuted || COLORS.textMid },
                           ]}
                         >
                           {reg}
@@ -374,14 +350,14 @@ export default function ServiceOverviewScreen() {
                     <StatusPill label="MOT" status={v.motStatus} />
                     <StatusPill label="Service" status={v.serviceStatus} />
                     {v.hasDefects && (
-                      <View style={styles.defectPill}>
+                      <View style={[styles.defectPill, { backgroundColor: danger.background }]}>
                         <Icon
                           name="alert-triangle"
                           size={14}
-                          color={COLORS.textHigh}
-                          style={{ marginRight: 4 }}
+                          color={danger.onBackground}
+                          style={{ marginRight: t.spacing.xxs }}
                         />
-                        <Text style={styles.defectText}>
+                        <Text testID="landing-defect-count" style={[styles.defectText, { color: danger.onBackground }]}>
                           {v.defects.length} defect
                           {v.defects.length > 1 ? "s" : ""}
                         </Text>
@@ -394,9 +370,9 @@ export default function ServiceOverviewScreen() {
           )}
 
           <View style={{ height: 40 }} />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
@@ -405,7 +381,7 @@ export default function ServiceOverviewScreen() {
 function SummaryItem({ label, value, color, labelColor }) {
   return (
     <View style={summaryStyles.item}>
-      <Text style={[summaryStyles.value, { color }]}>{value}</Text>
+      <Text testID={`landing-summary-${label}`} style={[summaryStyles.value, { color }]}>{value}</Text>
       <Text style={[summaryStyles.label, { color: labelColor || COLORS.textMid }]}>
         {label}
       </Text>
@@ -414,39 +390,26 @@ function SummaryItem({ label, value, color, labelColor }) {
 }
 
 function QuickActionCard({ icon, title, subtitle, onPress }) {
+  const { colors } = useTheme();
   return (
-    <TouchableOpacity style={quickStyles.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={quickStyles.iconWrap}>
-        <Icon name={icon} size={18} color={COLORS.textHigh} />
+    <TouchableOpacity testID={`quick-${icon}`} accessibilityRole="button" accessibilityLabel={title} style={[quickStyles.card, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} onPress={onPress} activeOpacity={0.85}>
+      <View style={[quickStyles.iconWrap, { backgroundColor: colors.surface }]}>
+        <Icon name={icon} size={18} color={colors.text} />
       </View>
-      <Text style={quickStyles.title}>{title}</Text>
-      <Text style={quickStyles.subtitle}>{subtitle}</Text>
+      <Text tone={"primary"} style={[quickStyles.title]}>{title}</Text>
+      <Text tone={"muted"} style={[quickStyles.subtitle]}>{subtitle}</Text>
     </TouchableOpacity>
   );
 }
 
 function StatusPill({ label, status }) {
-  const code = status.code;
-  let bg = "rgba(74, 74, 74, 0.7)";
-  let fg = COLORS.textHigh;
-
-  if (code === "overdue") {
-    bg = "rgba(255,59,48,0.22)";
-    fg = "#ED1C25";
-  } else if (code === "due-soon") {
-    bg = "rgba(255,149,0,0.22)";
-    fg = "#FF9500";
-  } else if (code === "ok") {
-    bg = "rgba(52,199,89,0.22)";
-    fg = "#34C759";
-  } else if (code === "unknown") {
-    bg = "rgba(142,142,147,0.22)";
-    fg = COLORS.textMid;
-  }
+  const { colorScheme } = useTheme();
+  const tone = status.code === "overdue" ? "danger" : status.code === "due-soon" ? "warning" : status.code === "ok" ? "success" : "neutral";
+  const { background: bg, onBackground: fg } = getServiceStatusColors(tone, colorScheme);
 
   return (
     <View style={[styles.statusPill, { backgroundColor: bg }]}>
-      <Text style={[styles.statusPillText, { color: fg }]}>
+      <Text testID={`landing-status-${label}`} style={[styles.statusPillText, { color: fg }]}>
         {label}: {status.label}
       </Text>
     </View>
@@ -454,195 +417,3 @@ function StatusPill({ label, status }) {
 }
 
 /* Styles */
-
-const summaryStyles = StyleSheet.create({
-  item: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: 12,
-  },
-  value: {
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  label: {
-    fontSize: 13,
-    color: COLORS.textMid,
-    marginTop: 2,
-  },
-});
-
-const quickStyles = StyleSheet.create({
-  card: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  iconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#262626",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  title: {
-    color: COLORS.textHigh,
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 2,
-    flexShrink: 1,
-  },
-  subtitle: {
-    color: COLORS.textLow,
-    fontSize: 12,
-    flexShrink: 1,
-  },
-});
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  pageTitle: {
-    color: COLORS.textHigh,
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  pageSubtitle: {
-    marginTop: 4,
-    color: COLORS.textMid,
-    fontSize: 13,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.textMid,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  infoCard: {
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primaryAction,
-  },
-  infoTextTitle: {
-    color: COLORS.textHigh,
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  sectionDivider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    color: COLORS.textHigh,
-    fontSize: 16,
-    fontWeight: "700",
-    paddingRight: 10,
-  },
-  quickRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 10,
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-    paddingHorizontal: 24,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    textAlign: "center",
-  },
-  vehicleCard: {
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.border,
-  },
-  vehicleHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  vehicleTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  vehicleReg: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 4,
-    alignItems: "center",
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  defectPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: COLORS.recceAction,
-    marginBottom: 4,
-  },
-  defectText: {
-    fontSize: 11,
-    color: COLORS.textHigh,
-    fontWeight: "600",
-  },
-});

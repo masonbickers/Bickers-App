@@ -1,36 +1,27 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { styles } from "../../../../lib/design/screenStyles/service-vehicles-file-viewer-jsx.js";
+import { AppText, StateView } from "../../../../components/ui/AppPrimitives";
+import { useLocalSearchParams,
+  useRouter } from "expo-router";
 import { useMemo } from "react";
 import {
     ActivityIndicator,
-    Image,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Icon from "react-native-vector-icons/Feather";
+  Image,
+  View } from "react-native";
 import { WebView } from "react-native-webview";
 
+import DocumentSurface from "../../../../components/ui/DocumentSurface";
+import PageShell from "../../../../components/layout/PageShell";
 import { useTheme } from "../../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-};
+import { useRoute } from "@react-navigation/native";
+import { documentUrlFromRoute } from "../../../../lib/documentUrl";
 
 export default function FileViewerScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const params = useLocalSearchParams();
+  const route = useRoute();
 
-  const url = useMemo(() => {
-    if (!params?.url) return null;
-    return Array.isArray(params.url) ? params.url[0] : params.url;
-  }, [params]);
+  const url = documentUrlFromRoute(route.params);
 
   const name = useMemo(() => {
     if (!params?.name) return "";
@@ -50,83 +41,25 @@ export default function FileViewerScreen() {
     );
   }, [url]);
 
-  if (!url) {
-    return (
-      <SafeAreaView
-      edges={["left", "right"]}
-        style={[
-          styles.container,
-          { backgroundColor: colors.background || COLORS.background },
-        ]}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Icon name="chevron-left" size={20} color={COLORS.textHigh} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Attachment</Text>
-        </View>
-        <View style={styles.center}>
-          <Text style={styles.errorText}>No file URL provided.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
+    <PageShell
+      mode="static"
+      width="full"
+      header={{
+        variant: "compact",
+        title: name || "Attachment",
+        subtitle: "Vehicle attachment",
+        onBack: router.back,
+      }}
     >
-      {/* HEADER */}
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-          activeOpacity={0.8}
-        >
-          <Icon
-            name="chevron-left"
-            size={20}
-            color={colors.text || COLORS.textHigh}
+      <DocumentSurface layoutStyle={styles.viewer}>
+        {!url ? (
+          <StateView
+            state="error"
+            title="Attachment unavailable"
+            message="No file URL was provided."
           />
-        </TouchableOpacity>
-
-        <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.title,
-              { color: colors.text || COLORS.textHigh },
-            ]}
-            numberOfLines={1}
-          >
-            {name || "Attachment"}
-          </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-            numberOfLines={1}
-          >
-            Tap back to return to vehicle overview.
-          </Text>
-        </View>
-      </View>
-
-      {/* CONTENT */}
-      <View style={{ flex: 1 }}>
-        {isImage ? (
+        ) : isImage ? (
           <View style={styles.imageWrapper}>
             <Image
               source={{ uri: url }}
@@ -141,72 +74,16 @@ export default function FileViewerScreen() {
             startInLoadingState
             renderLoading={() => (
               <View style={styles.center}>
-                <ActivityIndicator size="large" color="#ED1C25" />
-                <Text style={styles.loadingText}>Loading file…</Text>
+                <ActivityIndicator size="large" color={colors.accent} />
+                <AppText variant="bodySmall" tone="secondary" layoutStyle={styles.loadingText}>
+                  Loading file…
+                </AppText>
               </View>
             )}
           />
         )}
-      </View>
-    </SafeAreaView>
+      </DocumentSurface>
+    </PageShell>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textHigh,
-  },
-  subtitle: {
-    fontSize: 11,
-    marginTop: 2,
-    color: COLORS.textMid,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  errorText: {
-    fontSize: 14,
-    color: COLORS.textMid,
-  },
-  imageWrapper: {
-    flex: 1,
-    backgroundColor: "#000",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-});

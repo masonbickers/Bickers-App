@@ -1,11 +1,12 @@
 // providers/AuthProvider.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { User } from "firebase/auth";
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { onIdTokenChanged } from "firebase/auth";
 import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   limit,
   query,
@@ -18,10 +19,15 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { resolveWorkspaceAccess } from "../lib/access";
+import { loadWorkingTermsAcceptance } from "../lib/workingTermsApi";
 import { auth, db } from "../firebaseConfig";
+import { bindSyncIdentity } from "../lib/sync/identity";
+import { appPasswordSetupRequest, passwordTransitionRequest } from "../lib/authApi";
+import { resolveWorkDiaryAccess } from "../lib/workDiaryAccess";
 
 const DEFAULT_COMPANY_ID = "bickers-action";
 
@@ -35,6 +41,8 @@ type EmployeeSession = {
   companyId?: string;
   uid?: string;
   isEnabled?: boolean;
+  mobileAccessStatus?: string;
+  workDiaryAccess?: boolean;
   displayName?: string;
   email?: string;
   employeeId?: string;
@@ -63,6 +71,13 @@ type Ctx = {
   isAuthed: boolean;
   employee: EmployeeSession | null;
   reloadSession: () => Promise<void>;
+  setSignInPending: (pending: boolean) => void;
+  workingTermsAccepted: boolean;
+  workingTermsAcceptance: Record<string, any> | null;
+  workingTermsError: string | null;
+  securityTransition: Record<string, any> | null;
+  setTransitionBusy: (busy: boolean) => void;
+  refreshWorkingTermsAcceptance: () => Promise<boolean>;
 
   // 🔥 NEW — used for LIVE REFRESH across ALL screens
   jobsUpdatedAt: number;
@@ -75,6 +90,13 @@ const AuthCtx = createContext<Ctx>({
   isAuthed: false,
   employee: null,
   reloadSession: async () => {},
+  setSignInPending: () => {},
+  workingTermsAccepted: false,
+  workingTermsAcceptance: null,
+  workingTermsError: null,
+  securityTransition: null,
+  setTransitionBusy: () => {},
+  refreshWorkingTermsAcceptance: async () => false,
 
   // defaults for new state
   jobsUpdatedAt: Date.now(),
@@ -201,16 +223,30 @@ async function persistRecoveredSession(session: EmployeeSession) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [signInPending, setSignInPending] = useState(false);
 
   const [employee, setEmployee] = useState<EmployeeSession | null>(null);
+  useEffect(() => {
+    bindSyncIdentity(employee);
+    return () => bindSyncIdentity(null);
+  }, [employee]);
   const [sessionReady, setSessionReady] = useState(false);
+  const [securityTransition, setSecurityTransition] = useState<Record<string, any> | null>(null);
+  const transitionBusy = useRef(false);
+  const setTransitionBusy = (busy: boolean) => { transitionBusy.current = busy; };
+  const sessionGeneration = useRef(0);
+  const [workingTermsAcceptance, setWorkingTermsAcceptance] = useState<Record<
+    string,
+    any
+  > | null>(null);
+  const [workingTermsError, setWorkingTermsError] = useState<string | null>(null);
 
   // 🔥 NEW — Whenever this value changes, all pages listening will update
   const [jobsUpdatedAt, setJobsUpdatedAt] = useState(Date.now());
 
   // Firebase auth listener
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onIdTokenChanged(auth, (u) => {
       setUser(u ?? null);
       setAuthReady(true);
     });
@@ -219,7 +255,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load stored employee session plus the Firestore user profile required by rules.
   const loadSession = useCallback(async (firebaseUser: User | null) => {
+    if (transitionBusy.current) return;
+    const generation = ++sessionGeneration.current;
     try {
+      if (firebaseUser && !firebaseUser.isAnonymous) {
+        try {
+          const token = await firebaseUser.getIdTokenResult();
+          if (generation !== sessionGeneration.current || transitionBusy.current) return;
+          // Security restrictions must never be decided from an offline cached profile.
+          const passwordSnapshot = await getDocFromServer(doc(db, "users", firebaseUser.uid));
+          const passwordProfile = passwordSnapshot.exists() ? passwordSnapshot.data() : null;
+          if (generation !== sessionGeneration.current || transitionBusy.current) return;
+          if (passwordProfile?.appPasswordSetupRequired === true) {
+            setEmployee(null);
+            setWorkingTermsAcceptance(null);
+            if (token.signInProvider !== "password") {
+              setSecurityTransition({ error: "Your administrator issued a temporary app password. Use a different sign-in below, then enter your work email and temporary password." });
+              return;
+            }
+            const status = await appPasswordSetupRequest(token.token);
+            if (generation === sessionGeneration.current && !transitionBusy.current) {
+              setSecurityTransition({ ...status, kind: "temporaryPassword", email: firebaseUser.email, uid: firebaseUser.uid });
+            }
+            return;
+          }
+          if (passwordProfile?.appPasswordSessionAfter && (token.signInProvider !== "password" || Date.parse(token.authTime) / 1000 <= Number(passwordProfile.appPasswordSessionAfter))) {
+            setEmployee(null);
+            setSecurityTransition({ error: "Your app password changed. Use a different sign-in below and sign in with your current password." });
+            return;
+          }
+          if (token.signInProvider !== "password") {
+            setEmployee(null);
+            setWorkingTermsAcceptance(null);
+            setSecurityTransition({ checking: true });
+            try {
+              const status = await passwordTransitionRequest(token.token);
+              if (generation === sessionGeneration.current && !transitionBusy.current) setSecurityTransition(status);
+            } catch (error) {
+              if (generation === sessionGeneration.current && !transitionBusy.current) setSecurityTransition({ error: error instanceof Error ? error.message : "Unable to check your account. Please retry." });
+            }
+            return;
+          }
+        } catch {
+          setEmployee(null);
+          setSecurityTransition({ error: "We could not verify your saved session. Retry or sign in with your work email and password." });
+          return;
+        }
+      }
+      setSecurityTransition(null);
       const entries = await AsyncStorage.multiGet([
         "sessionRole",
         "sessionIsService",
@@ -241,14 +324,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const m = Object.fromEntries(entries);
       const userProfile = await loadUserProfile(firebaseUser);
+      let termsAcceptance = null;
+      setWorkingTermsError(null);
+      try {
+        termsAcceptance = await loadWorkingTermsAcceptance(firebaseUser);
+      } catch (error) {
+        setWorkingTermsError(error instanceof Error ? error.message : "We could not check your existing Working Terms. Please try again.");
+        termsAcceptance = null;
+      }
+      setWorkingTermsAcceptance(termsAcceptance);
       const storedEmployeeId = String(m.employeeId || "").trim();
       const profileEmployeeId = String(userProfile?.employeeId || "").trim();
-      const employeeProfile =
-        !storedEmployeeId && profileEmployeeId
-          ? await loadEmployeeProfile(profileEmployeeId)
-          : !storedEmployeeId
-          ? await findEmployeeForPersistedUser(firebaseUser, userProfile)
-          : null;
+      const authoritativeEmployeeId = profileEmployeeId || storedEmployeeId;
+      const employeeProfile = authoritativeEmployeeId
+        ? await loadEmployeeProfile(authoritativeEmployeeId)
+        : await findEmployeeForPersistedUser(firebaseUser, userProfile);
       const employeeSource = employeeProfile || {};
       const profileAccess =
         userProfile?.appAccess && typeof userProfile.appAccess === "object"
@@ -273,7 +363,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           DEFAULT_COMPANY_ID
       ).trim();
       const employeeId =
-        storedEmployeeId || profileEmployeeId || String(employeeSource?.id || "").trim();
+        profileEmployeeId || String(employeeSource?.id || "").trim() || storedEmployeeId;
 
       if (employeeId) {
         const yardStart =
@@ -336,6 +426,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             employeeSource?.isEnabled !== false &&
             employeeSource?.disabled !== true &&
             employeeSource?.active !== false,
+          mobileAccessStatus:
+            userProfile?.mobileAccessStatus === "active" &&
+            employeeSource?.mobileAccess?.status === "active"
+              ? "active"
+              : String(userProfile?.mobileAccessStatus || employeeSource?.mobileAccess?.status || ""),
           displayName:
             m.displayName ||
             employeeSource?.name ||
@@ -345,6 +440,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           employeeId,
           email: userProfile?.email || employeeSource?.email || m.employeeEmail || "",
           userCode: m.employeeUserCode || employeeSource?.userCode || "",
+          workDiaryAccess: resolveWorkDiaryAccess({
+            firebaseUid: firebaseUser?.uid,
+            firebaseEmail: firebaseUser?.email,
+            userProfile,
+            employeeProfile,
+          }),
           yardStartTime: yardStart,
           yardEndTime: yardEnd,
           officeStartTime: officeStart,
@@ -363,6 +464,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         };
 
+        if (generation !== sessionGeneration.current || transitionBusy.current) return;
         setEmployee(nextEmployee);
         if (!storedEmployeeId && employeeSource?.id) {
           persistRecoveredSession(nextEmployee).catch(() => {});
@@ -372,48 +474,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {
       setEmployee(null);
+      setWorkingTermsAcceptance(null);
     } finally {
-      setSessionReady(true);
+      if (generation === sessionGeneration.current) setSessionReady(true);
     }
   }, []);
 
   useEffect(() => {
     if (!authReady) return;
+    if (transitionBusy.current) return;
     setSessionReady(false);
+    setWorkingTermsAcceptance(null);
     loadSession(user);
   }, [authReady, loadSession, user]);
 
-  useEffect(() => {
-    if (!authReady || user) return;
-
-    let cancelled = false;
-
-    const restoreAnonymousAuthForStoredSession = async () => {
-      const employeeId = await AsyncStorage.getItem("employeeId");
-      if (cancelled || !employeeId) return;
-      await signInAnonymously(auth).catch(() => {});
-    };
-
-    restoreAnonymousAuthForStoredSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authReady, user]);
-
   const reloadSession = async () => {
     setSessionReady(false);
-    await loadSession(user || auth.currentUser);
+    // Firebase updates auth.currentUser synchronously for sign-in and sign-out,
+    // while the React auth listener may still expose the previous user for one
+    // render. Never fall back to that stale user or logout can restore the
+    // employee session it just cleared.
+    await loadSession(auth.currentUser);
   };
 
-  // Code/email login uses anonymous Firebase Auth plus the validated employee session.
+  const refreshWorkingTermsAcceptance = useCallback(async () => {
+    try {
+      const acceptance = await loadWorkingTermsAcceptance(auth.currentUser);
+      setWorkingTermsError(null);
+      setWorkingTermsAcceptance(acceptance);
+      return !!acceptance;
+    } catch (error) {
+      setWorkingTermsError(error instanceof Error ? error.message : "We could not check your existing Working Terms. Please try again.");
+      setWorkingTermsAcceptance(null);
+      return false;
+    }
+  }, []);
+
+  // Only an approved account that has completed the server-side identity check
+  // may enter protected routes. A Firebase password on its own is insufficient.
   const isAuthed = useMemo(() => {
-    const firebaseUserOK = !!user;
+    const firebaseUserOK = !!user && user.isAnonymous !== true;
     const employeeOK = !!employee?.employeeId;
     const tenantOK = !!employee?.companyId;
     const enabledOK = employee?.isEnabled !== false;
-    return firebaseUserOK && employeeOK && tenantOK && enabledOK;
-  }, [user, employee]);
+    const mobileAccessOK = employee?.mobileAccessStatus === "active";
+    return firebaseUserOK && employeeOK && tenantOK && enabledOK && mobileAccessOK && !securityTransition && !signInPending;
+  }, [user, employee, securityTransition, signInPending]);
 
   const loading = !(authReady && sessionReady);
 
@@ -425,6 +531,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthed,
         employee,
         reloadSession,
+        setSignInPending,
+        workingTermsAccepted: !!workingTermsAcceptance,
+        workingTermsAcceptance,
+        workingTermsError,
+        securityTransition,
+        setTransitionBusy,
+        refreshWorkingTermsAcceptance,
 
         // NEW live update state
         jobsUpdatedAt,

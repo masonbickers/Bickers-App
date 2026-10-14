@@ -3,14 +3,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
+  connectAuthEmulator,
   getAuth,
   initializeAuth,
   setPersistence,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import { connectStorageEmulator, getStorage } from "firebase/storage";
 import { Platform } from "react-native";
 import { getAsyncStoragePersistence } from "./lib/firebaseAuthPersistence";
+import { receiptLocalDemo } from "./lib/receipts/localDemo";
+import { assertReceiptFirebaseMode } from "./lib/receipts/localDemoConfig";
 
 /** ---- Your project config ---- */
 const firebaseConfig = {
@@ -24,9 +27,9 @@ const firebaseConfig = {
 };
 
 /** ---- App (singleton) ---- */
-const app =
-  globalThis.__fb_app__ ||
-  (getApps().length ? getApp() : initializeApp(firebaseConfig));
+const existingApp = globalThis.__fb_app__ || (getApps().length ? getApp() : null);
+assertReceiptFirebaseMode(existingApp, receiptLocalDemo);
+const app = existingApp || initializeApp(receiptLocalDemo?.firebase || firebaseConfig);
 globalThis.__fb_app__ = app;
 
 /** ---- Auth (singleton; RN uses initializeAuth + AsyncStorage) ---- */
@@ -56,6 +59,18 @@ const db = globalThis.__fb_db__ || getFirestore(app);
 const storage = globalThis.__fb_storage__ || getStorage(app);
 globalThis.__fb_db__ = db;
 globalThis.__fb_storage__ = storage;
+
+// Connect synchronously before exporting services to AuthProvider or background hooks.
+if (receiptLocalDemo) {
+  const binding = JSON.stringify(receiptLocalDemo);
+  if (globalThis.__fb_receipt_demo_binding__ && globalThis.__fb_receipt_demo_binding__ !== binding) throw new Error("Receipt emulator endpoints changed. Restart the development app.");
+  if (!globalThis.__fb_receipt_demo_binding__) {
+    connectAuthEmulator(auth, receiptLocalDemo.authUrl, { disableWarnings: true });
+    connectFirestoreEmulator(db, receiptLocalDemo.firestore.host, receiptLocalDemo.firestore.port);
+    connectStorageEmulator(storage, receiptLocalDemo.storage.host, receiptLocalDemo.storage.port);
+    globalThis.__fb_receipt_demo_binding__ = binding;
+  }
+} else if (globalThis.__fb_receipt_demo_binding__) throw new Error("Receipt demo services cannot be reused by production. Restart the app.");
 
 export { app, auth, db, storage };
 export default app;

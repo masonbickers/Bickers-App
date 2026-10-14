@@ -1,7 +1,7 @@
 # Shared Clerk authentication for Bickers
 
 Date: 14 October 2026
-Status: Design for user review; implementation and live cutover have not started.
+Status: Owner approved the written design on 14 October 2026. Production and approved DNS preparation are complete; application implementation and live cutover have not started.
 
 ## Outcome and agreed scope
 
@@ -16,7 +16,7 @@ Success means an approved employee can use the same account on both clients, res
 - The booking website uses Clerk and already has `/api/auth/firebase-token`, which requires a verified work email, explicit canonical UID linking, approval checks and session security before issuing a Firebase custom token.
 - That endpoint obtains its identity through Clerk's request authentication and `currentUser()`. Native bearer-token support must be verified and covered explicitly before reuse; its current browser flow alone is insufficient evidence of native compatibility.
 - Firebase rules and `server/appPasswordSetup.js` already recognize a constrained Clerk custom-session identity. Other server paths, including working terms and workshop submissions, still contain password-provider restrictions.
-- Clerk's dashboard currently shows the Bickers Booking System development instance and eight staff accounts. Production user data is separate; development accounts do not automatically carry over.
+- The user created the Bickers Booking System production instance `ins_3Kgwuos5Z3ZMV8djLa2oa7xoZPF`, with application URL `https://booking.bickers.co.uk` and primary authentication domain `bickers.co.uk`. Development remains separate with eight staff accounts; those accounts do not automatically carry over.
 - Firebase recovery hosting is published on the default Firebase host. The `auth.bickers.co.uk` domain has existing A/TXT email and hosting records and has not yet been confirmed ready for custom HTTPS. Firebase email action links have not been switched to it.
 - The user completed the Pro checkout. The live billing page confirms Pro Monthly, $25/month before tax, for 14 October–14 November 2026, with no paid add-ons enabled. Checkout displayed $5 tax and a $30 total.
 
@@ -28,9 +28,19 @@ Moving the website to Firebase would retain the current mobile credential system
 
 ## Production and domains
 
-Create Production within the existing Bickers Booking System application and clone compatible authentication and theme settings. Retain Development for testing. Production configuration must be reviewed independently: sign-in methods, verified email policy, invite-only enrollment, session settings, redirects, webhooks, native app registration and authorized parties.
+Production has been created within the existing Bickers Booking System application. Retain Development for testing. Production configuration must be reviewed independently: sign-in methods, verified email policy, invite-only enrollment, session settings, redirects, webhooks, native app registration and authorized parties.
 
-Associate production with the existing Bickers website domain and use `auth.bickers.co.uk` for the branded recovery experience. Select DNS names from Clerk's actual generated records. Do not replace the existing `auth` A/TXT records with a conflicting CNAME: use a distinct Clerk frontend/API hostname, or a supported proxy if required. Host the custom recovery route through the existing web application infrastructure, with Clerk handling its credential changes. Document exact DNS and hosting changes in the implementation plan after inspecting the generated requirements.
+Production is associated with `https://booking.bickers.co.uk`; use `auth.bickers.co.uk` for the branded recovery experience. Following the user's explicit DNS approval, the five Clerk-generated CNAME records below were saved in LCN on 14 October. Existing nonempty record values were compared before saving and all existing A/CNAME/TXT record pairs were found in the saved form. Clerk subsequently confirmed Frontend API Verified, Account portal Verified and Email 3/3 Verified. SSL certificates are issuing; readiness must be confirmed separately. This does not establish successful email delivery or application cutover.
+
+| Name under bickers.co.uk | CNAME target |
+| --- | --- |
+| clerk | frontend-api.clerk.services |
+| accounts | accounts.clerk.services |
+| clkmail | mail.b1c2brn3m6v2.clerk.services |
+| clk._domainkey | dkim1.b1c2brn3m6v2.clerk.services |
+| clk2._domainkey | dkim2.b1c2brn3m6v2.clerk.services |
+
+Preserve the existing `auth` A/TXT records. Host the custom recovery route through the existing web application infrastructure, with Clerk handling its credential changes. Its hosting and routing changes remain part of the implementation plan.
 
 Use production publishable keys in release clients and production secret keys only on servers. Development and preview builds retain development keys. Do not log keys, password digests, reset codes or session tokens.
 

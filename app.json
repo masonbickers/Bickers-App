@@ -2,34 +2,35 @@
   "expo": {
     "name": "Bickers",
     "slug": "bickers-app",
-    "version": "5.0.5",
+    "version": "5.0.13",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "bickersapp",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "88",
       "bundleIdentifier": "com.bickers.booking",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSPhotoLibraryUsageDescription": "Allow access to add recce photos from your library.",
-        "NSPhotoLibraryAddUsageDescription": "Allow saving processed recce photos to your library."
+        "NSCameraUsageDescription": "Allow Bickers to photograph receipts, maintenance issues and job records.",
+        "NSPhotoLibraryUsageDescription": "Bickers uses photos you select from your library to attach receipts to expenses, profile photos to your account, and vehicle or job photos to work records."
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.bickers.bickersapp",
       "versionCode": 2,
-      "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
-        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
       "permissions": [
+        "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.POST_NOTIFICATIONS",
@@ -54,7 +55,12 @@
       "policy": "appVersion"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "sitemap": false
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -69,8 +75,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Bickers to access your photos.",
-          "cameraPermission": false
+          "photosPermission": "Bickers uses photos you select from your library to attach receipts to expenses, profile photos to your account, and vehicle or job photos to work records.",
+          "cameraPermission": "Allow Bickers to photograph receipts, maintenance issues and job records.",
+          "microphonePermission": false
         }
       ],
       [
@@ -86,9 +93,20 @@
       [
         "expo-build-properties",
         {
+          "ios": {
+            "buildReactNativeFromSource": true
+          },
           "android": {
             "minSdkVersion": 24
           }
+        }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "organization": "aurex-design",
+          "project": "react-native"
         }
       ]
     ],

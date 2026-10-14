@@ -1,4 +1,4 @@
-import { collection, getDocs, onSnapshot } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { db } from "../firebaseConfig";
@@ -11,6 +11,11 @@ import { useAuth } from "../providers/AuthProvider";
 import { useDataCache } from "../providers/DataCacheProvider";
 
 const EMPTY_ROWS = Object.freeze([]);
+
+function serviceCollectionQuery(collectionName, companyId) {
+  const ref = collection(db, collectionName);
+  return query(ref, where("companyId", "==", companyId));
+}
 
 function serialise(value) {
   if (value?.toDate && typeof value.toDate === "function") {
@@ -81,7 +86,7 @@ export function useServiceCollection(
     refreshSignal,
   } = useDataCache();
   const companyId = String(employee?.companyId || "").trim();
-  const enabled = enabledOption ?? (!loading && isAuthed && !!collectionName);
+  const enabled = !loading && isAuthed && !!collectionName && !!companyId && (enabledOption ?? true);
   const cacheKey = serviceCollectionCacheKey(collectionName);
   const liveKey = `${scope}.${cacheKey}`;
   const [rows, setRows] = useState(null);
@@ -116,7 +121,7 @@ export function useServiceCollection(
       key: liveKey,
       start: (emit, emitError) =>
         onSnapshot(
-          collection(db, collectionName),
+          serviceCollectionQuery(collectionName, companyId),
           async (snapshot) => {
             const next = snapshotRows(snapshot, companyId);
             await write(cacheKey, next);
@@ -166,7 +171,7 @@ export function useServiceCollection(
     try {
       const next = await getOrFetch(
         cacheKey,
-        async () => snapshotRows(await getDocs(collection(db, collectionName)), companyId),
+        async () => snapshotRows(await getDocs(serviceCollectionQuery(collectionName, companyId)), companyId),
         { force: true }
       );
       publishLiveResource(liveKey, next, {
@@ -246,7 +251,7 @@ export function useServiceCollection(
 }
 
 export function useServiceCollectionReader() {
-  const { employee } = useAuth();
+  const { employee, isAuthed, loading } = useAuth();
   const { getOrFetch } = useDataCache();
   const companyId = String(employee?.companyId || "").trim();
 
@@ -255,14 +260,15 @@ export function useServiceCollectionReader() {
       collectionName,
       { orderByField, orderDirection = "asc", force = false } = {}
     ) => {
+      if (loading || !isAuthed || !companyId || !collectionName) return EMPTY_ROWS;
       const rows = await getOrFetch(
         serviceCollectionCacheKey(collectionName),
-        async () => snapshotRows(await getDocs(collection(db, collectionName)), companyId),
+        async () => snapshotRows(await getDocs(serviceCollectionQuery(collectionName, companyId)), companyId),
         { force }
       );
       return sortRows(Array.isArray(rows) ? rows : EMPTY_ROWS, orderByField, orderDirection);
     },
-    [companyId, getOrFetch]
+    [companyId, getOrFetch, isAuthed, loading]
   );
 }
 

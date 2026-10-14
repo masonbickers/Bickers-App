@@ -1,16 +1,17 @@
+import { routeColors } from "../../../lib/design/routePresentation/service-advisories-jsx.js";
+import { styles } from "../../../lib/design/screenStyles/service-advisories-jsx.js";
+import { SectionCard, AppText as Text, AppPressable as TouchableOpacity, FormField } from "../../../components/ui/AppPrimitives";
+import {
+  servicePalette as COLORS } from "../../../lib/design/semantics";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+  View } from "react-native";
+
 import Icon from "react-native-vector-icons/Feather";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 
@@ -22,18 +23,9 @@ import {
 import { useServiceCacheActions, useServiceCollection } from "../../../hooks/useServiceData";
 import { runOrQueueFirestoreMutations } from "../../../lib/sync/firestoreQueue";
 import { useTheme } from "../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  primaryAction: "#ED1C25",
-  amber: "#F59E0B",
-  inputBg: "#111114",
-};
+import { designTokens as t } from "../../../lib/design/tokens";
+import PageShell from "../../../components/layout/PageShell";
+import { matchesServiceSearch } from "../../../lib/serviceSearch";
 
 function normaliseKey(value) {
   return String(value || "")
@@ -238,10 +230,7 @@ export default function AdvisoriesScreen() {
         return false;
       }
       if (!queryText) return true;
-      return [item.title, item.details, item.asset, item.sourceType]
-        .map(normaliseKey)
-        .join(" ")
-        .includes(queryText);
+      return matchesServiceSearch(queryText, [item.title, item.details, item.asset, item.sourceType]);
     });
   }, [searchText, sourceFilter, visibleAdvisories]);
 
@@ -330,41 +319,25 @@ export default function AdvisoriesScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[styles.container, { backgroundColor: colors.background || COLORS.background }]}
-    >
-      <View style={[styles.header, { borderBottomColor: colors.border || COLORS.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Icon name="chevron-left" size={22} color={colors.text || COLORS.textHigh} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.pageTitle, { color: colors.text || COLORS.textHigh }]}>
-            Advisories
-          </Text>
-          <Text style={[styles.pageSubtitle, { color: colors.textMuted || COLORS.textMid }]}>
-            Amber service and equipment inspection items being monitored.
-          </Text>
-        </View>
-      </View>
+    <PageShell header={{
+      variant: "compact",
+      title: "Advisories",
+      subtitle: "Amber service and equipment inspection items being monitored.",
+      onBack: router.back,
+    }}>
+
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.accent || COLORS.primaryAction} />
-          <Text style={[styles.loadingText, { color: colors.textMuted || COLORS.textMid }]}>
+          <Text tone={"muted"} style={[styles.loadingText]}>
             Loading advisories...
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View
-            style={[
-              styles.summaryCard,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
+        <>
+          <SectionCard
+            tone="subtle" layoutStyle={styles.summaryCard}
           >
             <SummaryItem label="Total" value={visibleAdvisories.length} colors={colors} />
             <SummaryItem
@@ -377,40 +350,18 @@ export default function AdvisoriesScreen() {
               value={visibleAdvisories.filter((item) => item.sourceType === "Inspection").length}
               colors={colors}
             />
-          </View>
+          </SectionCard>
 
-          <View
-            style={[
-              styles.filterCard,
-              {
-                backgroundColor: colors.surfaceAlt || COLORS.card,
-                borderColor: colors.border || COLORS.border,
-              },
-            ]}
+          <SectionCard
+            tone="subtle" layoutStyle={styles.filterCard}
           >
-            <View
-              style={[
-                styles.searchBox,
-                {
-                  backgroundColor: colors.inputBackground || COLORS.inputBg,
-                  borderColor: colors.inputBorder || colors.border || COLORS.border,
-                },
-              ]}
-            >
-              <Icon
-                name="search"
-                size={16}
-                color={colors.textMuted || COLORS.textMid}
-                style={{ marginRight: 8 }}
-              />
-              <TextInput
-                style={[styles.searchInput, { color: colors.text || COLORS.textHigh }]}
-                placeholder="Search vehicle, equipment or advisory..."
-                placeholderTextColor={colors.textMuted || COLORS.textLow}
-                value={searchText}
-                onChangeText={setSearchText}
-              />
-            </View>
+            <FormField
+              label="Search"
+              placeholder="Search vehicle, equipment or advisory..."
+              value={searchText}
+              onChangeText={setSearchText}
+              inputProps={{ returnKeyType: "search" }}
+            />
 
             <View style={styles.filterRow}>
               {[
@@ -439,7 +390,7 @@ export default function AdvisoriesScreen() {
                     <Text
                       style={[
                         styles.filterPillText,
-                        { color: active ? "#FFFFFF" : colors.textMuted || COLORS.textMid },
+                        { color: active ? routeColors.hex_ffffff_5c2ocm : colors.textMuted || COLORS.textMid },
                       ]}
                     >
                       {label}
@@ -448,44 +399,32 @@ export default function AdvisoriesScreen() {
                 );
               })}
             </View>
-          </View>
+          </SectionCard>
 
           {groupedAdvisories.length === 0 ? (
-            <View
-              style={[
-                styles.emptyState,
-                {
-                  backgroundColor: colors.surfaceAlt || COLORS.card,
-                  borderColor: colors.border || COLORS.border,
-                },
-              ]}
+            <SectionCard
+              tone="subtle" layoutStyle={styles.emptyState}
             >
               <Icon name="eye" size={30} color={colors.textMuted || COLORS.textMid} />
-              <Text style={[styles.emptyTitle, { color: colors.text || COLORS.textHigh }]}>
+              <Text tone={"primary"} style={[styles.emptyTitle]}>
                 No advisories
               </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.textMuted || COLORS.textMid }]}>
+              <Text tone={"muted"} style={[styles.emptySubtitle]}>
                 Amber service and inspection items will appear here.
               </Text>
-            </View>
+            </SectionCard>
           ) : (
             groupedAdvisories.map((group) => (
-              <View
+              <SectionCard
                 key={group.id}
-                style={[
-                  styles.advisoryGroupCard,
-                  {
-                    backgroundColor: colors.surfaceAlt || COLORS.card,
-                    borderColor: colors.border || COLORS.border,
-                  },
-                ]}
+                tone="subtle" layoutStyle={styles.advisoryGroupCard}
               >
                 <View style={styles.groupHeaderRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.assetTitle, { color: colors.text || COLORS.textHigh }]}>
+                    <Text tone={"primary"} style={[styles.assetTitle]}>
                       {group.asset}
                     </Text>
-                    <Text style={[styles.groupMetaText, { color: colors.textMuted || COLORS.textMid }]}>
+                    <Text tone={"muted"} style={[styles.groupMetaText]}>
                       {group.items.length} advisory{group.items.length === 1 ? "" : "ies"} · {group.sourceTypes.join(" + ")}
                     </Text>
                   </View>
@@ -509,7 +448,7 @@ export default function AdvisoriesScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={styles.cardHeaderRow}>
-                        <Text style={[styles.advisoryTitle, { color: colors.text || COLORS.textHigh }]}>
+                        <Text tone={"primary"} style={[styles.advisoryTitle]}>
                           {item.title}
                         </Text>
                         <View style={styles.daysPill}>
@@ -520,10 +459,10 @@ export default function AdvisoriesScreen() {
                           </Text>
                         </View>
                       </View>
-                      <Text style={[styles.detailsText, { color: colors.textMuted || COLORS.textMid }]}>
+                      <Text tone={"muted"} style={[styles.detailsText]}>
                         {item.details}
                       </Text>
-                      <Text style={[styles.metaText, { color: colors.textMuted || COLORS.textLow }]}>
+                      <Text tone={"muted"} style={[styles.metaText]}>
                         {item.sourceType} · Noted {formatDate(item.notedDate)}
                       </Text>
                       <View style={styles.actionRow}>
@@ -541,7 +480,7 @@ export default function AdvisoriesScreen() {
                               size={13}
                               color={colors.text || COLORS.textHigh}
                             />
-                            <Text style={[styles.actionText, { color: colors.text || COLORS.textHigh }]}>
+                            <Text tone={"primary"} style={[styles.actionText]}>
                               Open record
                             </Text>
                           </TouchableOpacity>
@@ -550,14 +489,14 @@ export default function AdvisoriesScreen() {
                           style={[
                             styles.actionButton,
                             styles.resolveButton,
-                            { borderColor: colors.success || "#157347" },
+                            { borderColor: colors.success || routeColors.hex_157347_a4inet },
                           ]}
                           activeOpacity={0.85}
                           disabled={resolvingId === item.id}
                           onPress={() => confirmMarkAdvisoryFixed(item)}
                         >
-                          <Icon name="check-circle" size={13} color={colors.success || "#157347"} />
-                          <Text style={[styles.actionText, { color: colors.success || "#157347" }]}>
+                          <Icon name="check-circle" size={13} color={colors.success || routeColors.hex_157347_a4inet} />
+                          <Text tone={"success"} style={[styles.actionText]}>
                             {resolvingId === item.id ? "Saving..." : "Mark fixed"}
                           </Text>
                         </TouchableOpacity>
@@ -565,235 +504,24 @@ export default function AdvisoriesScreen() {
                     </View>
                   </View>
                 ))}
-              </View>
+              </SectionCard>
             ))
           )}
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </PageShell>
   );
 }
 
 function SummaryItem({ label, value, colors }) {
   return (
     <View style={styles.summaryItem}>
-      <Text style={[styles.summaryValue, { color: colors.text || COLORS.textHigh }]}>
+      <Text tone={"primary"} style={[styles.summaryValue]}>
         {value}
       </Text>
-      <Text style={[styles.summaryLabel, { color: colors.textMuted || COLORS.textMid }]}>
+      <Text tone={"muted"} style={[styles.summaryLabel]}>
         {label}
       </Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 13,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  summaryCard: {
-    flexDirection: "row",
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 12,
-  },
-  summaryItem: {
-    flex: 1,
-  },
-  summaryValue: {
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  summaryLabel: {
-    marginTop: 2,
-    fontSize: 12,
-  },
-  filterCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    marginBottom: 12,
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-  },
-  filterRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 10,
-  },
-  filterPill: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  filterPillText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  emptyState: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 22,
-    alignItems: "center",
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 17,
-    fontWeight: "800",
-  },
-  emptySubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    textAlign: "center",
-  },
-  advisoryGroupCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    marginBottom: 10,
-  },
-  groupHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  assetTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  groupMetaText: {
-    marginTop: 2,
-    fontSize: 12,
-  },
-  countPill: {
-    minWidth: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.primaryAction,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  countPillText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  advisoryItemRow: {
-    flexDirection: "row",
-    paddingTop: 8,
-  },
-  advisoryItemDivider: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    marginTop: 10,
-  },
-  iconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.amber,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-  },
-  advisoryTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  daysPill: {
-    borderRadius: 999,
-    backgroundColor: "rgba(245,158,11,0.16)",
-    borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.55)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  daysPillText: {
-    color: COLORS.amber,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  detailsText: {
-    marginTop: 5,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  metaText: {
-    marginTop: 6,
-    fontSize: 12,
-  },
-  actionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 10,
-  },
-  actionButton: {
-    minHeight: 32,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  resolveButton: {
-    backgroundColor: "rgba(21,115,71,0.08)",
-  },
-  actionText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-});

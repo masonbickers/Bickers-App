@@ -1,77 +1,39 @@
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import AssetSelectField from "../../../components/ui/AssetSelectField";
+import { styles } from "../../../lib/design/screenStyles/service-repair-form-jsx.js";
+import { AppButton, AppText as Text, AppPressable as TouchableOpacity, DateField, FormField, TextArea } from "../../../components/ui/AppPrimitives";
+
+import { useLocalSearchParams,
+  useNavigation,
+  useRouter } from "expo-router";
 import {
-  arrayUnion,
   collection,
   doc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-} from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+  } from "firebase/firestore";
+import { useEffect,
+  useMemo,
+  useRef,
+  useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Icon from "react-native-vector-icons/Feather";
+  View } from "react-native";
 
 import { db } from "../../../firebaseConfig";
-import { formatShortDate } from "../../../lib/dateDisplay";
 import {
-  buildVehicleIdentityMirrorUpdate,
-  buildVehicleOdometerMirrorUpdate,
-  getVehicleLastService,
   getVehicleManufacturer,
   getVehicleMileage,
   getVehicleName,
   getVehicleRegistration,
 } from "../../../lib/fleetSchema";
 import { useServiceCacheActions, useServiceCollectionReader } from "../../../hooks/useServiceData";
-import { runOrQueueFirestoreMutations } from "../../../lib/sync/firestoreQueue";
+import { submitOrQueueWorkshopRecord } from "../../../lib/workshopSubmissionApi";
+import { useAuth } from "../../../providers/AuthProvider";
 import { useTheme } from "../../../providers/ThemeProvider";
-
-const COLORS = {
-  background: "#0D0D0D",
-  card: "#1A1A1A",
-  border: "#333333",
-  textHigh: "#FFFFFF",
-  textMid: "#E0E0E0",
-  textLow: "#888888",
-  inputBg: "#1F1F1F",
-  primaryAction: "#ED1C25",
-};
+import { designTokens as t } from "../../../lib/design/tokens";
+import PageShell from "../../../components/layout/PageShell";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function buildRepairHistoryItem({
-  completedDate,
-  repairRecordId,
-  summary,
-  reason,
-  odometer,
-  partsUsed,
-  completedBy,
-}) {
-  return {
-    type: "General repair",
-    completedDate,
-    repairRecordId,
-    serviceRecordId: repairRecordId,
-    notes: [summary, reason].filter(Boolean).join(" - "),
-    odometer,
-    partsUsed,
-    completedBy,
-    recordedAt: new Date().toISOString(),
-  };
 }
 
 export default function RepairFormRoute() {
@@ -82,6 +44,8 @@ export default function RepairFormRoute() {
   const readServiceCollection = useServiceCollectionReader();
   const { upsertServiceRow, patchServiceRow } = useServiceCacheActions();
   const allowLeaveRef = useRef(false);
+  const submissionRef = useRef(null);
+  const { employee } = useAuth();
 
   const initialVehicleId = params.vehicleId || params.id || null;
   const initialVehicleName = params.vehicleName || params.name || "";
@@ -89,11 +53,13 @@ export default function RepairFormRoute() {
 
   const [vehicles, setVehicles] = useState([]);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
-  const [vehicleSearch, setVehicleSearch] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState(
     initialVehicleId ? String(initialVehicleId) : null
   );
   const [vehicleCollapsed, setVehicleCollapsed] = useState(!!initialVehicleId);
+  const [vehicleDetailsOpen, setVehicleDetailsOpen] = useState(
+    !initialVehicleId && Boolean(initialVehicleName || initialRegistration)
+  );
 
   const [vehicleName, setVehicleName] = useState(String(initialVehicleName || ""));
   const [registration, setRegistration] = useState(
@@ -124,7 +90,6 @@ export default function RepairFormRoute() {
             manufacturer: getVehicleManufacturer(data) || "",
             model: data.model || "",
             mileage: getVehicleMileage(data),
-            lastService: getVehicleLastService(data) || "",
           };
         });
         setVehicles(list);
@@ -139,22 +104,6 @@ export default function RepairFormRoute() {
     loadVehicles();
   }, [readServiceCollection]);
 
-  const filteredVehicles = useMemo(() => {
-    if (!vehicleSearch.trim()) return vehicles;
-    const q = vehicleSearch.toLowerCase();
-    return vehicles.filter((v) => {
-      const name = (v.name || "").toLowerCase();
-      const reg = (v.reg || "").toLowerCase();
-      const manufacturer = (v.manufacturer || "").toLowerCase();
-      const model = (v.model || "").toLowerCase();
-      return (
-        name.includes(q) ||
-        reg.includes(q) ||
-        manufacturer.includes(q) ||
-        model.includes(q)
-      );
-    });
-  }, [vehicles, vehicleSearch]);
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.id === selectedVehicleId) || null,
@@ -174,6 +123,17 @@ export default function RepairFormRoute() {
     setUserEdited(true);
     setSelectedVehicleId(id);
     setVehicleCollapsed(true);
+    setVehicleDetailsOpen(false);
+  };
+
+  const handleAddNewVehicle = () => {
+    setUserEdited(true);
+    setSelectedVehicleId(null);
+    setVehicleCollapsed(false);
+    setVehicleName("");
+    setRegistration("");
+    setMileage("");
+    setVehicleDetailsOpen(true);
   };
 
   const updateField = (setter) => (value) => {
@@ -244,8 +204,11 @@ export default function RepairFormRoute() {
 
   const handleSave = async () => {
     const repairSummary = summary.trim();
-    const effectiveVehicleId =
-      selectedVehicleId || (initialVehicleId && String(initialVehicleId)) || null;
+    const effectiveVehicleId = selectedVehicleId || null;
+    if (params.workshopRequestId && String(effectiveVehicleId) !== String(initialVehicleId)) {
+      Alert.alert("Wrong vehicle", "Complete this request for its selected vehicle.");
+      return;
+    }
     const odoNumber = mileage.trim() ? Number(mileage.trim()) : null;
 
     if (!effectiveVehicleId && !vehicleName.trim() && !registration.trim()) {
@@ -272,7 +235,11 @@ export default function RepairFormRoute() {
     try {
       setSaving(true);
       const v = selectedVehicle;
+      const companyId = employee?.companyId;
+      if (!companyId) throw new Error("Your company could not be verified. Sign in again before saving.");
       const record = {
+        companyId,
+        ...(params.workshopRequestId ? { workshopRequestId: String(params.workshopRequestId), workshopWorkType: "general_repair" } : {}),
         vehicleId: effectiveVehicleId,
         vehicleName: vehicleName.trim(),
         registration: registration.trim(),
@@ -291,71 +258,17 @@ export default function RepairFormRoute() {
         extraNotes: notes.trim(),
         signedBy: completedBy.trim(),
         completedBy: completedBy.trim(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
-      const repairRecordRef = doc(collection(db, "serviceRecords"));
-      const mutations = [
-        {
-          run: () => setDoc(repairRecordRef, record),
-          mutation: {
-            operation: "set",
-            docPath: `serviceRecords/${repairRecordRef.id}`,
-            data: record,
-            options: { merge: false },
-            entityType: "serviceRecord",
-            entityId: repairRecordRef.id,
-          },
-        },
-      ];
-
-      if (effectiveVehicleId) {
-        const vehicleRef = doc(db, "vehicles", String(effectiveVehicleId));
-        const repairHistoryItem = buildRepairHistoryItem({
-          completedDate: repairDate,
-          repairRecordId: repairRecordRef.id,
-          summary: repairSummary,
-          reason: reason.trim(),
-          odometer: odoNumber,
-          partsUsed: partsUsed.trim(),
-          completedBy: completedBy.trim(),
-        });
-        const updatePayload = {
-          ...buildVehicleIdentityMirrorUpdate({
-            ...v,
-            name: v?.name || vehicleName.trim(),
-            registration: v?.reg || registration.trim(),
-            manufacturer: getVehicleManufacturer(v) || "",
-          }),
-          lastRepair: {
-            date: repairDate,
-            summary: repairSummary,
-            serviceRecordId: repairRecordRef.id,
-          },
-          repairHistory: arrayUnion(repairHistoryItem),
-        };
-
-        if (odoNumber !== null) {
-          Object.assign(updatePayload, buildVehicleOdometerMirrorUpdate(odoNumber));
-        }
-        mutations.push({
-          run: () => updateDoc(vehicleRef, updatePayload),
-          mutation: {
-            operation: "update",
-            docPath: `vehicles/${effectiveVehicleId}`,
-            data: updatePayload,
-            entityType: "vehicle",
-            entityId: String(effectiveVehicleId),
-          },
-        });
-      }
-
-      const { queued } = await runOrQueueFirestoreMutations(mutations);
-      await upsertServiceRow("serviceRecords", { ...record, id: repairRecordRef.id });
-      if (effectiveVehicleId) {
-        await patchServiceRow("vehicles", effectiveVehicleId, mutations[1]?.mutation?.data || {});
-      }
+      const repairRecordRef = submissionRef.current || (submissionRef.current = params.workshopRequestId ? doc(db, "serviceRecords", String(params.workshopRequestId)) : doc(collection(db, "serviceRecords")));
+      const result = await submitOrQueueWorkshopRecord({ recordId: repairRecordRef.id, record, defects: [] });
+      const { queued } = result;
+      await Promise.allSettled([
+        upsertServiceRow("serviceRecords", { ...(result.record || record), id: repairRecordRef.id }),
+        ...(effectiveVehicleId && result.vehiclePatch ? [patchServiceRow("vehicles", effectiveVehicleId, result.vehiclePatch)] : []),
+      ]);
 
       Alert.alert(
         queued ? "Saved offline" : "Repair saved",
@@ -373,82 +286,38 @@ export default function RepairFormRoute() {
       ]);
     } catch (err) {
       console.error("Failed to save repair record:", err);
-      Alert.alert("Error", "Could not save this repair. Please try again.");
+      Alert.alert("Error", err.message || "Could not save this repair. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  const themedCard = {
-    backgroundColor: colors.surfaceAlt || COLORS.card,
-    borderColor: colors.border || COLORS.border,
-  };
-  const themedInput = {
-    backgroundColor: colors.inputBackground || "#FFFFFF",
-    borderColor: colors.inputBorder || colors.border || COLORS.border,
-    color: colors.text || COLORS.textHigh,
-  };
-  const themedLabel = { color: colors.textMuted || COLORS.textMid };
+  const themedLabel = { color: colors.textMuted };
 
   return (
-    <SafeAreaView
-      edges={["left", "right"]}
-      style={[
-        styles.container,
-        { backgroundColor: colors.background || COLORS.background },
-      ]}
-    >
-      <View
-        style={[
-          styles.header,
-          { borderBottomColor: colors.border || COLORS.border },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => confirmLeave(() => router.back())}
-          style={styles.backButton}
-          activeOpacity={0.8}
-        >
-          <Icon
-            name="chevron-left"
-            size={22}
-            color={colors.text || COLORS.textHigh}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: colors.text || COLORS.textHigh }]}>
-            General repairs
-          </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.textMuted || COLORS.textMid },
-            ]}
-          >
-            Record ad-hoc repairs and rectification work against a vehicle.
-          </Text>
-        </View>
-      </View>
+    <PageShell mode="form" width="form" header={{
+      variant: "compact",
+      title: "General repairs",
+      subtitle: "Record ad-hoc repairs and rectification work against a vehicle.",
+      onBack: () => confirmLeave(() => router.back()),
+    }}>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+
+      <>
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Vehicle
           </Text>
           {vehicleCollapsed && selectedVehicle ? (
             <TouchableOpacity
-              onPress={() => setVehicleCollapsed(false)}
+              onPress={() => { setVehicleCollapsed(false); setVehicleDetailsOpen(false); }}
               activeOpacity={0.8}
             >
-              <Text style={[styles.sectionHint, { color: COLORS.primaryAction }]}>
+              <Text style={[styles.sectionHint, { color: colors.accent }]}>
                 Change
               </Text>
             </TouchableOpacity>
@@ -457,413 +326,147 @@ export default function RepairFormRoute() {
           ) : null}
         </View>
 
-        <View style={[styles.card, themedCard]}>
+        <View style={styles.flatSectionContent}>
           {vehicleCollapsed && selectedVehicle ? (
             <>
               <Text style={[styles.labelSmall, themedLabel]}>Selected vehicle</Text>
               <View style={styles.selectedVehicleRow}>
                 <View style={{ flex: 1 }}>
                   <Text
-                    style={[
+                    tone={"primary"} style={[
                       styles.vehicleName,
-                      { color: colors.text || COLORS.textHigh },
                     ]}
                   >
-                    {selectedVehicle.name || "Unnamed vehicle"}
+                    {vehicleName || selectedVehicle.name || "Unnamed vehicle"}
                   </Text>
                   <Text style={[styles.vehicleReg, themedLabel]}>
-                    {selectedVehicle.reg || "-"}
+                    {registration || selectedVehicle.reg || "-"}
                   </Text>
                 </View>
               </View>
-              <View style={styles.vehicleMetaRow}>
-                <Text style={[styles.vehicleMeta, themedLabel]}>
-                  Current mileage:{" "}
-                  {typeof selectedVehicle.mileage === "number"
-                    ? `${selectedVehicle.mileage.toLocaleString("en-GB")} mi`
-                    : "-"}
-                </Text>
-                <Text style={[styles.vehicleMeta, themedLabel]}>
-                  Last service: {formatShortDate(selectedVehicle.lastService) || selectedVehicle.lastService || "-"}
-                </Text>
-              </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={vehicleDetailsOpen ? "Hide vehicle details" : "Show vehicle details"}
+                accessibilityState={{ expanded: vehicleDetailsOpen }}
+                onPress={() => setVehicleDetailsOpen((open) => !open)}
+                style={styles.vehicleDetailsToggle}
+              >
+                <Text variant="link">{vehicleDetailsOpen ? "Hide vehicle details" : "Vehicle details"}</Text>
+              </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text style={[styles.label, themedLabel]}>Search vehicle</Text>
-              <View style={[styles.searchBox, themedInput]}>
-                <Icon
-                  name="search"
-                  size={16}
-                  color={colors.textMuted || COLORS.textMid}
-                  style={{ marginRight: 6 }}
-                />
-                <TextInput
-                  style={[
-                    styles.searchInput,
-                    { color: colors.text || COLORS.textHigh },
-                  ]}
-                  placeholder="Name, reg, manufacturer or model..."
-                  placeholderTextColor={colors.textMuted || COLORS.textLow}
-                  value={vehicleSearch}
-                  onChangeText={setVehicleSearch}
-                />
-              </View>
-
-              {loadingVehicles ? (
-                <View style={styles.centerRow}>
-                  <ActivityIndicator size="small" color={COLORS.primaryAction} />
-                </View>
-              ) : filteredVehicles.length === 0 ? (
-                <View style={styles.centerRow}>
-                  <Text style={[styles.emptyText, themedLabel]}>
-                    No vehicles match this search.
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ maxHeight: 150, marginTop: 8 }}
-                  nestedScrollEnabled
+              <AssetSelectField
+                hideLabel
+                records={vehicles}
+                value={selectedVehicleId}
+                onChange={handleSelectVehicle}
+                loading={loadingVehicles}
+                testID="service-vehicle-select"
+              />
+              {!vehicleDetailsOpen && !params.workshopRequestId ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Enter new vehicle"
+                  onPress={handleAddNewVehicle}
+                  style={styles.vehicleDetailsToggle}
                 >
-                  {filteredVehicles.map((v) => {
-                    const isActive = v.id === selectedVehicleId;
-                    return (
-                      <TouchableOpacity
-                        key={v.id}
-                        style={[
-                          styles.vehicleRow,
-                          isActive && styles.vehicleRowActive,
-                        ]}
-                        onPress={() => handleSelectVehicle(v.id)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.vehicleName,
-                              { color: colors.text || COLORS.textHigh },
-                              isActive && { color: COLORS.primaryAction },
-                            ]}
-                          >
-                            {v.name || "Unnamed vehicle"}
-                          </Text>
-                          <Text style={[styles.vehicleReg, themedLabel]}>
-                            {v.reg || ""}
-                            {v.manufacturer || v.model
-                              ? ` - ${v.manufacturer || ""}${
-                                  v.manufacturer && v.model ? " " : ""
-                                }${v.model || ""}`
-                              : ""}
-                          </Text>
-                        </View>
-                        {isActive && (
-                          <Icon
-                            name="check-circle"
-                            size={18}
-                            color={COLORS.primaryAction}
-                          />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
+                  <Text variant="link">Enter new vehicle</Text>
+                </TouchableOpacity>
+              ) : null}
             </>
           )}
 
-          <Text style={[styles.label, themedLabel, { marginTop: 12 }]}>
-            Vehicle name
-          </Text>
-          <TextInput
-            style={[styles.input, themedInput]}
+          {vehicleDetailsOpen ? <>
+          <FormField
+            label="Vehicle name"
+            layoutStyle={{ marginTop: t.spacing.sm }}
             placeholder="e.g. Amarok, Silverado..."
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={vehicleName}
             onChangeText={updateField(setVehicleName)}
           />
 
-          <Text style={[styles.label, themedLabel]}>Registration</Text>
-          <TextInput
-            style={[styles.input, themedInput]}
+          <FormField
+            label="Registration"
             placeholder="e.g. AB12 CDE"
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={registration}
             onChangeText={updateField(setRegistration)}
           />
+          </> : null}
         </View>
 
         <View style={styles.sectionHeaderRow}>
           <Text
-            style={[
+            tone={"primary"} style={[
               styles.sectionTitle,
-              { color: colors.text || COLORS.textHigh },
             ]}
           >
             Repair details
           </Text>
         </View>
 
-        <View style={[styles.card, themedCard]}>
+        <View style={styles.flatSectionContent}>
 
-          <Text style={[styles.label, themedLabel]}>Date completed</Text>
-          <TextInput
-            style={[styles.input, themedInput]}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
+          <DateField
+            label="Date completed"
+            placeholder="DD-MM-YYYY"
             value={repairDate}
-            onChangeText={updateField(setRepairDate)}
+            onChange={updateField(setRepairDate)}
           />
 
-          <Text style={[styles.label, themedLabel]}>Repair summary</Text>
-          <TextInput
-            style={[styles.input, themedInput, styles.multiline]}
+          <TextArea
+            label="Repair summary"
             placeholder="e.g. Replaced headlight due to damage"
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={summary}
             onChangeText={updateField(setSummary)}
-            multiline
           />
 
-          <Text style={[styles.label, themedLabel]}>Reason / fault</Text>
-          <TextInput
-            style={[styles.input, themedInput, styles.multiline]}
+          <TextArea
+            label="Reason / fault"
             placeholder="Damage, failed bulb, customer request, wear and tear..."
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={reason}
             onChangeText={updateField(setReason)}
-            multiline
           />
 
-          <Text style={[styles.label, themedLabel]}>Parts used</Text>
-          <TextInput
-            style={[styles.input, themedInput]}
+          <FormField
+            label="Parts used"
             placeholder="e.g. N/S headlight unit, bulb, clips"
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={partsUsed}
             onChangeText={updateField(setPartsUsed)}
           />
 
-          <Text style={[styles.label, themedLabel]}>Mileage</Text>
-          <TextInput
-            style={[styles.input, themedInput]}
+          <FormField
+            label="Mileage"
             placeholder="Current mileage"
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={mileage}
             onChangeText={updateField(setMileage)}
-            keyboardType="numeric"
+            inputProps={{ keyboardType: "numeric" }}
           />
 
-          <Text style={[styles.label, themedLabel]}>Completed by</Text>
-          <TextInput
-            style={[styles.input, themedInput]}
+          <FormField
+            label="Completed by"
             placeholder="Technician name"
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={completedBy}
             onChangeText={updateField(setCompletedBy)}
           />
 
-          <Text style={[styles.label, themedLabel]}>Additional notes</Text>
-          <TextInput
-            style={[styles.input, themedInput, styles.multiline]}
+          <TextArea
+            label="Additional notes"
             placeholder="Anything useful for future reference..."
-            placeholderTextColor={colors.textMuted || COLORS.textLow}
             value={notes}
             onChangeText={updateField(setNotes)}
-            multiline
           />
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.saveButton,
-            {
-              backgroundColor: saving ? colors.border || COLORS.border : COLORS.primaryAction,
-            },
-          ]}
+        <AppButton
+          label="Save repair"
+          icon="check-circle"
           onPress={handleSave}
-          activeOpacity={0.9}
+          loading={saving}
           disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator
-              size="small"
-              color={colors.text || COLORS.textHigh}
-              style={{ marginRight: 8 }}
-            />
-          ) : (
-            <Icon
-              name="check-circle"
-              size={18}
-              color={colors.text || COLORS.textHigh}
-              style={{ marginRight: 8 }}
-            />
-          )}
-          <Text style={[styles.saveButtonText, { color: COLORS.textHigh }]}>
-            {saving ? "Saving..." : "Save repair"}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+          fullWidth
+        />
+      </>
+    </PageShell>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    paddingRight: 10,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  subtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 110,
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  sectionHint: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
-    backgroundColor: COLORS.card,
-    padding: 14,
-    marginBottom: 14,
-  },
-  label: {
-    marginBottom: 6,
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.textMid,
-  },
-  labelSmall: {
-    marginBottom: 4,
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    color: COLORS.textMid,
-  },
-  input: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    fontSize: 14,
-    color: COLORS.textHigh,
-  },
-  multiline: {
-    minHeight: 86,
-    textAlignVertical: "top",
-  },
-  searchBox: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 10,
-  },
-  searchInput: {
-    flex: 1,
-    minHeight: 42,
-    fontSize: 14,
-  },
-  centerRow: {
-    minHeight: 58,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyText: {
-    fontSize: 13,
-    color: COLORS.textMid,
-  },
-  selectedVehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  vehicleMetaRow: {
-    marginTop: 8,
-  },
-  vehicleMeta: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  vehicleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
-  },
-  vehicleRowActive: {
-    backgroundColor: "rgba(237,28,37,0.08)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-  },
-  vehicleName: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  vehicleReg: {
-    marginTop: 2,
-    fontSize: 12,
-    color: COLORS.textMid,
-  },
-  sectionTitleAlt: {
-    marginBottom: 12,
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-  saveButton: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    backgroundColor: COLORS.primaryAction,
-  },
-  saveButtonText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.textHigh,
-  },
-});

@@ -1,16 +1,13 @@
+import { routeColors } from "../../lib/design/routePresentation/uploader-js.js";
+import { styles } from "../../lib/design/screenStyles/uploader-js.js";
+import { AppText as Text, AppPressable as TouchableOpacity } from "../../components/ui/AppPrimitives";
 // app/uploader.js
-import { useState } from 'react';
+import {
+  useState } from 'react';
 import {
   Alert,
   Image,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+  View } from "react-native";
 
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
@@ -21,6 +18,8 @@ import {
   uploadBytesResumable,
 } from 'firebase/storage';
 import { auth, storage } from '../../firebaseConfig';
+import { designTokens as t } from "../../lib/design/tokens";
+import PageShell from "../../components/layout/PageShell";
 
 const IMAGES_ONLY = ImagePicker.MediaTypeOptions.Images;
 
@@ -33,15 +32,8 @@ export default function Uploader() {
   const [progressText, setProgressText] = useState('');
   const [urls, setUrls] = useState([]);
 
-  const ensureMediaPerms = async () => {
-    if (Platform.OS === 'web') return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') throw new Error('Permission to access photos is required.');
-  };
-
   const pickFromLibrary = async () => {
     try {
-      await ensureMediaPerms();
       const res = await ImagePicker.launchImageLibraryAsync({
         allowsMultipleSelection: true,       // ignored if not supported
         selectionLimit: 8,
@@ -171,8 +163,8 @@ export default function Uploader() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <PageShell>
+      <>
         {/* Header & actions */}
         <View style={styles.headerRow}>
           <Text style={styles.title}>Photo Uploader</Text>
@@ -206,13 +198,13 @@ export default function Uploader() {
             items.map((it, idx) => (
               <View
                 key={`${it?.uri || 'item'}-${idx}`}
-                style={[styles.thumbWrap, (idx % 3 !== 2) && { marginRight: 8 }]}
+                style={[styles.thumbWrap, (idx % 3 !== 2) && { marginRight: t.spacing.xs }]}
               >
                 {it?.uri ? (
                   <Image source={{ uri: it.uri }} style={styles.thumb} />
                 ) : (
                   <View style={[styles.thumb, { alignItems: 'center', justifyContent: 'center' }]}>
-                    <Text style={{ color: '#888', fontSize: 12 }}>No preview</Text>
+                    <Text style={{ color: routeColors.hex_888_yhlrem, fontSize: t.typography.metadata.fontSize }}>No preview</Text>
                   </View>
                 )}
                 <TouchableOpacity
@@ -229,7 +221,7 @@ export default function Uploader() {
 
         {/* Results */}
         {!!urls.length && (
-          <View style={{ marginTop: 16 }}>
+          <View style={{ marginTop: t.spacing.md }}>
             <Text style={styles.sectionTitle}>Uploaded URLs</Text>
             {urls.map((u, i) => (
               <Text key={`${u}-${i}`} style={styles.url} numberOfLines={1}>
@@ -238,7 +230,7 @@ export default function Uploader() {
             ))}
 
             <TouchableOpacity
-              style={[styles.btn, styles.btnGhost, { marginTop: 10, alignSelf: 'flex-start' }]}
+              style={[styles.btn, styles.btnGhost, { marginTop: t.spacing.xs, alignSelf: 'flex-start' }]}
               onPress={clearAll}
               disabled={uploading}
             >
@@ -246,70 +238,8 @@ export default function Uploader() {
             </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </>
+    </PageShell>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  content: { padding: 16 },
-
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  title: { color: '#fff', fontSize: 20, fontWeight: '800' },
-
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  btn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  btnPrimary: { backgroundColor: '#C8102E', borderColor: '#a40e25' },
-  btnGhost: { backgroundColor: '#141414', borderColor: '#232323' },
-  btnText: { color: '#fff', fontWeight: '800' },
-
-  progress: { color: '#cfcfcf', marginBottom: 8 },
-
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  thumbWrap: {
-    position: 'relative',
-    width: THUMB,
-    height: THUMB,
-    borderRadius: 8,
-    backgroundColor: '#1a1a1a',
-    marginBottom: 8,
-  },
-  thumb: { width: THUMB, height: THUMB, borderRadius: 8 },
-  remove: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: '#C8102E',
-    borderRadius: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: '#8e0b22',
-  },
-  removeText: { color: '#fff', fontWeight: '900', fontSize: 14 },
-
-  emptyHint: { color: '#8e8e8e' },
-
-  sectionTitle: { color: '#fff', fontWeight: '800', marginBottom: 6, marginTop: 8 },
-  url: { color: '#9bd', fontSize: 12 },
-});
