@@ -1,4 +1,7 @@
-module.exports = ({ config }) => ({
+const { requireClerkReleaseConfig } = require('./scripts/clerk-release-config.cjs');
+module.exports = ({ config }) => {
+  requireClerkReleaseConfig(process.env, config);
+  return ({
   ...config,
   android: {
     ...config.android,
@@ -7,4 +10,5 @@ module.exports = ({ config }) => ({
       config.android?.googleServicesFile ||
       "./google-services.json",
   },
-});
+  });
+};

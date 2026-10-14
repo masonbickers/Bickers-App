@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T19:34:10.887Z",
+  "generatedAt": "2026-10-14T21:27:28.433Z",
   "counts": {
     "firebaseUsers": 557,
     "canonicalUsers": 26,
@@ -8,15 +8,14 @@
     "productionClerkUsers": 0
   },
   "buckets": {
-    "eligible": 10,
+    "eligible": 11,
     "verificationRequired": 0,
     "recoveryRequired": 0,
-    "blocked": 5,
+    "blocked": 4,
     "conflicts": 542
   },
   "reasons": {
-    "eligible:eligible": 10,
-    "blocked:access-not-approved": 1,
+    "eligible:eligible": 11,
     "blocked:account-disabled": 4,
     "conflicts:canonical-link-conflict": 532,
     "conflicts:canonical-email-conflict": 10
@@ -48,15 +47,13 @@
     },
     {
       "release": "projects/bickers-booking/releases/firebase.storage/bickers-booking.firebasestorage.app",
-      "ruleset": "projects/bickers-booking/rulesets/bf056989-e840-43a4-9400-8516a7eb9fa9",
-      "updatedAt": "2026-10-03T08:33:57.221708Z",
+      "ruleset": "projects/bickers-booking/rulesets/ca69557c-d772-4a28-9f11-7e72e6d87936",
+      "updatedAt": "2026-10-14T20:56:49.963632Z",
       "files": [
         {
           "name": "storage.rules",
-          "sha256": "a4901dbee651b7fa3792586472fd5066d76a61f79392dc5be8361e249beaf690",
-          "matchingSources": [
-            "/Users/masonbickers/.codex/worktrees/shared-clerk-auth/bickers-app-launch/firebase/mobile-compat/storage.rules"
-          ]
+          "sha256": "7311b8111621b3c88cd026900bdcb4433013ecea6bc3af544f6109340e83a481",
+          "matchingSources": []
         }
       ]
     }
@@ -65,5 +62,6 @@
     "firestoreSource": "firebase/clerk-auth/firestore.baseline.rules",
     "storageSource": "firebase/clerk-auth/storage.baseline.rules"
   },
-  "releaseInventory": "Exact web/Render/native release IDs must be read immediately before pilot; not inferred from local source versions."
+  "releaseInventory": "Exact web/Render/native release IDs must be read immediately before pilot; not inferred from local source versions.",
+  "excludedDevelopment": []
 }

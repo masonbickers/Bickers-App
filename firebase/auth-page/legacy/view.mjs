@@ -2,10 +2,10 @@ const $ = id => document.getElementById(id);
 let lastView = '';
 const content = {
   checking: ['Checking your link', 'Please wait while we check your password reset link.'],
-  request: ['Forgot your password?', 'Enter your work email and we’ll send you a link to choose a new password.'],
+  request: ['Earlier app password', 'Enter your work email to reset the separate password used by earlier Bickers app versions.'],
   expired: ['Let’s get a fresh link', 'This reset link has expired or has already been used. Enter your work email to request another.'],
-  ready: ['Reset your password', 'Choose a new password for your Bickers account.'],
-  success: ['Password updated', 'Your Bickers password has been changed successfully.'],
+  ready: ['Reset your earlier app password', 'Choose a new password for the earlier app sign-in.'],
+  success: ['Earlier app password updated', 'The password used by earlier app versions has been changed.'],
   sent: ['Check your email', 'If an approved account exists for this email, you’ll receive a password reset link. Check your junk folder too.'],
   retry: ['Unable to check your link', 'Check your internet connection, then try again.'],
   invalid: ['This link isn’t valid', 'Open the password reset link from your email, or request a new one from the Bickers app.'],
@@ -16,7 +16,7 @@ export function render(state) {
   const [heading, description] = content[state.view];
   const changedView = state.view !== lastView;
   $('heading').textContent = heading;
-  $('description').textContent = state.view === 'ready' ? `Choose a new password for ${state.email}.` : description;
+  $('description').textContent = state.view === 'ready' ? `Choose a new earlier-app password for ${state.email}. This does not change your shared sign-in password.` : description;
   $('reset-form').hidden = state.view !== 'ready';
   $('request-form').hidden = !['request', 'expired'].includes(state.view);
   $('retry').hidden = state.view !== 'retry';

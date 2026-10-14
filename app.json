@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bickers",
     "slug": "bickers-app",
-    "version": "5.0.13",
+    "version": "5.0.14",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "bickersapp",
@@ -109,7 +109,10 @@
           "project": "react-native"
         }
       ],
-      "@clerk/expo",
+      [
+        "@clerk/expo",
+        { "appleSignIn": false }
+      ],
       "expo-secure-store"
     ],
     "experiments": {

@@ -4,6 +4,16 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "clerk-pilot": {
+      "extends": "internal",
+      "channel": "clerk-pilot",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_CLERK_SHARED_AUTH_ENABLED": "1",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuYmlja2Vycy5jby51ayQ",
+        "EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN": "https://booking.bickers.co.uk"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "channel": "preview",

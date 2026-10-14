@@ -358,7 +358,7 @@ service firebase.storage {
     }
     match /vehicle-checks/{uid}/{checkId}/{allPaths=**} {
       allow read: if hasUserAccess() && request.auth.uid == uid;
-      allow create: if hasUserAccess() && request.auth.uid == uid
+      allow create: if resource == null && hasUserAccess() && request.auth.uid == uid
         && isSafeFileSize(20 * 1024 * 1024) && isSafeMimeType('image/.*');
     }
     match /uploads/photos/{uid}/{yyyy}/{mm}/{filename} {

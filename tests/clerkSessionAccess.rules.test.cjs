@@ -26,6 +26,15 @@ before(async()=>{
   });
 });
 after(async()=>env?.cleanup());
+test('owned vehicle-check photos can be created but never overwritten',async()=>{
+  for(const uid of ['valid','legacy']) {
+    const token=uid==='legacy'?{firebase:{sign_in_provider:'password'},auth_time:100}:claims;
+    const storage=env.authenticatedContext(uid,token).storage();
+    const photo=s.ref(storage,`vehicle-checks/${uid}/check/original.jpg`);
+    await assertSucceeds(s.uploadBytes(photo,Buffer.from('original'),{contentType:'image/jpeg'}));
+    await assertFails(s.uploadBytes(photo,Buffer.from('replacement'),{contentType:'image/jpeg'}));
+  }
+});
 async function access(uid,allowed) {
   const variant=variants[uid], check=allowed?assertSucceeds:assertFails;
   const c=env.authenticatedContext(uid,{...claims,...variant.token,...(variant.password?{firebase:{sign_in_provider:'password'}}:{})});
