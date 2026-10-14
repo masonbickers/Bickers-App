@@ -22,6 +22,7 @@ input::placeholder { color: var(--text-muted); }
 .hint,.security-note { font-size: var(--body-small-size); line-height: var(--body-small-line); color: var(--text-muted); }
 .hint { margin-top: var(--space-xxs); }
 .security-note { padding-top: var(--space-xl); margin-top: var(--space-2xl); border-top: 1px solid var(--border); }
+.security-note a { color: var(--accent-text); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .primary { display: flex; align-items: center; justify-content: center; gap: var(--space-sm); width: 100%; min-height: 48px; padding: var(--space-sm) var(--space-md); background: var(--accent-fill); color: var(--text-on-accent); border: 1px solid var(--accent-fill); border-radius: var(--control-radius); font: inherit; font-size: var(--button-size); line-height: var(--button-line); font-weight: var(--button-weight); text-align: center; text-decoration: none; cursor: pointer; }
 .primary:hover:not(:disabled) { filter: brightness(.94); }
 :is(input,select,button,a):focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }

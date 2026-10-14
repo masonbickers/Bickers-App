@@ -90,6 +90,10 @@ app.get("/health", (_req, res) => {
 
 app.use("/auth/app-password-setup", createAppPasswordProxy());
 
+// Provider recovery may clear reset markers. Authorize the resulting fresh
+// canonical state below, rather than rejecting it before proof can be checked.
+app.use(createSessionGate());
+
 // Enforce the same restriction for old clients and all protected API entrypoints.
 app.use(async (req, res, next) => {
   const token = bearerToken(req);
@@ -105,7 +109,6 @@ app.use(async (req, res, next) => {
   } catch { return res.status(401).json({ error: "Sign in again.", code: "SIGN_IN_REQUIRED" }); }
 });
 
-app.use(createSessionGate());
 app.use("/hr", createHrHistoryProxy());
 app.post("/workshop/submissions", createWorkshopSubmissionHandler({ db, verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked) }));
 
