@@ -1,0 +1,10 @@
+{
+  "firestore": { "rules": "firebase/clerk-auth/firestore.rules" },
+  "storage": { "rules": "firebase/clerk-auth/storage.rules" },
+  "emulators": {
+    "firestore": { "host": "127.0.0.1", "port": 8398 },
+    "storage": { "host": "127.0.0.1", "port": 9498 },
+    "ui": { "enabled": false },
+    "singleProjectMode": false
+  }
+}

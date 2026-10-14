@@ -1,30 +1,13 @@
 // Provider identity is checked after Firebase verification. Global revocation and
 // recovery proof remain enforced by the session service before business handlers.
+import { classifyIdentitySession, isTrustedClerkIdentity } from '../lib/identitySession.js';
 export function trustedClerkSession(token, user = {}) {
-  const stored = user.clerkUserId || '';
-  const nested = user.auth?.clerkUserId || '';
-  return token?.firebase?.sign_in_provider === 'custom' && token.authMethod === 'clerk'
-    && token.verifiedClerkEmail === true && token.identityLinkVersion === 2
-    && !!token.clerkUserId && !!token.clerkSessionId && token.uid === user.uid && !!user.uid
-    && (!stored || stored === token.clerkUserId) && (!nested || nested === token.clerkUserId)
-    && token.identityCompanyId === user.companyId
-    && (!user.employeeId || token.identityEmployeeId === user.employeeId);
+  return isTrustedClerkIdentity(token, user);
 }
 
 export function mobilePasswordAccessAllowed(token, user = {}) {
-  if (user.isEnabled !== true || user.active === false || user.disabled === true
-    || user.appDisabled === true || user.archived === true || user.isArchived === true) return false;
-  const cutoff = user.sessionValidAfter ?? 0;
-  if (typeof cutoff !== 'number' || cutoff < 0 || cutoff >= 10000000000
-    || typeof token?.auth_time !== 'number' || token.auth_time <= cutoff
-    || (user.sessionsRevokedAt != null && user.sessionValidAfter == null)) return false;
-  if (trustedClerkSession(token, user)) return true;
-  const appCutoff = user.appPasswordSessionAfter ?? 0;
-  return token?.firebase?.sign_in_provider === 'password'
-    && token.uid === user.uid && !!user.uid && !!user.companyId && !!user.employeeId
-    && user.mobileAccessStatus === 'active' && user.appPasswordSetupRequired !== true
-    && typeof appCutoff === 'number' && appCutoff >= 0 && appCutoff < 10000000000
-    && token.auth_time > appCutoff;
+  return classifyIdentitySession(token, user) !== 'denied'
+    && !!user.companyId && !!user.employeeId && user.mobileAccessStatus === 'active';
 }
 
 export function createAppPasswordProxy({ origin = process.env.APP_PASSWORD_WEB_ORIGIN || process.env.RECEIPTS_WEB_ORIGIN, fetchImpl = globalThis.fetch } = {}) {

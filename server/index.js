@@ -7,6 +7,7 @@ import cors from "cors";
 import crypto from "node:crypto";
 import dotenv from "dotenv";
 import express from "express";
+import { identityAuthMetadata } from '../lib/identitySession.js';
 import admin from "firebase-admin";
 import { createWorkingTermsResolver } from "./workingTermsIdentity.js";
 import { createReceiptProxy, receiptUpdateRequired } from "./receiptProxy.js";
@@ -691,7 +692,7 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
           ...(employee.auth || {}),
           uid: decoded.uid,
           email: decoded.email || employee.email || "",
-          passwordEnabled: true,
+          ...identityAuthMetadata(decoded, employee.auth),
           lastLoginAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         mobileAccess: {
@@ -738,7 +739,7 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
           ...(employee.auth || {}),
           uid: decoded.uid,
           email: decoded.email || sessionData.email,
-          passwordEnabled: true,
+          ...identityAuthMetadata(decoded, employee.auth),
         },
       },
       sessionData,

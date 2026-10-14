@@ -13,7 +13,7 @@ function fixture() {
   const employee = { id: "employee-1", companyId: "company-1", authUid: "new",
     email: "employee@example.com", mobileAccess: { status: "active", approvedEmail: "employee@example.com" } };
   const records = new Map([
-    ["users/new", { isEnabled: true, mobileAccessStatus: "active", employeeId: employee.id, companyId: employee.companyId }],
+    ["users/new", { uid: 'new', isEnabled: true, mobileAccessStatus: "active", employeeId: employee.id, companyId: employee.companyId }],
     ["users/old", { isEnabled: false, mobileAccessStatus: "disabled", previousEmployeeId: employee.id,
       companyId: employee.companyId, supersededByUid: "new" }],
     ["employees/employee-1", employee],
@@ -35,13 +35,21 @@ function fixture() {
         .slice(0, cap).map(read) }),
     };
   }
-  const decoded = { uid: "new", email: employee.email, firebase: { sign_in_provider: "password" } };
+  const decoded = { uid: "new", email: employee.email, auth_time: 100, firebase: { sign_in_provider: "password" } };
   const deps = { db: { collection }, auth: { verifyIdToken: async (token, revoked) => {
     assert.equal(token, "token"); assert.equal(revoked, true); return decoded;
   } }, findEmployeeForApprovedUid: async () => employee, employeeIsBlocked: (e) => e.status === "disabled",
   employeeEmailMatches: (e, email) => e.email === email };
   return { employee, records, decoded, deps, resolve: (token = "token") => createWorkingTermsResolver(deps)(token) };
 }
+test('trusted Clerk keeps historical acceptance and rejects conflicting provider links', async () => {
+  const { records, decoded, resolve } = fixture();
+  Object.assign(decoded, { firebase: { sign_in_provider: 'custom' }, authMethod: 'clerk', verifiedClerkEmail: true, identityLinkVersion: 2, clerkUserId: 'clerk', clerkSessionId: 'session', identityCompanyId: 'company-1', identityEmployeeId: 'employee-1' });
+  records.get('users/new').clerkUserId = 'clerk';
+  assert.equal((await resolve()).userId, 'old');
+  records.get('users/new').auth = { clerkUserId: 'other' };
+  await assert.rejects(resolve());
+});
 
 test("recognises a retired identity's exact current-version signature without modifying any record", async () => {
   const f = fixture(), before = JSON.stringify([...f.records]);

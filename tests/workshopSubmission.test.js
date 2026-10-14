@@ -15,12 +15,21 @@ function database(seed = {}) {
       return result;
     } };
 }
-const user = { companyId: 'a', isEnabled: true, appAccess: { service: true } };
+const user = { uid: 'tech', companyId: 'a', isEnabled: true, appAccess: { service: true } };
 const record = { companyId: 'a', vehicleId: 'van', serviceType: 'Full service', serviceDate: '2026-10-05 10:00', serviceDateOnly: '2026-10-05', nextServiceDate: '2027-01-05', signedBy: 'Technician', odometer: 250, workSummary: 'Serviced' };
 const body = { recordId: 'sheet', record, defects: [] };
 const setup = (extra = {}) => database({ 'users/tech': user, 'vehicles/van': { companyId: 'a', lastService: '2026-01-01', serviceHistory: [], motHistory: ['keep'], operationalStatus: 'VOR' }, ...extra });
 const token = { uid: 'tech', firebase: { sign_in_provider: 'password' }, auth_time: 1000 };
 const submit = (db, payload = body) => submitWorkshopRecord({ db, uid: 'tech', token, body: structuredClone(payload), now: '2026-10-05T10:00:00.000Z' });
+test('verified Clerk submissions preserve ownership and immutable signed history', async () => {
+  const db = setup({ 'users/tech': { ...user, employeeId: 'emp', clerkUserId: 'clerk' } });
+  const clerk = { ...token, firebase: { sign_in_provider: 'custom' }, authMethod: 'clerk', verifiedClerkEmail: true, identityLinkVersion: 2, clerkUserId: 'clerk', clerkSessionId: 'session', identityCompanyId: 'a', identityEmployeeId: 'emp' };
+  await submitWorkshopRecord({ db, uid: 'tech', token: clerk, body });
+  assert.equal(db.rows.get('serviceRecords/sheet').submittedByUid, 'tech');
+  await assert.rejects(submitWorkshopRecord({ db, uid: 'tech', token: clerk, body: { ...body, record: { ...record, workSummary: 'changed' } } }), /immutable/);
+  db.rows.get('users/tech').auth = { clerkUserId: 'other' };
+  await assert.rejects(submitWorkshopRecord({ db, uid: 'tech', token: clerk, body }));
+});
 test('service submission saves signed record and history atomically without changing MOT or VOR', async () => {
   const db = setup(); await submit(db);
   assert.equal(db.rows.get('serviceRecords/sheet').companyId, 'a');
@@ -37,7 +46,7 @@ test('retry of committed submission returns success without duplicate history', 
 test('signed record cannot be overwritten by changed payload or another actor', async () => {
   const db = setup(); await submit(db);
   await assert.rejects(submit(db, { ...body, record: { ...record, workSummary: 'changed' } }), /already|immutable/i);
-  db.rows.set('users/other', user);
+  db.rows.set('users/other', { ...user, uid: 'other' });
   await assert.rejects(submitWorkshopRecord({ db, uid: 'other', token: { ...token, uid: 'other' }, body }), /already|immutable/i);
 });
 test('foreign vehicle and foreign payload company fail before any write', async () => {
