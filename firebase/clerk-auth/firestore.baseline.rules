@@ -1,0 +1,1460 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasLegacyMobileAccess() {
+      return activeUserDocExists() && hasUserAccess();
+    }
+
+    function userDocExists() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isNotDisabled() {
+      return activeUserDocExists();
+    }
+
+    function activeUserAccountExists() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return userDocExists()
+        && (
+          !userData.keys().hasAny(["isEnabled"])
+          || userData.isEnabled == true
+        )
+        && (
+          !userData.keys().hasAny(["active"])
+          || userData.active != false
+        )
+        && (!userData.keys().hasAny(["disabled"])
+          || userData.disabled != true)
+        && (!userData.keys().hasAny(["appDisabled"])
+          || userData.appDisabled != true)
+        && (!userData.keys().hasAny(["archived"])
+          || userData.archived != true)
+        && (!userData.keys().hasAny(["isArchived"])
+          || userData.isArchived != true);
+    }
+
+    function trustedClerkSession(userData) {
+      let token = request.auth.token;
+      let firebaseClaims = token.get("firebase", {});
+      let authData = userData.get("auth", {});
+      let storedClerkId = userData.get("clerkUserId", "");
+      let nestedClerkId = authData is map ? authData.get("clerkUserId", "") : "";
+      return firebaseClaims is map
+        && firebaseClaims.get("sign_in_provider", "") == "custom"
+        && token.get("authMethod", "") == "clerk"
+        && token.get("verifiedClerkEmail", false) == true
+        && token.get("identityLinkVersion", 0) == 2
+        && token.get("clerkUserId", "") is string
+        && token.get("clerkUserId", "").size() > 0
+        && userData.get("uid", "") == request.auth.uid
+        && (storedClerkId == "" && nestedClerkId == ""
+          || storedClerkId == token.get("clerkUserId", "")
+          || nestedClerkId == token.get("clerkUserId", ""))
+        && token.get("identityCompanyId", "") == userData.get("companyId", "")
+        && (userData.get("employeeId", "") == ""
+          || token.get("identityEmployeeId", "") == userData.get("employeeId", ""));
+    }
+
+    function mobilePasswordAccessAllowed(userData) {
+      let token = request.auth.token;
+      let firebaseClaims = token.get("firebase", {});
+      return (userData.get("appPasswordSetupRequired", false) != true
+          && !userData.keys().hasAny(["appPasswordSessionAfter"]))
+        || trustedClerkSession(userData)
+        || (userData.get("appPasswordSetupRequired", false) != true
+          && firebaseClaims is map
+          && firebaseClaims.get("sign_in_provider", "") == "password"
+          && token.get("auth_time", 0) > userData.appPasswordSessionAfter);
+    }
+
+    function activeUserDocExists() {
+      return activeUserAccountExists()
+        && mobilePasswordAccessAllowed(get(/databases/$(database)/documents/users/$(request.auth.uid)).data);
+    }
+
+    function currentUserCompanyId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId;
+    }
+
+    function validCompanyId(value) {
+      return value is string && value.size() > 0 && value.matches("[^/\\s]+");
+    }
+
+    function companyMatchesCurrentUser(value) {
+      return validCompanyId(value) && validCompanyId(currentUserCompanyId())
+        && value == currentUserCompanyId();
+    }
+
+    function optionalOperationalParent(data, field, parentCollection) {
+      let id = data.get(field, "");
+      return id == "" || id == null
+        || (id is string && id.size() > 0 && id.matches("[^/\\s]+")
+          && exists(/databases/$(database)/documents/$(parentCollection)/$(id))
+          && companyMatchesCurrentUser(get(/databases/$(database)/documents/$(parentCollection)/$(id)).data.get("companyId", "")));
+    }
+
+    function operationalVehicleReferencesSafe() {
+      return optionalOperationalParent(request.resource.data, "vehicleId", "vehicles");
+    }
+
+    function operationalWorkshopReferencesSafe() {
+      return optionalOperationalParent(request.resource.data, "workshopRequestId", "workshopRequests");
+    }
+
+    // A booking can select local equipment labels/maps rather than fleet document IDs.
+    // Preserve the workspace predicate without repeated active-session evaluation.
+    function canUsePrepWorkspace() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let access = userData.get("appAccess", {});
+      return activeUserDocExists() && (
+        (access is map && (access.get("user", false) == true || access.get("service", false) == true))
+        || userData.get("role", "") in ["admin", "Admin", "companyAdmin", "companyadmin", "company admin", "Company Admin", "platformAdmin", "platformadmin", "platform admin", "Platform Admin", "superAdmin", "superadmin", "super admin", "Super Admin"]
+      );
+    }
+
+    function bookingPrepEquipmentName(entry) {
+      let raw = entry is string ? entry : (entry is map
+        ? (entry.get("name", null) != null && entry.get("name", "") != "" ? entry.name
+          : (entry.get("label", null) != null && entry.get("label", "") != "" ? entry.label : entry.get("description", ""))) : "");
+      return raw is string ? raw.trim() : "";
+    }
+
+    function bookingPrepEquipmentId(entry, equipmentName) {
+      let raw = entry is string ? entry : (entry is map
+        ? (entry.get("id", null) != null && entry.get("id", "") != "" ? entry.id
+          : (entry.get("equipmentId", null) != null && entry.get("equipmentId", "") != "" ? entry.equipmentId : equipmentName)) : "");
+      return raw is string ? raw.trim() : "";
+    }
+
+    function bookingLocalEquipmentPrepSafe(data) {
+      let bookingId = data.get("bookingId", "");
+      let equipmentId = data.get("equipmentId", "");
+      let index = data.get("bookingEquipmentIndex", -1);
+      let witness = data.get("bookingEquipmentSource", null);
+      let parent = /databases/$(database)/documents/bookings/$(bookingId);
+      let bookingData = exists(parent) ? get(parent).data : {};
+      let entries = bookingData.get("equipment", []);
+      let equipmentName = bookingPrepEquipmentName(witness);
+      let witnessId = bookingPrepEquipmentId(witness, equipmentName);
+      return data.get("assetType", "") == "equipment"
+        && bookingId is string && bookingId.matches("[^/\\s]+")
+        && bookingData.get("companyId", "") == data.get("companyId", "")
+        && equipmentId is string && equipmentId.size() > 0 && equipmentId.matches("[^/]+")
+        && index is int && index >= 0 && entries is list && index < entries.size()
+        && entries[index] == witness
+        && equipmentName.size() > 0
+        && equipmentId == witnessId
+        && data.get("equipmentName", "") == equipmentName
+        // An existing fleet document still owns its identity; a local witness cannot override it.
+        && (!exists(/databases/$(database)/documents/equipment/$(equipmentId))
+          || get(/databases/$(database)/documents/equipment/$(equipmentId)).data.get("companyId", "") == data.get("companyId", ""));
+    }
+
+    function operationalPrepEquipmentReferencesSafe(data) {
+      return data.keys().hasAny(["bookingEquipmentIndex", "bookingEquipmentSource"])
+        ? bookingLocalEquipmentPrepSafe(data)
+        : ((data.get("assetType", "") != "equipment"
+          || (data.get("equipmentId", "") is string && data.get("equipmentId", "").size() > 0))
+          && optionalOperationalParent(data, "equipmentId", "equipment"));
+    }
+
+    // Validate a new completion or changed attribution without rewriting historical completions.
+    function prepEmployeeCurrent(data) {
+      let role = data.get("role", "");
+      let employment = data.get("employmentStatus", "");
+      let lifecycle = data.get("lifecycleStatus", "");
+      let employeeStatus = data.get("employeeStatus", "");
+      let status = employment != "" && employment != null ? employment
+        : (lifecycle != "" && lifecycle != null ? lifecycle : employeeStatus);
+      let inactive = ["archived", "deleted", "disabled", "ended", "former", "inactive", "left", "leaver", "removed", "terminated"];
+      return data.get("deleted", false) != true && data.get("isDeleted", false) != true
+        && data.get("removed", false) != true && data.get("isRemoved", false) != true
+        && data.get("archived", false) != true && data.get("isArchived", false) != true
+        && data.get("active", true) != false
+        && (role == null || (role is string && !(role.trim().lower() in ["archived", "deleted", "removed"])))
+        && (status == null || (status is string && !(status.trim().lower() in inactive)));
+    }
+
+    function prepCompletionAttributionSafe(data, before) {
+      let employeeId = data.get("completedByEmployeeId", "");
+      return data.get("completed", false) != true
+        || (before.get("completed", false) == true
+          && !data.diff(before).affectedKeys().hasAny(["completedByUid", "completedByEmployeeId", "completedByName", "completedByCode", "completedAt", "bookingId", "assetType", "vehicleId", "vehicleName", "registration", "equipmentId", "equipmentName", "bookingEquipmentIndex", "bookingEquipmentSource", "prepDate", "date"]))
+        || (data.get("completedByUid", "") == request.auth.uid
+          && employeeId is string && employeeId.size() > 0 && employeeId.matches("[^/\\s]+")
+          && exists(/databases/$(database)/documents/employees/$(employeeId))
+          && get(/databases/$(database)/documents/employees/$(employeeId)).data.get("companyId", "") == data.get("companyId", "")
+          && prepEmployeeCurrent(get(/databases/$(database)/documents/employees/$(employeeId)).data));
+    }
+
+    function legacyOwnershipAllowed(collectionName, documentId) {
+      let path = /databases/$(database)/documents/legacyTenantOwnership/$(collectionName)/records/$(documentId);
+      return resource.data.get("companyId", "") == "" && exists(path)
+        && companyMatchesCurrentUser(get(path).data.get("companyId", ""))
+        && get(path).data.get("source", "") is string && get(path).data.get("source", "").matches("[\\s\\S]*[^\\s][\\s\\S]*")
+        && get(path).data.get("reviewedBy", "") is string && get(path).data.get("reviewedBy", "").matches("[\\s\\S]*[^\\s][\\s\\S]*")
+        && get(path).data.expiresAt > request.time;
+    }
+
+    function existingDocBelongsToCurrentCompany() {
+      return companyMatchesCurrentUser(resource.data.get("companyId", ""));
+    }
+
+    function incomingDocBelongsToCurrentCompany() {
+      return companyMatchesCurrentUser(request.resource.data.get("companyId", ""));
+    }
+
+    // TEMPORARY EMERGENCY READ FALLBACK - REMOVE AFTER TENANT QUERY MIGRATION
+    function canEmergencyReadBickersBusinessData() {
+      return canReadTenantBusinessDoc();
+    }
+
+    function canReadTenantBusinessDoc() {
+      return existingDocBelongsToCurrentCompany();
+    }
+
+    function currentUserAppAccessEnabled(workspace) {
+      return userDocExists()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(["appAccess"])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.appAccess is map
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.appAccess.keys().hasAny([workspace])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.appAccess[workspace] == true;
+    }
+
+    function currentUserDefaultWorkspaceIs(workspace) {
+      return userDocExists()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(["defaultWorkspace"])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.defaultWorkspace == workspace;
+    }
+
+    function currentUserRoleIn(roles) {
+      return userDocExists()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(["role"])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in roles;
+    }
+
+    function isPlatformAdmin() {
+      return activeUserDocExists()
+        && currentUserRoleIn([
+          "platformAdmin",
+          "platformadmin",
+          "platform admin",
+          "Platform Admin",
+          "superAdmin",
+          "superadmin",
+          "super admin",
+          "Super Admin"
+        ]);
+    }
+
+    function isAdmin() {
+      return isPlatformAdmin()
+        || (
+          activeUserDocExists()
+          && currentUserRoleIn([
+            "admin",
+            "Admin",
+            "companyAdmin",
+            "companyadmin",
+            "company admin",
+            "Company Admin"
+          ])
+        );
+    }
+
+    function receiptAccountEnabled() {
+      return activeUserDocExists()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isEnabled == true;
+    }
+
+    function receiptCompanyAllowed(data) {
+      return data.keys().hasAny(["companyId"])
+        && data.companyId == currentUserCompanyId();
+    }
+
+    function isFinanceReviewer() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [
+          "platformAdmin", "platformadmin", "platform admin", "Platform Admin",
+          "superAdmin", "superadmin", "super admin", "Super Admin",
+          "admin", "Admin", "companyAdmin", "companyadmin", "company admin", "Company Admin"
+        ]
+        || (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(["financeAccess"])
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.financeAccess == true
+        );
+    }
+
+    function financeCompanyAllowed(data) {
+      return isPlatformAdmin()
+        || (
+          data.keys().hasAny(["companyId"])
+          && data.companyId == currentUserCompanyId()
+        );
+    }
+
+    function canManageTenantData() {
+      return activeUserDocExists() && (workspaceEnabled("user") || workspaceEnabled("service"));
+    }
+
+    function canUseSoftware() {
+      return activeUserDocExists() && (workspaceEnabled("user") || workspaceEnabled("service"));
+    }
+
+    function canReadUserTenantDoc() {
+      return hasUserAccess() && canReadTenantBusinessDoc();
+    }
+
+    function canCreateUserTenantDoc() {
+      return hasUserAccess() && incomingDocBelongsToCurrentCompany();
+    }
+
+    function canUpdateUserTenantDoc() {
+      return hasUserAccess()
+        && existingDocBelongsToCurrentCompany()
+        && incomingDocBelongsToCurrentCompany();
+    }
+
+    function canDeleteUserTenantDoc() {
+      return hasUserAccess() && existingDocBelongsToCurrentCompany();
+    }
+
+    function canReadServiceTenantDoc() {
+      return hasServiceAccess() && canReadTenantBusinessDoc();
+    }
+
+    function canCreateServiceTenantDoc() {
+      return hasServiceAccess() && incomingDocBelongsToCurrentCompany();
+    }
+
+    function canUpdateServiceTenantDoc() {
+      return hasServiceAccess()
+        && existingDocBelongsToCurrentCompany()
+        && incomingDocBelongsToCurrentCompany();
+    }
+
+    function canDeleteServiceTenantDoc() {
+      return hasServiceAccess() && existingDocBelongsToCurrentCompany();
+    }
+
+    function canReadAnyWorkspaceTenantDoc() {
+      return canUseSoftware() && canReadTenantBusinessDoc();
+    }
+
+    function canReadStrictTenantDoc() {
+      return canUseSoftware() && existingDocBelongsToCurrentCompany();
+    }
+
+    function canCreateAnyWorkspaceTenantDoc() {
+      return canUseSoftware() && incomingDocBelongsToCurrentCompany();
+    }
+
+    function canUpdateAnyWorkspaceTenantDoc() {
+      return canUseSoftware()
+        && existingDocBelongsToCurrentCompany()
+        && incomingDocBelongsToCurrentCompany();
+    }
+
+    function canDeleteAnyWorkspaceTenantDoc() {
+      return canUseSoftware() && existingDocBelongsToCurrentCompany();
+    }
+
+    function legacyPmiHistoryWriteAllowed() {
+      return !(
+        resource.data.keys().hasAny(["futurePmiHistoryCleanupLocked"])
+        && resource.data.futurePmiHistoryCleanupLocked == true
+      ) || !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(["eightWeekInspectionHistory"]);
+    }
+
+    function legalMaintenanceCompletionFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        "archivedFuturePmiHistory",
+        "brakeTestDocuments",
+        "brakeTestHistory",
+        "dvsaLatestMot",
+        "dvsaLatestMotAdvisoryCount",
+        "dvsaLatestMotDangerousCount",
+        "dvsaLatestMotDefectCount",
+        "dvsaLatestMotMajorCount",
+        "dvsaLatestMotOdometer",
+        "dvsaLatestMotResult",
+        "dvsaLatestMotTestNumber",
+        "dvsaMotExpiryDate",
+        "dvsaMotHistoryFetchedAt",
+        "dvsaMotMileageWarning",
+        "dvsaMotTests",
+        "dvsaMotVehicleDetails",
+        "eightWeekInspectionHistory",
+        "eightWeekInspectionStart",
+        "futurePmiHistoryCleanupHistory",
+        "futurePmiHistoryCleanupLocked",
+        "hgvComplianceMigratedAt",
+        "hgvComplianceMigrationIssues",
+        "hgvComplianceMigrationVersion",
+        "lastBrakeTest",
+        "lastEightWeekInspection",
+        "lastLOLER",
+        "lastLoler",
+        "lastLorryInspection",
+        "lastMOT",
+        "lastMot",
+        "lastMotDate",
+        "lastPMI",
+        "lastPmi",
+        "lastService",
+        "lastServiceDate",
+        "lastTacho",
+        "lastTachoCalibration",
+        "lastTachoDownload",
+        "lastTachoInspection",
+        "lastTailLift",
+        "lolerDocuments",
+        "lolerHistory",
+        "maintenanceReconciliationRequired",
+        "motAwaitingDvsaBookingId",
+        "motAwaitingDvsaCompletionDate",
+        "motAwaitingDvsaConfirmation",
+        "motAwaitingDvsaSince",
+        "motDocuments",
+        "motDvsaConfirmationStatus",
+        "motDvsaConfirmedAt",
+        "motHistory",
+        "motHistoryLatestTestNumber",
+        "motHistorySyncedAt",
+        "pendingReturnInspection",
+        "pmiDocuments",
+        "pmiHistory",
+        "serviceDocuments",
+        "serviceHistory",
+        "serviceHistoryFiles",
+        "tachoCalibrationDocuments",
+        "tachoCalibrationHistory",
+        "tachoDownloadDocuments",
+        "tachoDownloadHistory",
+        "tachoInspectionDocuments",
+        "tachoInspectionHistory",
+        "tailLiftDocuments",
+        "tailLiftHistory"
+]);
+    }
+
+    function contactFinanceValue(data, key) {
+      return data.keys().hasAny(["financeProfile"])
+        && data.financeProfile is map
+        && data.financeProfile.keys().hasAny([key])
+        ? data.financeProfile[key]
+        : null;
+    }
+
+    function incomingContactHasNoSageMapping() {
+      return contactFinanceValue(request.resource.data, "sageCustomerId") in [null, ""]
+        && contactFinanceValue(request.resource.data, "sageCustomerMappingStatus") in [null, "", "unmapped"]
+        && contactFinanceValue(request.resource.data, "sageCustomerMappedAt") == null
+        && contactFinanceValue(request.resource.data, "sageCustomerMappedBy") in [null, ""];
+    }
+
+    function incomingContactHasNoFinanceProfile() {
+      return !request.resource.data.keys().hasAny(["financeProfile"]);
+    }
+
+    function contactFinanceProfileUnchanged() {
+      return request.resource.data.get("financeProfile", null)
+        == resource.data.get("financeProfile", null);
+    }
+
+    function contactSageMappingUnchanged() {
+      return contactFinanceValue(request.resource.data, "sageCustomerId")
+          == contactFinanceValue(resource.data, "sageCustomerId")
+        && contactFinanceValue(request.resource.data, "sageCustomerMappingStatus")
+          == contactFinanceValue(resource.data, "sageCustomerMappingStatus")
+        && contactFinanceValue(request.resource.data, "sageCustomerMappedAt")
+          == contactFinanceValue(resource.data, "sageCustomerMappedAt")
+        && contactFinanceValue(request.resource.data, "sageCustomerMappedBy")
+          == contactFinanceValue(resource.data, "sageCustomerMappedBy");
+    }
+
+    function canUseCalendar() {
+      return canUseSoftware();
+    }
+
+    function currentUserIsService() {
+      return userDocExists()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(["isService"])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isService == true;
+    }
+
+    // Evaluate session validity once, rather than repeating account checks for
+    // each field/role alternative (Firestore limits a request to 1000 expressions).
+    function workspaceEnabled(workspace) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let access = user.get("appAccess", {});
+      return (access is map && access.get(workspace, false) == true)
+        || user.get("role", "") in ["admin", "Admin", "companyAdmin", "companyadmin", "company admin", "Company Admin", "platformAdmin", "platformadmin", "platform admin", "Platform Admin", "superAdmin", "superadmin", "super admin", "Super Admin"];
+    }
+
+    function hasUserAccess() {
+      return activeUserDocExists() && workspaceEnabled("user");
+    }
+
+    function hasServiceAccess() {
+      return activeUserDocExists() && workspaceEnabled("service");
+    }
+
+    function isOwnUserDoc(uid) {
+      return activeUserAccountExists() && request.auth.uid == uid;
+    }
+
+    function isOwnEmployeeDoc() {
+      return isSignedIn()
+        && (
+          resource.data.uid == request.auth.uid
+          || resource.data.authUid == request.auth.uid
+          || resource.id == request.auth.uid
+        );
+    }
+
+    function isOwnEmployeeDocAfterWrite() {
+      return isSignedIn()
+        && (
+          request.resource.data.uid == request.auth.uid
+          || request.resource.data.authUid == request.auth.uid
+          || resource.id == request.auth.uid
+        );
+    }
+
+    function keepsOwnEmployeeIdentity() {
+      return request.resource.data.uid == resource.data.uid
+        && request.resource.data.authUid == resource.data.authUid
+        && request.resource.data.email == resource.data.email;
+    }
+
+    function matchesAuthEmail(email) {
+      return isSignedIn()
+        && email is string
+        && request.auth.token.email is string
+        && email == request.auth.token.email;
+    }
+
+    function isHolidayOwner() {
+      return isSignedIn()
+        && (
+          resource.data.requestedByUid == request.auth.uid
+          || matchesAuthEmail(resource.data.requestedByEmail)
+        );
+    }
+
+    function isHolidayOwnerOnCreate() {
+      return isSignedIn()
+        && (
+          request.resource.data.requestedByUid == request.auth.uid
+          || matchesAuthEmail(request.resource.data.requestedByEmail)
+        );
+    }
+
+    function keepsHolidayOwnerIdentity() {
+      return request.resource.data.requestedByUid == resource.data.requestedByUid
+        && request.resource.data.requestedByEmail == resource.data.requestedByEmail;
+    }
+
+    function isShiftChangeOwner() {
+      return isSignedIn()
+        && (
+          resource.data.requestedByUid == request.auth.uid
+          || matchesAuthEmail(resource.data.requestedByEmail)
+        );
+    }
+
+    function isShiftChangeOwnerOnCreate() {
+      return isSignedIn()
+        && (
+          request.resource.data.requestedByUid == request.auth.uid
+          || matchesAuthEmail(request.resource.data.requestedByEmail)
+        );
+    }
+
+    function keepsShiftChangeOwnerIdentity() {
+      return request.resource.data.requestedByUid == resource.data.requestedByUid
+        && request.resource.data.requestedByEmail == resource.data.requestedByEmail;
+    }
+
+    function shiftChangeOwnerCancelOnly() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly([
+        "status",
+        "updatedAt"
+      ]);
+    }
+
+    function isApprovedHolidayRecord() {
+      return resource.data.approved == true
+        || resource.data.status == "approved"
+        || resource.data.approvalStatus == "approved"
+        || resource.data.state == "approved"
+        || resource.data.leaveStatus == "approved"
+        || resource.data.holidayStatus == "approved";
+    }
+
+    function isApprovedHolidayAfterWrite() {
+      return request.resource.data.approved == true
+        || request.resource.data.status == "approved"
+        || request.resource.data.approvalStatus == "approved"
+        || request.resource.data.state == "approved"
+        || request.resource.data.leaveStatus == "approved"
+        || request.resource.data.holidayStatus == "approved";
+    }
+
+    function hasBookingAuditFieldsOnCreate() {
+      return isSignedIn()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.lastEditedByUid == request.auth.uid;
+    }
+
+    function keepsBookingAuditIdentity() {
+      return request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          resource.data.createdByUid == null
+          || request.resource.data.createdByUid == resource.data.createdByUid
+        );
+    }
+
+    function keepsTimesheetIdentity() {
+      return request.resource.data.employeeCode == resource.data.employeeCode
+        && request.resource.data.employeeName == resource.data.employeeName
+        && request.resource.data.weekStart == resource.data.weekStart;
+    }
+
+    function keepsTimesheetQueryIdentity() {
+      return request.resource.data.timesheetId == resource.data.timesheetId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByRole == resource.data.createdByRole;
+    }
+
+    function timesheetQueryInCurrentCompany(queryId) {
+      return exists(/databases/$(database)/documents/timesheetQueries/$(queryId))
+        && companyMatchesCurrentUser(get(/databases/$(database)/documents/timesheetQueries/$(queryId)).data.get("companyId", ""));
+    }
+
+    function userOnlyFieldsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "name",
+        "phone",
+        "updatedAt"
+      ]);
+    }
+
+    function incomingFinanceAccessIsDisabled() {
+      return !request.resource.data.keys().hasAny(["financeAccess"])
+        || request.resource.data.financeAccess == false;
+    }
+
+    function financeAccessUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(["financeAccess"]);
+    }
+
+    function passwordSecurityUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        "appPasswordSetupRequired", "appPasswordIssuanceId", "appPasswordSessionAfter"
+      ]);
+    }
+
+    match /users/{uid} {
+      allow read: if isOwnUserDoc(uid) || (isAdmin() && existingDocBelongsToCurrentCompany());
+      allow update: if isOwnUserDoc(uid) && activeUserDocExists() && userOnlyFieldsChanged();
+      allow create, delete: if false;
+    }
+
+    match /mobilePasswordSetups/{uid} {
+      allow read, write: if false;
+    }
+
+    // Existing mobile clients read their own acceptance before the server resolver.
+    // Historical identity recovery remains server-owned; signatures stay immutable.
+    match /workingTermsAcceptances/{uid}/versions/{versionId} {
+      allow get: if request.auth != null && request.auth.uid == uid
+        && activeUserDocExists();
+      allow create: if activeUserDocExists()
+        && request.auth.uid == uid
+        && versionId in ["1.0", "1.1"]
+        && request.resource.data.keys().hasOnly([
+          "accepted",
+          "acceptedAt",
+          "companyId",
+          "documentEffectiveDate",
+          "documentTitle",
+          "documentVersion",
+          "employeeId",
+          "email",
+          "fullName",
+          "signatureSvgPath",
+          "signedFromAppVersion",
+          "signedFromPlatform",
+          "userId"
+        ])
+        && request.resource.data.accepted == true
+        && request.resource.data.acceptedAt == request.time
+        && request.resource.data.companyId == currentUserCompanyId()
+        && (
+          (versionId == "1.1" && request.resource.data.documentEffectiveDate == "19/08/2026")
+          || (versionId == "1.0" && request.resource.data.documentEffectiveDate == "23/06/2026")
+        )
+        && request.resource.data.documentTitle == "Bickers Action Working Terms"
+        && request.resource.data.documentVersion == versionId
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() >= 2
+        && request.resource.data.fullName.size() <= 160
+        && request.resource.data.signatureSvgPath is string
+        && request.resource.data.signatureSvgPath.size() >= 20
+        && request.resource.data.signatureSvgPath.size() <= 12000
+        && request.resource.data.signedFromAppVersion is string
+        && request.resource.data.signedFromPlatform in ["android", "ios", "web"];
+      allow list, update, delete: if false;
+    }
+
+    match /employeeNotifications/{notificationId} {
+      allow read: if activeUserDocExists()
+        && resource.data.keys().hasAny(["employeeId"])
+        && exists(/databases/$(database)/documents/employees/$(resource.data.employeeId))
+        && companyMatchesCurrentUser(get(/databases/$(database)/documents/employees/$(resource.data.employeeId)).data.get("companyId", ""))
+        && (
+          resource.data.uid == request.auth.uid
+          || get(/databases/$(database)/documents/employees/$(resource.data.employeeId)).data.userId
+            == request.auth.uid
+          || (
+            activeUserDocExists()
+            && resource.data.employeeId
+              == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.employeeId
+          )
+        );
+      allow write: if false;
+    }
+
+    match /mfaSecrets/{uid} {
+      allow read, write: if false;
+    }
+
+    match /adminAuditLogs/{logId} {
+      allow read: if isAdmin() && existingDocBelongsToCurrentCompany();
+      allow write: if false;
+    }
+
+    // Activity evidence is written and read only by authenticated server routes.
+    // Keeping these collections server-only prevents users from spoofing time or
+    // reading another account's activity directly from the browser.
+    match /userActivityBuckets/{bucketId} {
+      allow read, write: if false;
+    }
+
+    match /userActivitySessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /activityReviews/{reviewId} {
+      allow read, write: if false;
+    }
+
+    match /activityTrackingSettings/{companyId} {
+      allow read, write: if false;
+    }
+
+    // Sage 50 connector credentials and machine metadata are server-only.
+    // Administrators use protected API routes which return a redacted view.
+    match /sage50Connectors/{connectorId} {
+      allow read, write: if false;
+    }
+
+    // Export payloads, leases and connector results are accessible only through
+    // authenticated server routes. Browser clients receive redacted status.
+    match /sage50ExportJobs/{jobId} {
+      allow read, write: if false;
+    }
+
+    // Read-only Sage customer lookup payloads and leases are server-only.
+    match /sage50CustomerLookupJobs/{lookupJobId} {
+      allow read, write: if false;
+    }
+
+    // Served only through authenticated APIs so audience-specific finance
+    // redaction happens before a briefing reaches the browser.
+    match /aiBusinessRules/{docId} {
+      allow read, write: if false;
+    }
+
+    match /aiStatisticsBriefings/{docId} {
+      allow read, write: if false;
+    }
+
+    match /aiInsightFeedback/{docId} {
+      allow read, write: if false;
+    }
+
+    match /loginSecurityLogs/{logId} {
+      allow read: if isAdmin() && existingDocBelongsToCurrentCompany();
+      allow write: if false;
+    }
+
+    match /passkeyCredentials/{credentialId} {
+      allow read, write: if false;
+    }
+
+    match /passkeyChallenges/{challengeId} {
+      allow read, write: if false;
+    }
+
+    match /setupCodeRateLimits/{docId} {
+      allow read, write: if false;
+    }
+
+    // Private personnel records are separated from the operational employee
+    // directory and are readable only by application administrators. Browser
+    // writes remain blocked and must use a separately authorised server path.
+    match /employeePersonnel/{employeeId} {
+      allow read: if isAdmin() && existingDocBelongsToCurrentCompany();
+      allow write: if false;
+    }
+
+    match /employees/{employeeId} {
+      allow read: if canReadStrictTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("employees", employeeId);
+      allow create, delete: if false;
+      allow update: if (
+        isAdmin()
+        && existingDocBelongsToCurrentCompany()
+        && incomingDocBelongsToCurrentCompany()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name", "firstName", "lastName", "phone", "profilePhotoUrl", "updatedAt"
+        ])
+      ) || (
+        hasUserAccess()
+        && companyMatchesCurrentUser(resource.data.get("companyId", ""))
+        && (resource.data.get("uid", "") == request.auth.uid
+          || resource.data.get("authUid", "") == request.auth.uid
+          || employeeId == request.auth.uid
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get("employeeId", "") == employeeId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["phone", "mobile", "updatedAt"])
+      );
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("bookings", bookingId);
+      allow create: if canCreateAnyWorkspaceTenantDoc();
+      allow update: if canUpdateAnyWorkspaceTenantDoc();
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /notes/{noteId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("notes", noteId);
+      allow create: if canCreateAnyWorkspaceTenantDoc();
+      allow update: if canUpdateAnyWorkspaceTenantDoc();
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /contacts/{contactId} {
+      allow read: if canReadUserTenantDoc();
+      allow get: if hasUserAccess() && legacyOwnershipAllowed("contacts", contactId);
+      allow create: if canCreateUserTenantDoc()
+        && incomingContactHasNoFinanceProfile()
+        && incomingContactHasNoSageMapping();
+      allow update: if canUpdateUserTenantDoc()
+        && contactFinanceProfileUnchanged()
+        && contactSageMappingUnchanged();
+      allow delete: if canDeleteUserTenantDoc()
+        && (
+          isFinanceReviewer()
+          || (
+            !resource.data.keys().hasAny(["financeProfile"])
+            && !exists(/databases/$(database)/documents/contactFinanceProfiles/$(contactId))
+          )
+        );
+    }
+
+    // Customer billing and Sage mapping data is available only through
+    // finance-authorised server routes.
+    match /contactFinanceProfiles/{contactId} {
+      allow read, write: if false;
+    }
+
+    match /deletedBookings/{docId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("deletedBookings", docId);
+      allow create: if canCreateAnyWorkspaceTenantDoc();
+      allow update: if canUpdateAnyWorkspaceTenantDoc();
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /appState/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /notes/{noteId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow create: if canCreateAnyWorkspaceTenantDoc();
+      allow update: if canUpdateAnyWorkspaceTenantDoc();
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /recces/{docId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("recces", docId);
+      allow create: if canCreateAnyWorkspaceTenantDoc();
+      allow update: if canUpdateAnyWorkspaceTenantDoc();
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /holidays/{holidayId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow create: if canCreateAnyWorkspaceTenantDoc();
+      allow update: if canUpdateAnyWorkspaceTenantDoc();
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /shiftChangeRequests/{requestId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /hr/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    // Compatibility for installed mobile builds: only a linked employee's
+    // deterministic weekly document may omit its original company stamp.
+    function linkedMobileTimesheetOwner(data, timesheetId) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let employeeId = user.get("employeeId", "");
+      let employee = get(/databases/$(database)/documents/employees/$(employeeId)).data;
+      let code = employee.get("userCode", "");
+      let week = data.get("weekStart", "");
+      return user.get("companyId", "") == "bickers-action"
+        && employee.get("companyId", "") == "bickers-action"
+        && employeeId is string && employeeId.size() > 0
+        && code is string && code.size() > 0 && code.matches("[^/\\s]+")
+        && week is string && week.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+        && timesheetId == code + "_" + week
+        && data.get("employeeCode", "") == code
+        && data.get("companyId", "bickers-action") == "bickers-action"
+        && data.get("ownerUid", request.auth.uid) == request.auth.uid
+        && data.get("employeeId", employeeId) == employeeId;
+    }
+
+    function ownMissingMobileWeek(timesheetId) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let employee = get(/databases/$(database)/documents/employees/$(user.get("employeeId", ""))).data;
+      let code = employee.get("userCode", "");
+      return user.get("companyId", "") == "bickers-action"
+        && employee.get("companyId", "") == "bickers-action"
+        // Restrict interpolated codes to regex-safe characters.
+        && code is string && code.matches("[A-Za-z0-9_-]+")
+        && timesheetId.matches(code + "_[0-9]{4}-[0-9]{2}-[0-9]{2}");
+    }
+
+    match /timesheets/{timesheetId} {
+      allow read: if canReadUserTenantDoc();
+      allow get: if hasUserAccess()
+        && !exists(/databases/$(database)/documents/timesheets/$(timesheetId))
+        && ownMissingMobileWeek(timesheetId);
+      allow get: if hasUserAccess() && linkedMobileTimesheetOwner(resource.data, timesheetId);
+      allow create: if canCreateUserTenantDoc()
+        || (hasUserAccess() && linkedMobileTimesheetOwner(request.resource.data, timesheetId));
+      allow update: if canUpdateUserTenantDoc()
+        || (hasUserAccess() && linkedMobileTimesheetOwner(resource.data, timesheetId)
+          && linkedMobileTimesheetOwner(request.resource.data, timesheetId)
+          && request.resource.data.employeeCode == resource.data.employeeCode
+          && request.resource.data.weekStart == resource.data.weekStart
+          && (!resource.data.keys().hasAny(["companyId"])
+            || request.resource.data.get("companyId", "") == resource.data.companyId));
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    // Employees can manage only their own submitted expense claims. Finance
+    // status changes remain server-owned so a client cannot approve its claim.
+    match /expenses/{expenseId} {
+      allow read: if canReadUserTenantDoc()
+        && (resource.data.ownerUid == request.auth.uid || isFinanceReviewer());
+      allow create: if canCreateUserTenantDoc()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.status == "submitted"
+        && request.resource.data.type is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.paymentMethod in ["personal", "company_card"];
+      allow update: if canUpdateUserTenantDoc()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && resource.data.status == "submitted"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "employeeId", "employeeCode", "employeeName",
+          "type", "otherType", "paymentMethod", "amount",
+          "jobId", "jobNumber", "jobLabel", "note", "receiptUrl", "updatedAt"
+        ])
+        && request.resource.data.type is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.paymentMethod in ["personal", "company_card"];
+      allow delete: if canDeleteUserTenantDoc()
+        && resource.data.ownerUid == request.auth.uid
+        && resource.data.status == "submitted";
+    }
+
+    // Legacy records remain readable, but every receipt mutation uses the
+    // authenticated v2 command service. Never restore client financial writes.
+    match /receiptGroups/{groupId} {
+      allow read: if receiptAccountEnabled()
+        && receiptCompanyAllowed(resource.data)
+        && (isFinanceReviewer() || resource.data.submitterUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /receipts/{receiptId} {
+      allow read: if receiptAccountEnabled()
+        && receiptCompanyAllowed(resource.data)
+        && (isFinanceReviewer() || resource.data.submitterUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Filtered reads and canonical employee identity checks are server-owned.
+    match /receiptWorkspaces/{allPaths=**} { allow read, write: if false; }
+    match /receiptUploadIntents/{allPaths=**} { allow read, write: if false; }
+    match /receiptLegacyReviews/{allPaths=**} { allow read, write: if false; }
+
+    match /timesheetQueries/{queryId} {
+      allow read: if canReadUserTenantDoc();
+      allow get: if hasUserAccess() && legacyOwnershipAllowed("timesheetQueries", queryId);
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /timesheetQueries/{queryId}/messages/{messageId} {
+      allow read, write: if canUseSoftware() && timesheetQueryInCurrentCompany(queryId);
+    }
+
+    match /sickLeave/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /uCraneFreelancers/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /lorries/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow create: if canCreateServiceTenantDoc();
+      allow update: if canUpdateServiceTenantDoc();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /invoiceQueue/{docId} {
+      allow read: if hasUserAccess()
+        && isFinanceReviewer()
+        && financeCompanyAllowed(resource.data);
+      // Authoritative invoice creation and lifecycle writes are server-only.
+      // The protected service-account route bypasses client Firestore rules.
+      allow create, update, delete: if false;
+    }
+
+    function vehicleVorFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        "operationalStatus", "fleetStatus", "vehicleStatus", "availabilityStatus", "status",
+        "archivedOperatingStatus", "vorStartedAt", "vorEndedAt", "activeVorRecordId",
+        "vorRecoveryHistory",
+        "vorHistory", "vorHistoryLastMutatedAt", "vorHistoryLastMutatedBy",
+        "maintenanceCountdownPause", "complianceVor"
+      ]);
+    }
+    function safeInitialVehicleState() {
+      let d = request.resource.data;
+      return d.get("operationalStatus", "Active") == "Active"
+        && d.get("fleetStatus", "Active") == "Active"
+        && d.get("vehicleStatus", "Active") == "Active"
+        && d.get("availabilityStatus", "Active") == "Active"
+        && d.get("status", "Active") == "Active"
+        && d.get("vorHistory", []) == []
+        && !d.keys().hasAny(["vorRecoveryHistory"])
+        && d.get("activeVorRecordId", "") == ""
+        && d.get("vorStartedAt", "") == ""
+        && d.get("vorEndedAt", "") == ""
+        && d.get("maintenanceCountdownPause", null) == null
+        && d.get("pendingReturnInspection", null) == null
+        && d.get("complianceVor", null) == null
+        && !d.keys().hasAny(["archivedOperatingStatus", "vorHistoryLastMutatedAt", "vorHistoryLastMutatedBy"]);
+    }
+
+    function safeInitialVehicleLegalEvidence() {
+      let d = request.resource.data;
+      return !d.keys().hasAny(["maintenanceReconciliationRequired", "archivedFuturePmiHistory", "dvsaLatestMot", "dvsaLatestMotAdvisoryCount", "dvsaLatestMotDangerousCount", "dvsaLatestMotDefectCount", "dvsaLatestMotMajorCount", "dvsaLatestMotOdometer", "dvsaLatestMotResult", "dvsaLatestMotTestNumber", "dvsaMotExpiryDate", "dvsaMotHistoryFetchedAt", "dvsaMotMileageWarning", "dvsaMotTests", "dvsaMotVehicleDetails", "futurePmiHistoryCleanupHistory", "futurePmiHistoryCleanupLocked", "hgvComplianceMigratedAt", "hgvComplianceMigrationIssues", "hgvComplianceMigrationVersion", "motAwaitingDvsaBookingId", "motAwaitingDvsaCompletionDate", "motAwaitingDvsaConfirmation", "motAwaitingDvsaSince", "motDvsaConfirmationStatus", "motDvsaConfirmedAt", "motHistoryLatestTestNumber", "motHistorySyncedAt"])
+        && d.get("eightWeekInspectionStart", "") == ""
+        && d.get("lastBrakeTest", "") == ""
+        && d.get("lastEightWeekInspection", "") == ""
+        && d.get("lastLOLER", "") == ""
+        && d.get("lastLoler", "") == ""
+        && d.get("lastLorryInspection", "") == ""
+        && d.get("lastMOT", "") == ""
+        && d.get("lastMot", "") == ""
+        && d.get("lastMotDate", "") == ""
+        && d.get("lastPMI", "") == ""
+        && d.get("lastPmi", "") == ""
+        && d.get("lastService", "") == ""
+        && d.get("lastServiceDate", "") == ""
+        && d.get("lastTacho", "") == ""
+        && d.get("lastTachoCalibration", "") == ""
+        && d.get("lastTachoDownload", "") == ""
+        && d.get("lastTachoInspection", "") == ""
+        && d.get("lastTailLift", "") == ""
+        && d.get("brakeTestDocuments", []) == []
+        && d.get("brakeTestHistory", []) == []
+        && d.get("eightWeekInspectionHistory", []) == []
+        && d.get("lolerDocuments", []) == []
+        && d.get("lolerHistory", []) == []
+        && d.get("motDocuments", []) == []
+        && d.get("motHistory", []) == []
+        && d.get("pmiDocuments", []) == []
+        && d.get("pmiHistory", []) == []
+        && d.get("serviceDocuments", []) == []
+        && d.get("serviceHistory", []) == []
+        && d.get("serviceHistoryFiles", []) == []
+        && d.get("tachoCalibrationDocuments", []) == []
+        && d.get("tachoCalibrationHistory", []) == []
+        && d.get("tachoDownloadDocuments", []) == []
+        && d.get("tachoDownloadHistory", []) == []
+        && d.get("tachoInspectionDocuments", []) == []
+        && d.get("tachoInspectionHistory", []) == []
+        && d.get("tailLiftDocuments", []) == []
+        && d.get("tailLiftHistory", []) == []
+        && d.get("pendingReturnInspection", null) == null;
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("vehicles", vehicleId);
+      allow create: if canCreateAnyWorkspaceTenantDoc() && safeInitialVehicleState() && safeInitialVehicleLegalEvidence();
+      allow update: if canUpdateAnyWorkspaceTenantDoc()
+        && vehicleVorFieldsUnchanged()
+        && legacyPmiHistoryWriteAllowed()
+        && legalMaintenanceCompletionFieldsUnchanged();
+      // Deletion goes through the existing authenticated admin endpoint.
+      allow delete: if false;
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("equipment", equipmentId);
+      allow create: if canCreateServiceTenantDoc();
+      allow update: if canUpdateServiceTenantDoc();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /equipmentInspections/{inspectionId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("equipmentInspections", inspectionId);
+      allow create: if canCreateServiceTenantDoc()
+        && optionalOperationalParent(request.resource.data, "equipmentDocId", "equipment")
+        && operationalWorkshopReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc()
+        && optionalOperationalParent(request.resource.data, "equipmentDocId", "equipment")
+        && operationalWorkshopReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /maintenance/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("maintenance", docId);
+      allow create: if canCreateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /maintenanceJobs/{jobId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("maintenanceJobs", jobId);
+      allow create: if canCreateAnyWorkspaceTenantDoc() && operationalVehicleReferencesSafe()
+        && optionalOperationalParent(request.resource.data, "assetId", request.resource.data.get("assetKind", "vehicle") == "equipment" ? "equipment" : "vehicles");
+      allow update: if canUpdateAnyWorkspaceTenantDoc() && operationalVehicleReferencesSafe()
+        && optionalOperationalParent(request.resource.data, "assetId", request.resource.data.get("assetKind", "vehicle") == "equipment" ? "equipment" : "vehicles");
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /workshopRequests/{requestId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow create: if canCreateAnyWorkspaceTenantDoc()
+        && request.resource.data.companyId == currentUserCompanyId()
+        && request.resource.data.keys().hasOnly([
+          "companyId", "assetKind", "assetId", "assetLabel", "workType", "description",
+          "priority", "dueDate", "status", "requestedByUid", "requestedByName",
+          "createdAt", "updatedAt", "formCollection", "formRecordId", "completedAt", "completedBy"
+        ])
+        && request.resource.data.requestedByUid == request.auth.uid
+        && request.resource.data.status == "open"
+        && request.resource.data.formCollection == ""
+        && request.resource.data.formRecordId == ""
+        && request.resource.data.completedAt == ""
+        && request.resource.data.completedBy == ""
+        && request.resource.data.description is string
+        && request.resource.data.description.size() > 0
+        && request.resource.data.assetId is string
+        && request.resource.data.assetId.size() > 0
+        && request.resource.data.priority in ["low", "normal", "high"]
+        && ((request.resource.data.assetKind == "equipment" && request.resource.data.workType == "equipment_inspection")
+          || (request.resource.data.assetKind == "vehicle" && request.resource.data.workType in ["full_service", "minor_service", "general_repair", "vehicle_check", "mot_precheck"]))
+        && ((request.resource.data.assetKind == "vehicle"
+          && exists(/databases/$(database)/documents/vehicles/$(request.resource.data.assetId))
+          && get(/databases/$(database)/documents/vehicles/$(request.resource.data.assetId)).data.companyId == request.resource.data.companyId)
+          || (request.resource.data.assetKind == "equipment"
+          && exists(/databases/$(database)/documents/equipment/$(request.resource.data.assetId))
+          && get(/databases/$(database)/documents/equipment/$(request.resource.data.assetId)).data.companyId == request.resource.data.companyId));
+      allow update: if hasServiceAccess()
+        && resource.data.companyId == currentUserCompanyId()
+        && request.resource.data.companyId == currentUserCompanyId()
+        && existingDocBelongsToCurrentCompany()
+        && incomingDocBelongsToCurrentCompany()
+        && (resource.data.status == "open" || (resource.data.status == "completed"
+          && resource.data.formCollection == request.resource.data.formCollection
+          && resource.data.formRecordId == request.resource.data.formRecordId
+          && resource.data.completedBy == request.resource.data.completedBy))
+        && request.resource.data.status == "completed"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status", "formCollection", "formRecordId", "completedAt", "completedBy", "updatedAt"
+        ])
+        && request.resource.data.completedBy is string
+        && request.resource.data.completedBy.size() > 0
+        && request.resource.data.completedAt is string
+        && request.resource.data.formRecordId is string
+        && request.resource.data.formRecordId.size() > 0
+        && ((resource.data.workType in ["full_service", "minor_service", "general_repair"] && request.resource.data.formCollection == "serviceRecords")
+          || (resource.data.workType == "vehicle_check" && request.resource.data.formCollection == "workshopVehicleChecks")
+          || (resource.data.workType == "equipment_inspection" && request.resource.data.formCollection == "equipmentInspections")
+          || (resource.data.workType == "mot_precheck" && request.resource.data.formCollection == "motPreChecks"))
+        && exists(/databases/$(database)/documents/$(request.resource.data.formCollection)/$(request.resource.data.formRecordId))
+        && companyMatchesCurrentUser(get(/databases/$(database)/documents/$(request.resource.data.formCollection)/$(request.resource.data.formRecordId)).data.get("companyId", ""))
+        && get(/databases/$(database)/documents/$(request.resource.data.formCollection)/$(request.resource.data.formRecordId)).data.workshopRequestId == requestId
+        && get(/databases/$(database)/documents/$(request.resource.data.formCollection)/$(request.resource.data.formRecordId)).data.workshopWorkType == resource.data.workType
+        && get(/databases/$(database)/documents/$(request.resource.data.formCollection)/$(request.resource.data.formRecordId)).data.signedBy == request.resource.data.completedBy
+        && ((resource.data.assetKind == "equipment"
+          && get(/databases/$(database)/documents/$(request.resource.data.formCollection)/$(request.resource.data.formRecordId)).data.equipmentDocId == resource.data.assetId)
+          || (resource.data.assetKind == "vehicle"
+          && get(/databases/$(database)/documents/$(request.resource.data.formCollection)/$(request.resource.data.formRecordId)).data.vehicleId == resource.data.assetId));
+      allow delete: if false;
+    }
+
+    match /workshopVehicleChecks/{checkId} {
+      allow read: if canReadServiceTenantDoc();
+      allow create: if canCreateServiceTenantDoc()
+        && request.resource.data.companyId == currentUserCompanyId()
+        && request.resource.data.workshopRequestId == checkId
+        && request.resource.data.signedBy is string
+        && request.resource.data.signedBy.size() > 0
+        && operationalVehicleReferencesSafe() && operationalWorkshopReferencesSafe();
+      allow update: if hasServiceAccess()
+        && resource.data.companyId == currentUserCompanyId()
+        && request.resource.data == resource.data && incomingDocBelongsToCurrentCompany()
+        && operationalVehicleReferencesSafe() && operationalWorkshopReferencesSafe();
+      allow delete: if false;
+    }
+
+    match /maintenanceBookings/{bookingId} {
+      allow read: if canReadStrictTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("maintenanceBookings", bookingId);
+      // Legal maintenance state transitions are executed only by the authenticated
+      // server mutation service. Admin SDK/REST service-account writes bypass rules;
+      // browser clients cannot manufacture completed, cancelled or archived records.
+      allow create, update, delete: if false;
+    }
+
+    match /maintenanceReconciliationJobs/{jobId} {
+      allow read: if hasServiceAccess() && canReadStrictTenantDoc();
+      allow create, update, delete: if false;
+    }
+
+    function ownedMobileCheckCreate() {
+      let d = request.resource.data;
+      return hasUserAccess() && companyMatchesCurrentUser(d.get("companyId", ""))
+        && d.get("recordVersion", 0) == 2 && d.get("driverUid", "") == request.auth.uid
+        && d.get("status", "") in ["draft", "submitted"]
+        && (d.status == "draft" || (d.keys().hasAll(["submittedAt", "submissionSnapshot"]) && d.submissionSnapshot is map));
+    }
+
+    function mobileCheckUpdateSafe() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return before.get("recordVersion", 0) != 2
+        || (after.get("recordVersion", 0) == 2 && after.get("driverUid", "") == before.get("driverUid", "")
+          && ((before.get("status", "") in ["draft", "submitted-copy"]
+              && before.get("driverUid", "") == request.auth.uid
+              && after.get("status", "") in ["draft", "submitted-copy"])
+            || (before.get("status", "") == "submitted" && hasServiceAccess()
+              && after.diff(before).affectedKeys().hasOnly(["items", "updatedAt"]))));
+    }
+
+    match /vehicleChecks/{docId} {
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow get: if canUseSoftware() && legacyOwnershipAllowed("vehicleChecks", docId);
+      allow create: if (canCreateServiceTenantDoc() || ownedMobileCheckCreate())
+        && operationalVehicleReferencesSafe()
+        && optionalOperationalParent(request.resource.data, "bookingId", "bookings")
+        && (request.resource.data.get("recordVersion", 0) != 2
+          || (request.resource.data.get("driverUid", "") == request.auth.uid
+            && request.resource.data.get("status", "") in ["draft", "submitted"]
+            && (request.resource.data.status == "draft"
+              || (request.resource.data.keys().hasAll(["submittedAt", "submissionSnapshot"])
+                && request.resource.data.submissionSnapshot is map))));
+      allow update: if (canUpdateServiceTenantDoc()
+          || (hasUserAccess() && companyMatchesCurrentUser(resource.data.get("companyId", ""))
+            && request.resource.data.get("companyId", "") == resource.data.get("companyId", "")
+            && resource.data.get("recordVersion", 0) == 2 && resource.data.get("driverUid", "") == request.auth.uid))
+        && operationalVehicleReferencesSafe()
+        && optionalOperationalParent(request.resource.data, "bookingId", "bookings")
+        && mobileCheckUpdateSafe();
+      allow delete: if canDeleteServiceTenantDoc() && resource.data.get("recordVersion", 0) != 2;
+    }
+
+    match /defects/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("defects", docId);
+      allow create: if canCreateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /workBookings/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("workBookings", docId);
+      allow create: if canCreateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    function unsignedInspectionDraft() {
+      return resource.data.get("signedBy", "") == "" && resource.data.get("signedAt", null) == null
+        && resource.data.get("signature", "") == "" && resource.data.get("signatureSvgPath", "") == ""
+        && !(resource.data.get("status", "") in ["complete", "completed", "Completed", "closed", "cancelled", "archived"]);
+    }
+
+    match /serviceRecords/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("serviceRecords", docId);
+      allow create: if canCreateServiceTenantDoc() && operationalVehicleReferencesSafe()
+        && operationalWorkshopReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc() && unsignedInspectionDraft() && operationalVehicleReferencesSafe()
+        && operationalWorkshopReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc() && unsignedInspectionDraft();
+    }
+
+    match /defectReports/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("defectReports", docId);
+      allow create: if canCreateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /motPreChecks/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("motPreChecks", docId);
+      allow create: if canCreateServiceTenantDoc() && operationalVehicleReferencesSafe()
+        && operationalWorkshopReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc() && operationalVehicleReferencesSafe()
+        && operationalWorkshopReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /vehiclePrepRecords/{docId} {
+      // Prep is shared between the User diary/booking modal and the Service app.
+      allow read: if canReadAnyWorkspaceTenantDoc();
+      allow create: if canUsePrepWorkspace() && incomingDocBelongsToCurrentCompany() && operationalVehicleReferencesSafe()
+        && operationalPrepEquipmentReferencesSafe(request.resource.data)
+        && (request.resource.data.keys().hasAny(["bookingEquipmentIndex", "bookingEquipmentSource"])
+          || optionalOperationalParent(request.resource.data, "bookingId", "bookings"))
+        && prepCompletionAttributionSafe(request.resource.data, {});
+      allow update: if canUsePrepWorkspace() && existingDocBelongsToCurrentCompany() && incomingDocBelongsToCurrentCompany() && operationalVehicleReferencesSafe()
+        && operationalPrepEquipmentReferencesSafe(request.resource.data)
+        && (request.resource.data.keys().hasAny(["bookingEquipmentIndex", "bookingEquipmentSource"])
+          || optionalOperationalParent(request.resource.data, "bookingId", "bookings"))
+        && prepCompletionAttributionSafe(request.resource.data, resource.data);
+      allow delete: if canDeleteAnyWorkspaceTenantDoc();
+    }
+
+    match /vehicleIssues/{docId} {
+      allow read: if canReadServiceTenantDoc()
+        || (canReadUserTenantDoc() && resource.data.get("reporterUid", "") == request.auth.uid);
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("vehicleIssues", docId);
+      allow create: if (canCreateServiceTenantDoc()
+          || (hasUserAccess() && companyMatchesCurrentUser(request.resource.data.get("companyId", ""))
+            && request.resource.data.get("reporterUid", "") == request.auth.uid
+            && request.resource.data.get("status", "") == "open"))
+        && operationalVehicleReferencesSafe()
+        && optionalOperationalParent(request.resource.data, "equipmentDocId", "equipment");
+      allow update: if canUpdateServiceTenantDoc() && operationalVehicleReferencesSafe()
+        && optionalOperationalParent(request.resource.data, "equipmentDocId", "equipment");
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /vehicleUsageNotes/{docId} {
+      allow read: if canReadServiceTenantDoc();
+      allow get: if hasServiceAccess() && legacyOwnershipAllowed("vehicleUsageNotes", docId);
+      allow create: if canCreateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow update: if canUpdateServiceTenantDoc() && operationalVehicleReferencesSafe();
+      allow delete: if canDeleteServiceTenantDoc();
+    }
+
+    match /hsRegister/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /hsCheckRecords/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /ppeIssueRecords/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /employeeTrainingRecords/{docId} {
+      allow read: if canReadUserTenantDoc();
+      allow create: if canCreateUserTenantDoc();
+      allow update: if canUpdateUserTenantDoc();
+      allow delete: if canDeleteUserTenantDoc();
+    }
+
+    match /settings/{docId} {
+      allow read: if (docId == "maintenanceProviders" && canUseSoftware()) || (isAdmin() && existingDocBelongsToCurrentCompany());
+      allow create: if isAdmin() && incomingDocBelongsToCurrentCompany();
+      allow update: if isAdmin() && existingDocBelongsToCurrentCompany() && incomingDocBelongsToCurrentCompany();
+      allow delete: if isAdmin() && existingDocBelongsToCurrentCompany();
+    }
+
+    match /{collection}/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

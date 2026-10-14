@@ -1,0 +1,411 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function userDocExists() {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function userData() {
+      return userDocExists() ? userDoc().data : null;
+    }
+
+    function trustedClerkSession(data) {
+      let token = request.auth.token;
+      let firebaseClaims = token.get("firebase", {});
+      let authData = data.get("auth", {});
+      let storedClerkId = data.get("clerkUserId", "");
+      let nestedClerkId = authData is map ? authData.get("clerkUserId", "") : "";
+      return firebaseClaims is map
+        && firebaseClaims.get("sign_in_provider", "") == "custom"
+        && token.get("authMethod", "") == "clerk"
+        && token.get("verifiedClerkEmail", false) == true
+        && token.get("identityLinkVersion", 0) == 2
+        && token.get("clerkUserId", "") is string
+        && token.get("clerkUserId", "").size() > 0
+        && data.get("uid", "") == request.auth.uid
+        && (storedClerkId == "" && nestedClerkId == ""
+          || storedClerkId == token.get("clerkUserId", "")
+          || nestedClerkId == token.get("clerkUserId", ""))
+        && token.get("identityCompanyId", "") == data.get("companyId", "")
+        && (data.get("employeeId", "") == ""
+          || token.get("identityEmployeeId", "") == data.get("employeeId", ""));
+    }
+
+    function mobilePasswordAccessAllowed(data) {
+      let token = request.auth.token;
+      let firebaseClaims = token.get("firebase", {});
+      return (data.get("appPasswordSetupRequired", false) != true
+          && !data.keys().hasAny(["appPasswordSessionAfter"]))
+        || trustedClerkSession(data)
+        || (data.get("appPasswordSetupRequired", false) != true
+          && firebaseClaims is map
+          && firebaseClaims.get("sign_in_provider", "") == "password"
+          && token.get("auth_time", 0) > data.appPasswordSessionAfter);
+    }
+
+    function isActiveUserData(data) {
+      return data != null
+        && data.get("isEnabled", false) == true
+        && data.get("active", true) != false
+        && data.get("disabled", false) != true
+        && data.get("appDisabled", false) != true
+        && data.get("archived", false) != true
+        && data.get("isArchived", false) != true
+        && mobilePasswordAccessAllowed(data);
+    }
+
+    function isPlatformAdminData(data) {
+      return data.get("role", "") in [
+        "platformAdmin",
+        "platformadmin",
+        "platform admin",
+        "Platform Admin",
+        "superAdmin",
+        "superadmin",
+        "super admin",
+        "Super Admin"
+      ];
+    }
+
+    function isAdminData(data) {
+      return isPlatformAdminData(data)
+        || data.get("role", "") in [
+          "admin",
+          "Admin",
+          "companyAdmin",
+          "companyadmin",
+          "company admin",
+          "Company Admin"
+        ];
+    }
+
+    function hasWorkspaceAccessData(data, workspace) {
+      let access = data.get("appAccess", {});
+      return isAdminData(data)
+        || (
+          access is map
+          && access.get(workspace, false) == true
+        );
+    }
+
+    function isNotDisabled() {
+      return isSignedIn() && isActiveUserData(userData());
+    }
+
+    function isPlatformAdmin() {
+      let data = userData();
+      return isSignedIn()
+        && isActiveUserData(data)
+        && isPlatformAdminData(data);
+    }
+
+    function isAdmin() {
+      let data = userData();
+      return isSignedIn()
+        && isActiveUserData(data)
+        && isAdminData(data);
+    }
+
+    function isFinanceReviewerData(data) {
+      return isAdminData(data)
+        || data.get("role", "") in [
+          "finance",
+          "Finance",
+          "financeManager",
+          "finance manager",
+          "Finance Manager"
+        ]
+        || data.get("financeAccess", false) == true;
+    }
+
+    function isFinanceReviewer() {
+      let data = userData();
+      return isSignedIn()
+        && isActiveUserData(data)
+        && isFinanceReviewerData(data);
+    }
+
+    function canUseSoftware() {
+      return isNotDisabled();
+    }
+
+    function canAccessCompany(companyId) {
+      let data = userData();
+      return isSignedIn()
+        && isActiveUserData(data)
+        && (
+          isPlatformAdminData(data)
+          || (
+            data.get("companyId", "") is string
+            && data.get("companyId", "").size() > 0
+            && data.get("companyId", "") == companyId
+          )
+        );
+    }
+
+    function hasUserAccess() {
+      let data = userData();
+      return isSignedIn()
+        && isActiveUserData(data)
+        && hasWorkspaceAccessData(data, "user");
+    }
+
+    function hasServiceAccess() {
+      let data = userData();
+      return isSignedIn()
+        && isActiveUserData(data)
+        && hasWorkspaceAccessData(data, "service");
+    }
+
+    function isSafeFileSize(maxBytes) {
+      return request.resource.size != null && request.resource.size <= maxBytes;
+    }
+
+    function isSafeMimeType(allowed) {
+      return request.resource.contentType != null
+        && request.resource.contentType.matches(allowed);
+    }
+
+    match /profilePhotos/{uid}/{allPaths=**} {
+      allow read: if canUseSoftware();
+      allow write: if canUseSoftware()
+        && (request.auth.uid == uid || isAdmin())
+        && isSafeFileSize(10 * 1024 * 1024)
+        && isSafeMimeType('image/.*');
+    }
+
+    match /companies/{companyId}/profilePhotos/{uid}/{allPaths=**} {
+      allow read: if canAccessCompany(companyId);
+      allow write: if canAccessCompany(companyId)
+        && (request.auth.uid == uid || isAdmin())
+        && isSafeFileSize(10 * 1024 * 1024)
+        && isSafeMimeType('image/.*');
+    }
+
+    match /companies/{companyId}/booking_pdfs/{allPaths=**} {
+      allow read: if canAccessCompany(companyId) && hasUserAccess();
+      allow write: if canAccessCompany(companyId)
+        && hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf');
+    }
+
+    // Final issued invoices are written and read only by trusted server routes.
+    // Browser access is deliberately denied so immutable objects cannot be replaced.
+    match /companies/{companyId}/issued-invoices/{invoiceId}/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /companies/{companyId}/quotes/{allPaths=**} {
+      allow read: if canAccessCompany(companyId) && hasUserAccess();
+      allow write: if canAccessCompany(companyId)
+        && hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet|application/vnd\\.ms-excel|text/csv|image/.*|application/octet-stream');
+    }
+
+    match /companies/{companyId}/job_attachments/{jobId}/{allPaths=**} {
+      allow read: if canAccessCompany(companyId) && hasUserAccess();
+      allow write: if canAccessCompany(companyId)
+        && hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/.*|application/octet-stream');
+    }
+
+    // Submitted legacy evidence is retained. The API owns new final evidence.
+    match /companies/{companyId}/receipts/{uid}/{receiptId}/{fileName} {
+      allow read: if isNotDisabled()
+        && userData().get("companyId", "") == companyId
+        && (request.auth.uid == uid || isAdminData(userData()) || userData().get("financeAccess", false) == true);
+      allow write: if false;
+    }
+
+    match /companies/{companyId}/receipt-staging/{uid}/{evidenceId}/source {
+      function validReceiptUpload() {
+        let intent = firestore.get(/databases/(default)/documents/receiptUploadIntents/$(evidenceId)).data;
+        return intent.uid == uid && intent.companyId == companyId
+          && intent.status == "pending"
+          && intent.expiresAtMillis > request.time.toMillis()
+          && intent.fileSize == request.resource.size
+          && intent.fileType == request.resource.contentType;
+      }
+      allow create: if resource == null && isNotDisabled() && request.auth.uid == uid
+        && userData().get("companyId", "") == companyId
+        && isSafeFileSize(15 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/jpeg|image/png|image/webp|image/gif')
+        && validReceiptUpload();
+      allow read, update, delete: if false;
+    }
+    match /companies/{companyId}/receipt-evidence/{allPaths=**} { allow read, write: if false; }
+    match /companies/{companyId}/receipt-imports/{allPaths=**} { allow read, write: if false; }
+    match /companies/{companyId}/receipt-exports/{allPaths=**} { allow read, write: if false; }
+
+    match /companies/{companyId}/maintenance-quotes/{allPaths=**} {
+      allow read: if canAccessCompany(companyId) && hasServiceAccess();
+      allow write: if canAccessCompany(companyId)
+        && hasServiceAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/.*|application/octet-stream');
+    }
+
+    match /companies/{companyId}/vehicles/{vehicleId}/{field}/{allPaths=**} {
+      allow read: if canAccessCompany(companyId) && hasServiceAccess();
+      allow write: if canAccessCompany(companyId)
+        && hasServiceAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/.*|application/octet-stream');
+    }
+
+    match /companies/{companyId}/workshopVehicleChecks/{requestId}/{allPaths=**} {
+      allow read: if canAccessCompany(companyId) && hasServiceAccess();
+      allow write: if canAccessCompany(companyId)
+        && hasServiceAccess()
+        && isSafeFileSize(20 * 1024 * 1024)
+        && isSafeMimeType('image/.*');
+    }
+
+    match /companies/{companyId}/equipment/{equipmentId}/inspections/{fileName} {
+      allow read, delete: if canAccessCompany(companyId) && hasServiceAccess();
+      allow create: if canAccessCompany(companyId)
+        && hasServiceAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/jpeg|image/png|image/webp');
+      allow update: if false;
+    }
+
+    match /companies/{companyId}/hr/contracts/{employeeRef}/{allPaths=**} {
+      allow read: if canAccessCompany(companyId) && isAdmin();
+      allow write: if canAccessCompany(companyId)
+        && isAdmin()
+        && isSafeFileSize(25 * 1024 * 1024);
+    }
+
+    match /recce-photos/{uid}/{bookingId}/{allPaths=**} {
+      allow read: if hasUserAccess();
+      allow write: if hasUserAccess()
+        && request.auth.uid == uid
+        && isSafeFileSize(20 * 1024 * 1024)
+        && isSafeMimeType('image/.*');
+    }
+
+    // Mobile evidence writers use UID-owned paths. Preserve account and workspace gates.
+    match /expenses/{uid}/{allPaths=**} {
+      allow read: if hasUserAccess() && request.auth.uid == uid;
+      allow create, update: if hasUserAccess() && request.auth.uid == uid
+        && isSafeFileSize(10 * 1024 * 1024) && isSafeMimeType('image/.*');
+    }
+    match /vehicle-checks/{uid}/{checkId}/{allPaths=**} {
+      allow read: if hasUserAccess() && request.auth.uid == uid;
+      allow create: if hasUserAccess() && request.auth.uid == uid
+        && isSafeFileSize(20 * 1024 * 1024) && isSafeMimeType('image/.*');
+    }
+    match /uploads/photos/{uid}/{yyyy}/{mm}/{filename} {
+      allow read: if hasUserAccess() && request.auth.uid == uid;
+      allow create: if hasUserAccess() && request.auth.uid == uid
+        && isSafeFileSize(20 * 1024 * 1024) && isSafeMimeType('image/.*');
+    }
+    match /vehicleIssues/{uid}/{issueId}/{allPaths=**} {
+      allow read: if hasUserAccess() && request.auth.uid == uid;
+      allow create: if hasUserAccess() && request.auth.uid == uid
+        && isSafeFileSize(10 * 1024 * 1024) && isSafeMimeType('image/.*');
+    }
+    match /recces/{bookingId}/{dateISO}/{uid}/{allPaths=**} {
+      function ownedRecceBooking() {
+        let booking = firestore.get(/databases/(default)/documents/bookings/$(bookingId)).data;
+        return hasUserAccess() && request.auth.uid == uid
+          && booking.get("companyId", "") == userData().get("companyId", "");
+      }
+      allow read: if ownedRecceBooking();
+      allow create: if ownedRecceBooking()
+        && isSafeFileSize(20 * 1024 * 1024) && isSafeMimeType('image/.*');
+    }
+
+    /* Shared technical-library documents used by the employee mobile app. */
+    match /insurance/{allPaths=**} {
+      allow read: if hasUserAccess();
+    }
+
+    match /{folder}/{allPaths=**} {
+      allow read: if hasUserAccess() && folder == "spec sheets";
+    }
+
+    match /booking_pdfs/{allPaths=**} {
+      allow read: if hasUserAccess();
+      allow write: if hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf');
+    }
+
+    match /quotes/{allPaths=**} {
+      allow read: if hasUserAccess();
+      allow write: if hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet|application/vnd\\.ms-excel|text/csv|image/.*|application/octet-stream');
+    }
+
+    match /job_attachments/{jobId}/{allPaths=**} {
+      allow read: if hasUserAccess();
+      allow write: if hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/.*|application/octet-stream');
+    }
+
+    match /maintenance-quotes/{allPaths=**} {
+      allow read: if hasServiceAccess();
+      allow write: if hasServiceAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/.*|application/octet-stream');
+    }
+
+    match /vehicles/{vehicleId}/{field}/{allPaths=**} {
+      allow read: if hasServiceAccess();
+      allow write: if hasServiceAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/.*|application/octet-stream');
+    }
+
+    match /hr/contracts/{employeeRef}/{allPaths=**} {
+      allow read: if isAdmin();
+      allow write: if isAdmin()
+        && isSafeFileSize(25 * 1024 * 1024);
+    }
+
+    match /h-and-s/training-policy/{employeeRef}/{itemId}/{allPaths=**} {
+      allow read: if hasUserAccess();
+      allow write: if hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024);
+    }
+
+    match /h-and-s/certificates/{checkId}/{allPaths=**} {
+      allow read: if hasUserAccess();
+      allow write: if hasUserAccess()
+        && isSafeFileSize(25 * 1024 * 1024)
+        && isSafeMimeType('application/pdf|image/.*|application/octet-stream');
+    }
+
+    match /images/{allPaths=**} {
+      allow read: if isAdmin();
+      allow write: if isAdmin()
+        && isSafeFileSize(10 * 1024 * 1024)
+        && isSafeMimeType('image/.*');
+    }
+
+    match /debug/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
