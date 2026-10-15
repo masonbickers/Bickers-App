@@ -10,6 +10,8 @@ const variants={
  staff:{ok:true},admin:{ok:true,profile:{role:'admin',mobileAccessStatus:'invited'},grant:{role:'admin',allowEmptyEmployeeClaim:true},token:{identityEmployeeId:''}},
  platform:{ok:true,profile:{role:'platformAdmin'},grant:{role:'platformadmin',allowEmptyEmployeeClaim:true},token:{identityEmployeeId:''}},
  unlinkedAdmin:{ok:true,profile:{role:'admin',employeeId:''},grant:{role:'admin',employeeId:'',allowEmptyEmployeeClaim:true},token:{identityEmployeeId:''}},
+ oldStaffNoSession:{ok:true,noSession:true},oldAdminNoSession:{ok:true,noSession:true,profile:{role:'admin'},grant:{role:'admin',allowEmptyEmployeeClaim:true},token:{identityEmployeeId:''}},
+ oldNoSessionNoGrant:{noSession:true,noGrant:true},oldNoSessionSticky:{noSession:true,profile:{clerkLeaseRequired:true}},oldEmptySession:{token:{clerkSessionId:''}},oldMalformedSession:{token:{clerkSessionId:7}},
  missing:{noGrant:true},expired:{grant:{validUntilMs:1}},future:{grant:{issuedAtMs:Date.now()+60000}},oversized:{grant:{validUntilMs:start+1209600001}},
  wrongInstance:{grant:{instanceId:'other'}},wrongUid:{grant:{uid:'other'}},wrongCompany:{grant:{companyId:'other'}},wrongEmployee:{grant:{employeeId:'other'}},wrongProvider:{grant:{clerkUserId:'other'}},
  unlinkedForeignClaim:{profile:{role:'admin',employeeId:''},grant:{role:'admin',employeeId:'',allowEmptyEmployeeClaim:true},token:{identityEmployeeId:'foreign'}},
@@ -19,7 +21,7 @@ const variants={
  unrelatedCustom:{token:{authMethod:'other'}},unverified:{token:{verifiedClerkEmail:false}},
  newTokenNoLease:{token:{clerkLeaseVersion:1}},oldTokenSticky:{profile:{clerkLeaseRequired:true}},oldTokenFalse:{profile:{clerkLeaseRequired:false}},oldTokenNull:{profile:{clerkLeaseRequired:null}},oldTokenMalformed:{profile:{clerkLeaseRequired:'true'}},
  falseToken:{token:{clerkLeaseVersion:false}},nullToken:{token:{clerkLeaseVersion:null}},unknownToken:{token:{clerkLeaseVersion:2}},
- shared:{ok:true,shared:true},sharedMissingSticky:{shared:true,noSticky:true},sharedNoLease:{shared:true,noLease:true},sharedFalseToken:{shared:true,token:{clerkLeaseVersion:false}},sharedNullSticky:{shared:true,profile:{clerkLeaseRequired:null}},sharedAdminEmpty:{shared:true,profile:{role:'admin'},token:{identityEmployeeId:''}},
+ shared:{ok:true,shared:true},sharedMissingSession:{shared:true,noSession:true},sharedMissingSticky:{shared:true,noSticky:true},sharedNoLease:{shared:true,noLease:true},sharedFalseToken:{shared:true,token:{clerkLeaseVersion:false}},sharedNullSticky:{shared:true,profile:{clerkLeaseRequired:null}},sharedAdminEmpty:{shared:true,profile:{role:'admin'},token:{identityEmployeeId:''}},
 };
 function profile(uid,v){
  const p={...base,uid,legacyClerkWebAccess:{...allowance,uid,...v.grant},...v.profile};
@@ -30,7 +32,7 @@ function profile(uid,v){
  }
  return p;
 }
-function context(uid){const v=variants[uid];return env.authenticatedContext(uid,{...token,...(v.shared?{clerkLeaseVersion:1}:{}),...v.token});}
+function context(uid){const v=variants[uid];const claims={...token,...(v.shared?{clerkLeaseVersion:1}:{}),...v.token};if(v.noSession)delete claims.clerkSessionId;return env.authenticatedContext(uid,claims);}
 before(async()=>{
  env=await initializeTestEnvironment({projectId:'demo-bickers-clerk-auth',firestore:{rules:fs.readFileSync('firebase/clerk-auth/firestore.rules','utf8')},storage:{rules:fs.readFileSync('firebase/clerk-auth/storage.rules','utf8')}});
  await env.withSecurityRulesDisabled(async c=>{

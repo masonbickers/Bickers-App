@@ -30,8 +30,11 @@ service firebase.storage {
         && token.get("authMethod", "") == "clerk"
         && token.get("verifiedClerkEmail", false) == true
         && token.get("identityLinkVersion", 0) == 2
-        && token.get("clerkSessionId", "") is string
-        && token.get("clerkSessionId", "").size() > 0
+        // The baseline did not require this claim. Only the unmarked path can
+        // omit it; mobilePasswordAccessAllowed still requires its exact grant.
+        && (!token.keys().hasAny(["clerkLeaseVersion", "clerkSessionId"])
+          || (token.get("clerkSessionId", "") is string
+            && token.get("clerkSessionId", "").size() > 0))
         && token.get("clerkUserId", "") is string
         && token.get("clerkUserId", "").size() > 0
         && data.get("uid", "") == request.auth.uid
