@@ -16,8 +16,8 @@
     "firstSharedSignInAccepted": true,
     "homeRecordsAccepted": true,
     "refreshStayedSignedIn": true,
-    "activeUnexpiredLeaseCount": null,
-    "activeLeaseOwnerAndCompanyVerified": null,
+    "activeUnexpiredLeaseCount": 1,
+    "activeLeaseOwnerAndCompanyVerified": true,
     "mobilePilotPlatform": "ios",
     "stickyLeaseActivated": true,
     "firebaseCredentialRetired": false,
@@ -25,9 +25,15 @@
       "activeUnexpiredLeaseCount": 1,
       "activeLeaseOwnerAndCompanyVerified": true
     },
-    "postRecoveryLeaseReadbackPending": true,
+    "postRecoveryLeaseReadbackPending": false,
     "postResetFreshPasswordSignInAccepted": true,
-    "postResetHomeAccepted": true
+    "postResetHomeAccepted": true,
+    "postRecoveryReadbackAtUtc": "2026-10-15T11:53:38.763Z",
+    "postRecoveryCanonicalAndEmployeeLinksMatch": true,
+    "postRecoveryResetRequirementPending": false,
+    "originalPrivateJournalAvailable": false,
+    "readOnlyReconciliationAvailable": true,
+    "reconciliationIsOriginalInverseJournal": false
   },
   "mobileSource": {
     "commit": "40d7b7ec366bdac96bc1444c578085c5aa12bc97",
@@ -116,7 +122,13 @@
     "realSessionRevocationAccepted": false,
     "recoveryFocusedCasesPassed": 33,
     "recoveryBuildAndScopedLintPassed": true,
-    "recoveryAcceptedAtUtc": "2026-10-15T11:46:05Z"
+    "recoveryAcceptedAtUtc": "2026-10-15T11:46:05Z",
+    "realSessionEndedLifecycleAccepted": true,
+    "realLifecycleRequestSuccessCount": 2,
+    "realRecoveryConfirmationStatus": 200,
+    "postRecoveryOldSessionLeaseInactive": true,
+    "postRecoveryOldSessionMirrorGrantsAccess": false,
+    "postRecoveryReadbackAtUtc": "2026-10-15T11:53:38.763Z"
   },
   "rollback": {
     "priorFirestoreRuleset": "96ec8e22-b663-401f-9347-ddad0e1be603",
@@ -145,7 +157,7 @@
   ],
   "pending": [
     "Owner iPhone device registration, signed pilot build and physical-device acceptance",
-    "Post-recovery canonical/lease readback and deliberate server-side session revocation acceptance",
+    "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
     "Restore/reconcile temporary private owner/transition journals before further migration writes; prior temporary copies are no longer present"
