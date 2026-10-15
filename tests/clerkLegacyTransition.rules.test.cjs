@@ -57,3 +57,11 @@ test('staff and administrators cannot manufacture, modify or delete transition p
 test('shared and transitional sessions retain the existing Storage user-plus-booking read budget',async()=>{
  for(const uid of ['staff','admin','shared'])await assertSucceeds(s.uploadBytes(s.ref(context(uid).storage(),`recces/booking/2026-10-15/${uid}/location/photo.jpg`),Buffer.from('fixture'),{contentType:'image/jpeg'}));
 });
+test('existing and shared sessions can query tenant dashboard collections',async()=>{
+ for(const uid of ['staff','admin','platform','shared']){
+  const db=context(uid).firestore();
+  for(const name of ['bookings','employees','vehicles','notes','maintenanceBookings','maintenanceJobs','serviceRecords','holidays']){
+   await assertSucceeds(f.getDocs(f.query(f.collection(db,name),f.where('companyId','==','company'))));
+  }
+ }
+});
