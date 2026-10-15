@@ -11,6 +11,12 @@ test('the production pilot bridge is restricted to the pilot build profile', () 
   assert.doesNotThrow(() => requireClerkReleaseConfig(pilot, config));
   for (const patch of [{ EAS_BUILD_PROFILE: 'production' }, { EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE: 'primary' }, { EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN: 'https://booking.bickers.co.uk' }]) assert.throws(() => requireClerkReleaseConfig({ ...pilot, ...patch }, config));
 });
+test('local EAS configuration resolves before cloud profile metadata exists, while workers require it', () => {
+  const local = { ...production, EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE: 'pilot', EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN: 'https://pilot.bickers.co.uk' };
+  assert.doesNotThrow(() => requireClerkReleaseConfig(local, config));
+  assert.throws(() => requireClerkReleaseConfig({ ...local, EAS_BUILD: 'true' }, config));
+  assert.doesNotThrow(() => requireClerkReleaseConfig({ ...local, EAS_BUILD: 'true', EAS_BUILD_PROFILE: 'clerk-pilot' }, config));
+});
 test('Clerk native releases require both registered identifiers, native plugins and a separate runtime', () => {
   assert.doesNotThrow(() => requireClerkReleaseConfig(production, config));
   for (const patch of [{ ios: {} }, { android: {} }, { plugins: [] }, { runtimeVersion: '5.0.12' }]) assert.throws(() => requireClerkReleaseConfig(production, { ...config, ...patch }));
