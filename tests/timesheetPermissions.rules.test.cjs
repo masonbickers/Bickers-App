@@ -14,7 +14,7 @@ before(async()=>{
   await setDoc(doc(db,'employees','employee-crew'),{companyId:'bickers-action',userCode:'CREW'});
   await setDoc(doc(db,'employees','employee-other'),{companyId:'bickers-action',userCode:'OTHER'});
   await setDoc(doc(db,'users','fresh'),{uid:'fresh',mobileAccessStatus:'active',companyId:'bickers-action',employeeId:'employee-crew',isEnabled:true,role:'user',appAccess:{user:true},appPasswordSessionAfter:50});
-  await setDoc(doc(db,'users','clerk'),{uid:'clerk',companyId:'bickers-action',employeeId:'employee-crew',isEnabled:true,role:'user',appAccess:{user:true},appPasswordSetupRequired:true,clerkUserId:'clerk-id',clerkSessionLeases:{'session-id':{uid:'clerk',companyId:'bickers-action',clerkUserId:'clerk-id',clerkSessionId:'session-id',sessionCreatedAt:100,status:'active',validUntilMs:Date.now()+300000}}});
+  await setDoc(doc(db,'users','clerk'),{uid:'clerk',companyId:'bickers-action',employeeId:'employee-crew',isEnabled:true,role:'user',appAccess:{user:true},appPasswordSetupRequired:true,clerkUserId:'clerk-id',clerkLeaseRequired:true,clerkSessionLeases:{'session-id':{uid:'clerk',companyId:'bickers-action',clerkUserId:'clerk-id',clerkSessionId:'session-id',sessionCreatedAt:100,status:'active',validUntilMs:Date.now()+300000}}});
   await setDoc(doc(db,'timesheets','CREW_2026-09-28'),legacy);
   await setDoc(doc(db,'timesheets','CREW_2026-09-14'),{...legacy,weekStart:'2026-09-14'});
   await setDoc(doc(db,'timesheets','CREW_2026-09-21'),{...legacy,weekStart:'2026-09-21',companyId:'foreign'});
@@ -53,6 +53,6 @@ test('legacy access stays denied to other staff, disabled users and invalid sess
 test('fresh recovered password and trusted web sessions can save legacy weeks',async()=>{
  const fresh=dbFor('fresh');
  await assertSucceeds(updateDoc(doc(fresh,'timesheets','CREW_2026-09-28'),{notes:'Fresh password session'}));
- const web=env.authenticatedContext('clerk',{firebase:{sign_in_provider:'custom'},auth_time:100,clerkSessionId:'session-id',authMethod:'clerk',verifiedClerkEmail:true,identityLinkVersion:2,clerkUserId:'clerk-id',identityCompanyId:'bickers-action',identityEmployeeId:'employee-crew'}).firestore();
+ const web=env.authenticatedContext('clerk',{firebase:{sign_in_provider:'custom'},auth_time:100,clerkSessionId:'session-id',authMethod:'clerk',verifiedClerkEmail:true,identityLinkVersion:2,clerkLeaseVersion:1,clerkUserId:'clerk-id',identityCompanyId:'bickers-action',identityEmployeeId:'employee-crew'}).firestore();
  await assertSucceeds(updateDoc(doc(web,'timesheets','CREW_2026-09-28'),{notes:'Trusted web session'}));
 });

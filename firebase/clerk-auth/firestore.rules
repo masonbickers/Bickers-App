@@ -26,7 +26,7 @@ service cloud.firestore {
         && data.get("isArchived", false) != true;
     }
 
-    function trustedClerkSession(userData) {
+    function trustedClerkSession(userData, legacyEmptyEmployee) {
       let token = request.auth.token;
       let firebaseClaims = token.get("firebase", {});
       let authData = userData.get("auth", {});
@@ -45,8 +45,35 @@ service cloud.firestore {
         && (storedClerkId in ["", null] || storedClerkId == token.get("clerkUserId", ""))
         && (nestedClerkId in ["", null] || nestedClerkId == token.get("clerkUserId", ""))
         && token.get("identityCompanyId", "") == userData.get("companyId", "")
-        && (userData.get("employeeId", "") == ""
-          || token.get("identityEmployeeId", "") == userData.get("employeeId", ""));
+        && token.get("identityEmployeeId", null) is string
+        && (token.get("identityEmployeeId", "") == userData.get("employeeId", "")
+          || legacyEmptyEmployee && token.get("identityEmployeeId", "") == "");
+    }
+
+    // Explicit, server-owned compatibility for the reconciled development cohort.
+    // New tokens and a profile that has ever activated shared auth cannot use it.
+    function legacyClerkWebAllowed(data, grant) {
+      let token = request.auth.token;
+      let role = data.get("role", "");
+      let normalizedRole = role is string ? role.lower() : "";
+      let issued = grant is map ? grant.get("issuedAtMs", 0) : 0;
+      let expires = grant is map ? grant.get("validUntilMs", 0) : 0;
+      return !token.keys().hasAny(["clerkLeaseVersion"])
+        && !data.keys().hasAny(["clerkLeaseRequired"])
+        && !data.keys().hasAny(["clerkSessionLeases"])
+        && data.get("authMigrationState", "") != "clerk-only"
+        && grant is map && grant.get("version", 0) == 1
+        && grant.get("instanceId", "") == "ins_3GUkXKRF1LLr0E5Z5OS7LeHJO34"
+        && grant.get("uid", "") == request.auth.uid
+        && grant.get("clerkUserId", "") == token.get("clerkUserId", "")
+        && grant.get("companyId", "") == data.get("companyId", "")
+        && grant.get("employeeId", null) == data.get("employeeId", "")
+        && role is string && grant.get("role", "") == normalizedRole
+        && grant.get("allowEmptyEmployeeClaim", null) is bool
+        && grant.get("allowEmptyEmployeeClaim", false) == (normalizedRole in ["admin", "platformadmin"])
+        && issued is int && issued > 0 && expires is int && expires > issued
+        && expires - issued <= 1209600000
+        && issued <= request.time.toMillis() && request.time.toMillis() < expires;
     }
 
     function directSessionAllowed(data) {
@@ -86,10 +113,14 @@ service cloud.firestore {
       let firebaseClaims = token.get("firebase", {});
       let appCutoff = data.get("appPasswordSessionAfter", 0);
       let reset = data.get("firebasePasswordResetAfter", null);
+      let legacyGrant = data.get("legacyClerkWebAccess", {});
       return directSessionAllowed(data)
-        && ((trustedClerkSession(data)
-            && data.get("clerkPasswordResetAfter", null) == null
-            && clerkLeaseAllowed(data))
+        && ((trustedClerkSession(data, !token.keys().hasAny(["clerkLeaseVersion"])
+              && legacyGrant is map && legacyGrant.get("allowEmptyEmployeeClaim", false) == true)
+            && ((token.get("clerkLeaseVersion", 0) == 1
+                && data.get("clerkLeaseRequired", false) == true && clerkLeaseAllowed(data))
+              || legacyClerkWebAllowed(data, legacyGrant))
+            && data.get("clerkPasswordResetAfter", null) == null)
           || (firebaseClaims is map
             && firebaseClaims.get("sign_in_provider", "") == "password"
             && data.get("authMigrationState", "") != "clerk-only"

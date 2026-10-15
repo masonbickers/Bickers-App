@@ -15,7 +15,7 @@ const variants = {
 before(async()=>{
  env=await initializeTestEnvironment({projectId:process.env.SECURITY_TEST_PROJECT_ID || 'demo-bickers-security-remediation',firestore:{rules:fs.readFileSync(process.env.SECURITY_FIRESTORE_RULES || 'firebase/security-remediation-2026-10-14/firestore.rules','utf8')},storage:{rules:fs.readFileSync(process.env.SECURITY_STORAGE_RULES || 'firebase/security-remediation-2026-10-14/storage.rules','utf8')}});
  await env.withSecurityRulesDisabled(async c=>{
-  for(const [uid,patch] of Object.entries(variants)) await f.setDoc(f.doc(c.firestore(),'users',uid),{...base,uid,...patch,...(patch.clerkUserId?{clerkSessionLeases:{'session-id':{uid,companyId:'bickers-action',clerkUserId:'clerk-id',clerkSessionId:'session-id',sessionCreatedAt:100,status:'active',validUntilMs:Date.now()+300000}}}:{})});
+  for(const [uid,patch] of Object.entries(variants)) await f.setDoc(f.doc(c.firestore(),'users',uid),{...base,uid,...patch,...(patch.clerkUserId?{clerkLeaseRequired:true,clerkSessionLeases:{'session-id':{uid,companyId:'bickers-action',clerkUserId:'clerk-id',clerkSessionId:'session-id',sessionCreatedAt:100,status:'active',validUntilMs:Date.now()+300000}}}:{})});
   await f.setDoc(f.doc(c.firestore(),'employees','employee-crew'),{companyId:'bickers-action',authUid:'crew',userCode:'CREW',mobileAccess:{status:'active'}});
   await f.setDoc(f.doc(c.firestore(),'bookings','security-session'),{companyId:'bickers-action'});
   await s.uploadBytes(s.ref(c.storage(),'companies/bickers-action/quotes/security-session.pdf'),Buffer.from('fixture'),{contentType:'application/pdf'});
@@ -23,7 +23,7 @@ before(async()=>{
 });
 after(async()=>env?.cleanup());
 const claims = { firebase:{sign_in_provider:'password'}, auth_time:100 };
-const clerkClaims = { firebase:{sign_in_provider:'custom'},auth_time:100,authMethod:'clerk',verifiedClerkEmail:true,identityLinkVersion:2,clerkUserId:'clerk-id',clerkSessionId:'session-id',identityCompanyId:'bickers-action',identityEmployeeId:'employee-crew' };
+const clerkClaims = { firebase:{sign_in_provider:'custom'},auth_time:100,authMethod:'clerk',verifiedClerkEmail:true,identityLinkVersion:2,clerkLeaseVersion:1,clerkUserId:'clerk-id',clerkSessionId:'session-id',identityCompanyId:'bickers-action',identityEmployeeId:'employee-crew' };
 async function businessAccess(uid, token=claims, permitted=false) {
  const c=env.authenticatedContext(uid,token), check=permitted?assertSucceeds:assertFails;
  await check(f.getDoc(f.doc(c.firestore(),'bookings','security-session')));

@@ -2,8 +2,8 @@ const {test,before,after} = require('node:test');
 const fs = require('node:fs');
 const {initializeTestEnvironment,assertSucceeds,assertFails,firestore:f,storage:s} = require('./helpers/securityRulesRuntime.cjs');
 let env;
-const profile = { uid:'staff',companyId:'company',employeeId:'emp',isEnabled:true,role:'user',appAccess:{user:true,service:true},mobileAccessStatus:'active',clerkUserId:'clerk',auth:{clerkUserId:'clerk'} };
-const claims = {firebase:{sign_in_provider:'custom'},auth_time:100,authMethod:'clerk',verifiedClerkEmail:true,identityLinkVersion:2,clerkUserId:'clerk',clerkSessionId:'session',identityCompanyId:'company',identityEmployeeId:'emp'};
+const profile = { clerkLeaseRequired:true, uid:'staff',companyId:'company',employeeId:'emp',isEnabled:true,role:'user',appAccess:{user:true,service:true},mobileAccessStatus:'active',clerkUserId:'clerk',auth:{clerkUserId:'clerk'} };
+const claims = {firebase:{sign_in_provider:'custom'},auth_time:100,authMethod:'clerk',verifiedClerkEmail:true,identityLinkVersion:2,clerkLeaseVersion:1,clerkUserId:'clerk',clerkSessionId:'session',identityCompanyId:'company',identityEmployeeId:'emp'};
 const lease = uid => ({uid,companyId:'company',clerkUserId:'clerk',clerkSessionId:'session',status:'active',sessionCreatedAt:100,validUntilMs:Date.now()+240000});
 const variants = {
   valid:{},missing:{clerkSessionLeases:{}},expired:{lease:{validUntilMs:1}},revoked:{lease:{status:'inactive'}},
