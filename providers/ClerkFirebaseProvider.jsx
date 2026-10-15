@@ -45,6 +45,7 @@ function readConfig() {
     environment: process.env.EXPO_PUBLIC_APP_ENV,
     publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
     origin: process.env.EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN || 'https://booking.bickers.co.uk',
+    deploymentRole: process.env.EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE || 'primary',
   });
 }
 
@@ -148,7 +149,7 @@ function ClerkRuntime({ config, children }) {
 
   const openRecovery = async () => {
     const url = process.env.EXPO_PUBLIC_APP_ENV === 'production'
-      ? 'https://auth.bickers.co.uk/reset-password' : process.env.EXPO_PUBLIC_CLERK_RECOVERY_URL;
+      ? `https://auth.bickers.co.uk/reset-password${process.env.EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE === 'pilot' ? '?deployment=pilot' : ''}` : process.env.EXPO_PUBLIC_CLERK_RECOVERY_URL;
     if (!url) throw new Error('Password recovery is not configured for this development build.');
     await Linking.openURL(url);
   };

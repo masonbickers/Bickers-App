@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClerkResetClient, confirmClerkRecovery } from '../firebase/auth-page/clerk-client.mjs';
+test('pilot recovery proof goes only to the fixed production pilot service', async () => {
+  let target;
+  await confirmClerkRecovery('proof', async url => { target = url; return { ok: true, json: async () => ({ completed: true }) }; }, 'pilot');
+  assert.equal(target, 'https://pilot.bickers.co.uk/api/security/clerk-recovery');
+  await assert.rejects(confirmClerkRecovery('proof', async () => { throw new Error('must not send'); }, 'https://evil.test'));
+});
 
 function fixture() {
   const calls = []; const signIn = { id: 'attempt', status: 'needs_first_factor', firstFactorVerification: { status: 'unverified', strategy: 'reset_password_email_code' },

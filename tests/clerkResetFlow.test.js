@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClerkResetFlow } from '../firebase/auth-page/clerk-reset-flow.mjs';
+test('pilot recovery returns to the pilot website only after provider and server confirmation', async () => {
+  const { deps, calls } = setup();
+  const flow = createClerkResetFlow({ ...deps, deployment: 'pilot' });
+  flow.go('web'); assert.equal(calls.length, 0);
+  await flow.request('staff@example.test'); await flow.verify('123456'); await flow.reset('New-password-123!', 'New-password-123!');
+  flow.go('web'); assert.deepEqual(calls.at(-1), ['redirect', 'https://pilot.bickers.co.uk']);
+  assert.throws(() => createClerkResetFlow({ ...deps, deployment: 'https://evil.test' }));
+});
 function setup() {
  const calls=[];const state={stage:'request',resetVerified:false,passwordSaved:false,factors:[]};
  const client={resume:async()=>({...state}),requestReset:async email=>{calls.push(['request',email]);state.stage='code';},

@@ -2,8 +2,10 @@
 function requireClerkReleaseConfig(environment = {}, config = {}) {
   if (environment.EXPO_PUBLIC_CLERK_SHARED_AUTH_ENABLED !== '1') return { enabled: false };
   const production = environment.EXPO_PUBLIC_APP_ENV === 'production';
+  const role = environment.EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE || 'primary';
   const key = environment.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
   const errors = [];
+  if (!['primary', 'pilot'].includes(role) || role === 'pilot' && (!production || environment.EAS_BUILD_PROFILE !== 'clerk-pilot')) errors.push('The Clerk pilot is restricted to its production pilot build profile.');
   if (production ? key !== 'pk_live_Y2xlcmsuYmlja2Vycy5jby51ayQ' : !key.startsWith('pk_test_')) errors.push('Clerk credentials must match the build environment.');
   if (config.ios?.bundleIdentifier !== 'com.bickers.booking' || config.android?.package !== 'com.bickers.bickersapp' || config.scheme !== 'bickersapp') errors.push('Both registered native identifiers and the app scheme are required.');
   if (config.runtimeVersion?.policy !== 'appVersion') errors.push('Clerk native modules require a separate app-version runtime.');
@@ -13,7 +15,7 @@ function requireClerkReleaseConfig(environment = {}, config = {}) {
   try {
     const url = new URL(bridge);
     if (url.username || url.password || url.pathname !== '/' || url.search || url.hash ||
-      (production ? url.origin !== 'https://booking.bickers.co.uk' : !['http:', 'https:'].includes(url.protocol))) throw new Error();
+      (production ? url.origin !== (role === 'pilot' ? 'https://pilot.bickers.co.uk' : 'https://booking.bickers.co.uk') : !['http:', 'https:'].includes(url.protocol))) throw new Error();
   } catch { errors.push('The account bridge is not valid for this build.'); }
   if (!production && !environment.EXPO_PUBLIC_CLERK_RECOVERY_URL) errors.push('Development builds require a separate recovery page.');
   if (errors.length) throw new Error(`Invalid native authentication configuration:\n- ${errors.join('\n- ')}`);

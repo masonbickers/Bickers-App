@@ -1,9 +1,10 @@
-const destinations = Object.freeze({ web: 'https://booking.bickers.co.uk', app: 'bickersapp://login' });
 const errorCode = error => error?.errors?.[0]?.code || error?.code || '';
 const unknownAccount = new Set(['form_identifier_not_found', 'resource_not_found', 'form_identifier_not_exists', 'user_locked', 'user_banned']);
 const initial = () => ({ view: 'request', busy: false, error: '', email: '', factors: [], factor: '' });
 
-export function createClerkResetFlow({ client, finishRecovery, redirect = () => {}, onState = () => {} }) {
+export function createClerkResetFlow({ client, finishRecovery, redirect = () => {}, onState = () => {}, deployment = 'primary' }) {
+  if (!['primary', 'pilot'].includes(deployment)) throw new Error('invalid-recovery-deployment');
+  const destinations = Object.freeze({ web: deployment === 'pilot' ? 'https://pilot.bickers.co.uk' : 'https://booking.bickers.co.uk', app: 'bickersapp://login' });
   let state = initial();
   let canVerify = false;
   let resetVerified = false;

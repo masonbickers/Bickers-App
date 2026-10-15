@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createClerkBridgeClient, clerkClientConfig } from '../lib/clerkBridgeClient.js';
+test('a production pilot can use only its fixed bridge and requires an explicit pilot role', () => {
+  const pilot = { enabled: true, environment: 'production', publishableKey: 'pk_live_fixture', origin: 'https://pilot.bickers.co.uk', deploymentRole: 'pilot' };
+  assert.equal(clerkClientConfig(pilot).origin, 'https://pilot.bickers.co.uk');
+  for (const patch of [{ deploymentRole: 'primary' }, { deploymentRole: 'other' }, { origin: 'https://booking.bickers.co.uk' }, { environment: 'staging' }]) assert.throws(() => clerkClientConfig({ ...pilot, ...patch }));
+});
 test('release clients require live keys and the trusted HTTPS bridge',()=>{
   for(const patch of [{publishableKey:'pk_test_fixture'},{origin:'http://booking.bickers.co.uk'},{origin:'https://other.example'},{origin:'https://booking.bickers.co.uk/path'}]) assert.throws(()=>clerkClientConfig({enabled:true,environment:'production',publishableKey:'pk_live_fixture',origin:'https://booking.bickers.co.uk',...patch}));
   assert.equal(clerkClientConfig({enabled:false}).enabled,false);

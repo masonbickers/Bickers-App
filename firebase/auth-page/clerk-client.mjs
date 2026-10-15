@@ -75,12 +75,14 @@ export function createClerkResetClient({ publishableKey, loadClerk } = {}) {
   };
 }
 
-export async function confirmClerkRecovery(token, fetchImpl = fetch) {
+export async function confirmClerkRecovery(token, fetchImpl = fetch, deployment = 'primary') {
   if (!token) throw new Error('missing-recovery-session');
+  if (!['primary', 'pilot'].includes(deployment)) throw new Error('invalid-recovery-deployment');
+  const origin = deployment === 'pilot' ? 'https://pilot.bickers.co.uk' : 'https://booking.bickers.co.uk';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetchImpl('https://booking.bickers.co.uk/api/security/clerk-recovery', {
+    const response = await fetchImpl(`${origin}/api/security/clerk-recovery`, {
       method: 'POST', credentials: 'omit', cache: 'no-store', redirect: 'error', signal: controller.signal,
       headers: { Authorization: `Bearer ${token}` },
     });

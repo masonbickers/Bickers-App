@@ -6,6 +6,11 @@ const { requireClerkReleaseConfig } = createRequire(import.meta.url)('../scripts
 const config = JSON.parse(readFileSync(new URL('../app.json', import.meta.url))).expo;
 const production = { EXPO_PUBLIC_CLERK_SHARED_AUTH_ENABLED: '1', EXPO_PUBLIC_APP_ENV: 'production',
   EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_live_Y2xlcmsuYmlja2Vycy5jby51ayQ', EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN: 'https://booking.bickers.co.uk' };
+test('the production pilot bridge is restricted to the pilot build profile', () => {
+  const pilot = { ...production, EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE: 'pilot', EAS_BUILD_PROFILE: 'clerk-pilot', EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN: 'https://pilot.bickers.co.uk' };
+  assert.doesNotThrow(() => requireClerkReleaseConfig(pilot, config));
+  for (const patch of [{ EAS_BUILD_PROFILE: 'production' }, { EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE: 'primary' }, { EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN: 'https://booking.bickers.co.uk' }]) assert.throws(() => requireClerkReleaseConfig({ ...pilot, ...patch }, config));
+});
 test('Clerk native releases require both registered identifiers, native plugins and a separate runtime', () => {
   assert.doesNotThrow(() => requireClerkReleaseConfig(production, config));
   for (const patch of [{ ios: {} }, { android: {} }, { plugins: [] }, { runtimeVersion: '5.0.12' }]) assert.throws(() => requireClerkReleaseConfig(production, { ...config, ...patch }));
