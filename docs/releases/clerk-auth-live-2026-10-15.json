@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-15T13:44:38.079Z",
+  "verifiedAtUtc": "2026-10-15T13:57:26.421Z",
   "scope": "isolated production authentication pilot; one approved owner account imported, no broad client cutover",
   "ownerPilot": {
     "productionImportedCount": 1,
-    "privateJournalComplete": true,
+    "privateJournalComplete": false,
     "canonicalUidRetained": true,
     "companyAndEmployeeLinksRetained": true,
     "existingMobileAndWebApprovalsVerified": true,
@@ -74,8 +74,11 @@
       "readbackVerified": true,
       "appliedAtUtc": "2026-10-15T13:42:48.795Z",
       "originalMigrationJournalRestored": false,
-      "liveDeviceHistoryRetestPending": true
-    }
+      "liveDeviceHistoryRetestPending": false,
+      "ownerConfirmedEntriesAppear": true,
+      "ownerConfirmationRecordedAtUtc": "2026-10-15T13:57:26.421Z"
+    },
+    "originalImportJournalWasCompleteAtImport": true
   },
   "mobileSource": {
     "commit": "9066a29d38b7c51d1968b5ef5bcc31e052ab861c",
@@ -212,7 +215,7 @@
   ],
   "pending": [
     "Re-test signed native persistence and recurring session verification failure; compare owner holiday entries after approved 16-link repair. Prior Home/HTTP200 transport success did not prove complete/correct holiday history.",
-    "Install reviewed next owner-only build for duplicate-spinner correction, restoration-race correction, honest incomplete-history states and pilot-only failure references; native rendering remains pending.",
+    "Install verified build94 and run owner persistence, session-failure reference and holiday checks. Source corrections and artifact checks do not prove native rendering or recurring-error resolution.",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
@@ -286,7 +289,8 @@
       "pilotDiagnosticReferencesPrepared": true,
       "newBuildInstalled": false
     },
-    "holidayCorrectnessAccepted": false
+    "holidayCorrectnessAccepted": false,
+    "ownerHolidayEntriesAcceptedAfterLinkRepair": true
   },
   "iosPilotHistory": [
     {
@@ -338,5 +342,37 @@
       "ownerHomeEvidenceAtLocal": "2026-10-15T13:33:35+01:00",
       "nativeDataRefreshAccepted": false
     }
-  ]
+  ],
+  "iosPilotNextBuild": {
+    "buildId": "8c049c3d-c9ee-40b3-8296-45dd2c677727",
+    "sourceCommit": "052810c21b46f3da98d4d7b0c5432de6705222c0",
+    "status": "FINISHED",
+    "version": "5.0.14",
+    "buildNumber": "94",
+    "distribution": "INTERNAL",
+    "profile": "clerk-pilot",
+    "channel": "clerk-pilot",
+    "runtimeVersion": "5.0.14",
+    "createdAtUtc": "2026-10-15T13:45:37.523Z",
+    "completedAtUtc": "2026-10-15T13:56:03.815Z",
+    "artifactInspectionPassed": true,
+    "artifactChecksPassed": 13,
+    "artifactInspectedAtUtc": "2026-10-15T13:56:27.977864+00:00",
+    "artifactSha256": "7420719a03445bfe5530120021448196f22ebe22ad3473e5c74dfdf2b15a203f",
+    "artifactBytes": 16286583,
+    "ownerOnlyDeviceProfileVerified": true,
+    "signingProfileExpiresAtUtc": "2026-11-03T10:42:51Z",
+    "newDiagnosticCopyPresentInBundle": true,
+    "incompleteHistoryBalanceCopyPresentInBundle": true,
+    "deviceAcceptancePending": true,
+    "physicalInstallationConfirmed": false,
+    "nativeDarkAppearanceVerified": false,
+    "appStoreSubmitted": false,
+    "otaPublished": false,
+    "includedBuildCreditUsedUsd": 6,
+    "includedBuildCreditLimitUsd": 45,
+    "thisBuildIncludedCreditUsd": 2,
+    "reportedExtraBuildCostUsd": 0,
+    "installPage": "https://expo.dev/accounts/masonbickers/projects/bickers-app/builds/8c049c3d-c9ee-40b3-8296-45dd2c677727"
+  }
 }
