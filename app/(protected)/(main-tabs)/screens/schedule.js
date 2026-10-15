@@ -1,3 +1,4 @@
+import FooterPageSkeleton from "../../../../components/FooterPageSkeleton";
 import { getCardSurfaceStyle } from "../../../../lib/design/cardSurface";
 import {
   routeColors,
@@ -725,6 +726,7 @@ export default function SchedulePage() {
                 }
                 onRetry={onRefresh}
                 loadingLabel="Loading schedule…"
+                loadingContent={<FooterPageSkeleton page="schedule" />}
               >
                 {renderDetails(selectedDay, dayInfo, colors)}
               </AsyncContentState>

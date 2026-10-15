@@ -120,3 +120,68 @@ for (const [operation, expectedPhase] of [['getClerkToken', 'clerk-token'], ['ex
     assert.deepEqual(state.ready, []);
   });
 }
+
+test('backgrounding cancels an in-flight exchange and resume starts a fresh guarded exchange', async () => {
+  const { state, deps } = fixture();
+  const requests = [];
+  deps.exchangeToken = ({ signal }) => new Promise((resolve, reject) => {
+    requests.push({ signal, resolve });
+    signal.addEventListener('abort', () => reject(Object.assign(Error('cancelled'), { name: 'AbortError' })), { once: true });
+  });
+  const coordinator = createClerkSessionCoordinator(deps);
+  const pending = coordinator.reconcile();
+  await Promise.resolve();
+  assert.equal(requests.length, 1);
+  coordinator.suspend();
+  assert.equal(requests[0].signal.aborted, true);
+  await pending;
+  assert.deepEqual(state.blocked, []);
+  await coordinator.reconcile();
+  assert.equal(requests.length, 1);
+  const resumed = coordinator.resume();
+  await Promise.resolve();
+  assert.equal(requests.length, 2);
+  requests[1].resolve({ customToken: 'custom_1', uid: 'uid_1', leaseExpiresAt: 1300000 });
+  await resumed;
+  assert.equal(coordinator.isReady(), true);
+  assert.deepEqual(state.ready, ['uid_1']);
+});
+
+test('background renewal timers cannot send requests or retain readiness; foreground still rechecks access', async () => {
+  const { state, deps } = fixture(); let requests = 0;
+  const exchange = deps.exchangeToken;
+  deps.exchangeToken = async args => { requests++; return exchange(args); };
+  const coordinator = createClerkSessionCoordinator(deps);
+  await coordinator.reconcile();
+  const scheduled = state.scheduled.at(-1);
+  coordinator.suspend();
+  assert.equal(scheduled.cancelled, true);
+  assert.equal(coordinator.isReady(), false);
+  scheduled.callback();
+  await Promise.resolve();
+  assert.equal(requests, 1);
+  await coordinator.resume();
+  assert.equal(requests, 2);
+  assert.equal(coordinator.isReady(), true);
+});
+
+test('a suspended request that ignores abort cannot publish a late timeout after successful resume', async () => {
+  const { state, deps } = fixture();
+  let failOld; let requests = 0;
+  deps.exchangeToken = async () => {
+    requests++;
+    if (requests === 1) return new Promise((_resolve, reject) => { failOld = reject; });
+    return { customToken: 'custom_1', uid: 'uid_1', leaseExpiresAt: 1300000 };
+  };
+  const coordinator = createClerkSessionCoordinator(deps);
+  const old = coordinator.reconcile();
+  await Promise.resolve();
+  coordinator.suspend();
+  await coordinator.resume();
+  assert.equal(coordinator.isReady(), true);
+  failOld(Object.assign(Error('late deadline'), { name: 'AbortError' }));
+  await old;
+  assert.equal(coordinator.isReady(), true);
+  assert.deepEqual(state.blocked, []);
+  assert.deepEqual(state.ready, ['uid_1']);
+});

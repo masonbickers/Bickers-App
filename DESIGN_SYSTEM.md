@@ -294,6 +294,8 @@ states and action behaviour continue to come from the shared component.
 - iOS controls use native `expo-glass-effect` only when both Liquid Glass and
   effect API availability checks succeed. Native effects receive their own
   corner shape; clipping a wrapper does not configure UIKit refraction.
+- Native glass buttons use the system rim alone; shared button borders remain
+  transparent while glass is active. Focus outlines and fallback borders remain.
 - Earlier iOS uses native chrome blur when transparency is allowed. Reduce
   Transparency uses an opaque elevated surface. Android uses opaque tonal
   surfaces, native ripple feedback, and existing Android elevation tokens.

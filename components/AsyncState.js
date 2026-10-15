@@ -156,6 +156,7 @@ export function AsyncContentState({
   hasContent = false,
   onRetry,
   loadingLabel = "Loading…",
+  loadingContent,
   initialErrorTitle = "Couldn’t load this data",
   initialErrorMessage = "Please check your connection and try again.",
   refreshErrorMessage = "Couldn’t refresh. Showing the last saved data.",
@@ -168,7 +169,7 @@ export function AsyncContentState({
   const retrying = resources.some((resource) => resource?.isRefreshing === true);
 
   if (state === ASYNC_STATES.INITIAL_LOADING) {
-    return <LoadingState label={loadingLabel} compact={compact} style={style} />;
+    return loadingContent ?? <LoadingState label={loadingLabel} compact={compact} style={style} />;
   }
   if (state === ASYNC_STATES.INITIAL_ERROR) {
     return (

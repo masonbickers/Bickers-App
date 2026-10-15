@@ -30,3 +30,29 @@ test('native bridge timeout uses the installed React Native abort-controller and
     fetchImpl:async(_url,options)=>{assert.ok(options.signal instanceof native.AbortSignal);return {ok:true,json:async()=>({uid:'staff'})};}});
   assert.equal((await client({clerkToken:'proof'})).uid,'staff');assert.equal(cancelled,true);
 });
+
+test('background cancellation aborts native fetch and removes the request deadline', async () => {
+  const native = createRequire(import.meta.url)('abort-controller');
+  const parent = new native.AbortController();
+  let cancelled = false; let requestSignal;
+  const client = createClerkBridgeClient({ origin: 'https://pilot.bickers.co.uk', AbortControllerImpl: native.AbortController,
+    schedule: () => 'deadline', cancel: timer => { assert.equal(timer, 'deadline'); cancelled = true; },
+    fetchImpl: async (_url, options) => {
+      requestSignal = options.signal;
+      return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(Error('cancelled'), { name: 'AbortError' }))));
+    },
+  });
+  const pending = client({ clerkToken: 'proof', signal: parent.signal });
+  parent.abort();
+  await assert.rejects(pending, error => error.name === 'AbortError');
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(cancelled, true);
+});
+
+test('a request already cancelled by the lifecycle never starts a network request or deadline', async () => {
+  const parent = new AbortController(); parent.abort();
+  const client = createClerkBridgeClient({ origin: 'https://pilot.bickers.co.uk',
+    schedule: () => assert.fail('no timer for an obsolete request'), fetchImpl: () => assert.fail('no obsolete network request'),
+  });
+  await assert.rejects(client({ clerkToken: 'proof', signal: parent.signal }), error => error.name === 'AbortError');
+});

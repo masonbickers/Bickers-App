@@ -25,6 +25,7 @@ import {
   initialWindowMetrics,
 } from "react-native-safe-area-context";
 import Footer from "../components/app/footer";
+import { LoadingState } from "../components/AsyncState";
 import ServiceFooter from "../components/app/service-footer"; // 👈 NEW
 import RootSurface from "../components/layout/RootSurface";
 import SecureAccount from "../components/SecureAccount";
@@ -151,7 +152,11 @@ function ShellInner() {
   const isServiceRoute = pathname?.startsWith("/service");
   const standaloneServiceFooter = Platform.OS === "ios" && pathname === "/service/equipment-list";
   const shellBackground = colors.background;
-  const showFooter = appChrome.tabsVisible && !visualTestRoute && !securityTransition;
+  // Route replacement runs after render. Keep the Slot mounted, but do not
+  // expose Login (or protected content) while identity restoration is pending.
+  const holdSessionRoute = !visualTestRoute && !securityTransition &&
+    (loading || (isAuthed ? inAuthGroup : !inAuthGroup));
+  const showFooter = appChrome.tabsVisible && !visualTestRoute && !securityTransition && !holdSessionRoute;
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -411,7 +416,17 @@ function ShellInner() {
         backgroundColor={shellBackground}
       />
 
-      <View testID={visualTestRoute ? "visual-test-shell" : undefined} style={{ flex: 1 }}>
+      {holdSessionRoute && (
+        <View style={{ flex: 1, justifyContent: "center", padding: t.spacing.xl }}>
+          <LoadingState label="Checking account access…" />
+        </View>
+      )}
+      <View
+        testID={visualTestRoute ? "visual-test-shell" : undefined}
+        accessibilityElementsHidden={holdSessionRoute}
+        importantForAccessibility={holdSessionRoute ? "no-hide-descendants" : "auto"}
+        style={{ flex: 1, display: holdSessionRoute ? "none" : "flex" }}
+      >
         {securityTransition?.kind === "temporaryPassword" ? <TemporaryPasswordSetup /> : securityTransition ? <SecureAccount /> : <Slot />}
       </View>
 

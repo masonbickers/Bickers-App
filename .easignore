@@ -27,3 +27,5 @@ output/
 *.mobileprovision
 
 .firebase/
+
+.glass-preview.jsx

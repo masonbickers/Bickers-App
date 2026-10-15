@@ -1,3 +1,4 @@
+import FooterPageSkeleton from "../../../components/FooterPageSkeleton";
 import { isCurrentEmployeeRecord } from "../../../lib/employeeVisibility";
 import { getCardSurfaceStyle } from "../../../lib/design/cardSurface";
 import { routeColors } from "../../../lib/design/routePresentation/main-tabs-contacts-js.js";
@@ -154,6 +155,7 @@ export function ContactsView({ contactsResource, onCall, onMessage }) {
         hasContent: employees.length > 0,
         onRetry: contactsResource.refresh,
         loadingLabel: "Loading contacts…",
+        loadingContent: <FooterPageSkeleton page="contacts" />,
         empty: {
           when: employees.length === 0,
           icon: "user-x",

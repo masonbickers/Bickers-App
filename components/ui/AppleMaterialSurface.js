@@ -5,6 +5,12 @@ import { Platform, StyleSheet, View } from "react-native";
 import { designTokens as t } from "../../lib/design/tokens";
 import { useTheme } from "../../providers/ThemeProvider";
 
+// Native glass owns its rim; callers must not add a second decorative outline.
+export function isNativeGlassAvailable(reduceTransparency = false) {
+  return Platform.OS === "ios" && !reduceTransparency &&
+    isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+}
+
 /**
  * Shared, non-interactive material background. The parent Pressable retains
  * ownership of focus, pointer input, accessibility, shape, and clipping.
@@ -12,7 +18,7 @@ import { useTheme } from "../../providers/ThemeProvider";
 export default function AppleMaterialSurface({ selected = false, pressed = false, tintColor, fallbackColor, style }) {
   const { colors, colorScheme, reduceTransparency } = useTheme();
   const usesIOSMaterial = Platform.OS === "ios" && !reduceTransparency;
-  const usesLiquidGlass = usesIOSMaterial && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+  const usesLiquidGlass = isNativeGlassAvailable(reduceTransparency);
   const solidColor = fallbackColor || (Platform.OS === "android" || (Platform.OS === "ios" && reduceTransparency)
     ? colors.surfaceElevated
     : colors.glassSurface);

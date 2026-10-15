@@ -37,7 +37,7 @@ import { formatISODateDDMMYYYY } from "../../lib/dateFormat";
 import { createActionLock, getServiceStatusColors, getStatusColors } from "../../lib/design/semantics";
 import { useTheme } from "../../providers/ThemeProvider";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
-import AppleMaterialSurface from "./AppleMaterialSurface";
+import AppleMaterialSurface, { isNativeGlassAvailable } from "./AppleMaterialSurface";
 
 function useResolvedDensity(density) {
   const pathname = usePathname();
@@ -653,7 +653,7 @@ export function AppButton({
   style,
   layoutStyle,
 }) {
-  const { colors } = useTheme();
+  const { colors, reduceTransparency } = useTheme();
   const { fontScale } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
   const resolvedDensity = useResolvedDensity(density);
@@ -703,7 +703,7 @@ export function AppButton({
         },
         {
           backgroundColor: tone.background,
-          borderColor: tone.border,
+          borderColor: tone.material && isNativeGlassAvailable(reduceTransparency) ? "transparent" : tone.border,
           opacity: inactive ? t.opacity.disabled : pressed ? t.opacity.pressed : 1,
         },
         !inactive && pressed && !reduceMotion && { transform: [{ scale: t.materials.pressScale }] },
@@ -749,7 +749,7 @@ export function IconButton({
   style,
   layoutStyle,
 }) {
-  const { colors } = useTheme();
+  const { colors, reduceTransparency } = useTheme();
   const reduceMotion = useReducedMotion();
   const { busy, inactive, run } = useAsyncAction({ action: onPress, loading, disabled, onError });
   const foreground = tone === "danger" ? colors.danger : selected ? colors.accent : colors.text;
@@ -778,7 +778,7 @@ export function IconButton({
         styles.iconButton,
         {
           backgroundColor: background,
-          borderColor: border,
+          borderColor: tone !== "danger" && isNativeGlassAvailable(reduceTransparency) ? "transparent" : border,
           opacity: resolveInteractionState({ selected, disabled: inactive, pressed, focused }).opacity,
         },
         !inactive && pressed && !reduceMotion && { transform: [{ scale: t.materials.pressScale }] },

@@ -1,3 +1,4 @@
+import FooterPageSkeleton from "../../../components/FooterPageSkeleton";
 import { getCardSurfaceStyle } from "../../../lib/design/cardSurface";
 import { routeColors } from "../../../lib/design/routePresentation/main-tabs-me-js.js";
 import { styles } from "../../../lib/design/screenStyles/main-tabs-me-js.js";
@@ -771,6 +772,7 @@ export default function MePage() {
         hasContent: hasPersonalContent,
         onRetry: onRefresh,
         loadingLabel: "Loading your profile…",
+        loadingContent: <FooterPageSkeleton page="me" />,
       }}
     >
           {/* Compact profile identity */}

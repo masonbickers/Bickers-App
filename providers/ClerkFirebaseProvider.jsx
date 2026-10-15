@@ -121,13 +121,18 @@ function ClerkRuntime({ config, children }) {
     });
     coordinator.current = next;
     const foreground = AppState.addEventListener('change', state => {
-      if (state === 'active' && sdk.current.isLoaded) void next.reconcile({ requireFresh: true });
+      if (state === 'active') {
+        if (sdk.current.isLoaded) void next.resume();
+      } else {
+        next.suspend();
+      }
     });
     // Covers older logout entry points while their shared session is active.
     const unsubscribe = onIdTokenChanged(auth, firebaseUser => {
       if (!firebaseUser && !auth.currentUser && next.isReady()) void next.signOut();
     });
-    if (sdk.current.isLoaded) void next.reconcile();
+    if (AppState.currentState && AppState.currentState !== "active") next.suspend();
+    else if (sdk.current.isLoaded) void next.reconcile();
     return () => {
       mounted.current = false;
       permit.current = null;
@@ -141,7 +146,10 @@ function ClerkRuntime({ config, children }) {
   }, [clerk, config.origin, config.deploymentRole, identity]); // SDK methods/identity are read from the current ref.
 
   useEffect(() => {
-    if (isLoaded) void coordinator.current?.reconcile();
+    if (isLoaded) {
+      if (AppState.currentState && AppState.currentState !== "active") coordinator.current?.suspend();
+      else void coordinator.current?.resume();
+    }
   }, [isLoaded, isSignedIn, userId, sessionId]);
 
   useEffect(() => {

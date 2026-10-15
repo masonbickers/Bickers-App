@@ -8,7 +8,7 @@ import { getContrastRatio } from "../lib/design/contrast.js";
 import { normalizeSelectOptions, filterSelectOptions } from "../lib/design/controlState.js";
 const require = createRequire(import.meta.url), ts = require("typescript");
 const flatten = (style) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
-function load(platform) {
+function load(platform, glass = false) {
   const jsx = (type, props) => ({ type, props });
   const native = { Platform: { OS: platform, select: (values) => values[platform] || values.default }, StyleSheet: { create: (value) => value, flatten, hairlineWidth: 0.5 }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }), Pressable: "Pressable", View: "View", Text: "Text", TextInput: "TextInput", Switch: "Switch", Animated: {}, Easing: {} };
   const compile = (path, modules) => {
@@ -35,7 +35,7 @@ function load(platform) {
     "../../lib/design/pageDensity": { resolvePageDensity: (_pathname, density) => density || "compact" },
     "../../lib/dateFormat": {}, "../../lib/design/semantics": { createActionLock, getServiceStatusColors, getStatusColors },
     "../../providers/ThemeProvider": { useTheme: () => ({ colors, colorScheme: "light" }) },
-    "../../hooks/useReducedMotion": { useReducedMotion: () => true }, "./AppleMaterialSurface": { default: "AppleMaterialSurface" },
+    "../../hooks/useReducedMotion": { useReducedMotion: () => true }, "./AppleMaterialSurface": { default: "AppleMaterialSurface", isNativeGlassAvailable: () => platform === "ios" && glass },
   });
   return { controls, tokens, cardSurface, loadTimeChoice: () => compile("components/ui/TimeChoiceRow.js", { "react/jsx-runtime": { jsx, jsxs: jsx }, "react-native": native, "react-native-vector-icons/Feather": { default: "Icon" }, "../../providers/ThemeProvider": { useTheme: () => ({ colors }) }, "../../lib/design/cardSurface": cardSurface,
     "../../lib/design/tokens": { designTokens: tokens }, "./AppPrimitives": controls }).default, loadDocumentSurface: () => compile("components/ui/DocumentSurface.js", { "react/jsx-runtime": { jsx, jsxs: jsx }, "react-native": native, "../../providers/ThemeProvider": { useTheme: () => ({ colors }) } }).default };
@@ -440,5 +440,15 @@ test("the shared card surface supports both themes and semantic exceptions witho
     assert.equal(cardSurface.getCardSurfaceStyle(colors, { borderTone: "danger" }).borderColor, "red");
     assert.equal(cardSurface.getCardSurfaceStyle(colors, { borderAccent: "orange" }).borderColor, "orange");
     assert.equal(cardSurface.getCardSurfaceStyle(colors, { inset: 17 }).borderRadius, tokens.componentRadius.card - 17);
+  }
+});
+
+ test("native glass actions use one rim and keep focus and fallback borders", () => {
+  for (const glass of [false, true]) {
+    const { controls } = load("ios", glass);
+    for (const button of [controls.AppButton({ label: "Edit", variant: "secondary" }), controls.IconButton({ icon: "settings", label: "Settings" })]) {
+      assert.equal(flatten(button.props.style({})).borderColor, glass ? "transparent" : "#CCC");
+      assert.equal(flatten(button.props.style({ focused: true })).borderWidth, 2);
+    }
   }
 });

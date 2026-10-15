@@ -1,3 +1,4 @@
+import FooterPageSkeleton from "../../../components/FooterPageSkeleton";
 import { getCardSurfaceStyle } from "../../../lib/design/cardSurface";
 import { useVehiclePrepResource } from "../../../hooks/useVehiclePrepResource";
 import { routeColors } from "../../../lib/design/routePresentation/main-tabs-job-js.js";
@@ -1098,6 +1099,7 @@ export default function JobDayScreen() {
           bookingsResource.data.length > 0 || holidaysResource.data.length > 0,
         onRetry: onRefresh,
         loadingLabel: "Loading your jobs…",
+        loadingContent: <FooterPageSkeleton page="jobs" />,
         refreshErrorMessage: "Couldn’t update schedule data · Showing saved data.",
       }}
     >
