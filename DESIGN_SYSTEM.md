@@ -260,6 +260,10 @@ states and action behaviour continue to come from the shared component.
   infer status colours in a screen.
 - Use `StateView` or `PageShell.state` for loading, empty, error, success, and
   retry UI.
+- During an explicit refresh, scrollable native `PageShell` pages use the
+  system pull-to-refresh indicator alone. Inline “Updating…” feedback remains
+  for background resource updates, static pages and web. Refresh errors retain
+  their message and Retry action in every mode.
 - Use `AppModal` and `ConfirmDialog` for editor, picker, detail, and
   confirmation overlays. Use `MediaViewerModal` for full-screen receipt and
   inspection media; media must not be forced into a dialog-shaped surface.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-15T13:19:37.054Z",
+  "verifiedAtUtc": "2026-10-15T13:44:38.079Z",
   "scope": "isolated production authentication pilot; one approved owner account imported, no broad client cutover",
   "ownerPilot": {
     "productionImportedCount": 1,
@@ -35,7 +35,7 @@
     "readOnlyReconciliationAvailable": true,
     "reconciliationIsOriginalInverseJournal": false,
     "nativeHomeOpenedOnPriorBuild": true,
-    "nativeFreshDataAccepted": true,
+    "nativeFreshDataAccepted": false,
     "employeeUserIdRepair": {
       "status": "applied-owner-live-history-accepted",
       "fields": [
@@ -60,6 +60,21 @@
       "allThreeEmployeeUidFieldsMatchCanonicalOwner": true,
       "newRepairJournalComplete": true,
       "liveHistoryAccepted": true
+    },
+    "holidayLinkRepair": {
+      "status": "applied-readback-verified",
+      "ownerApprovalReceived": true,
+      "planSha256": "7ebc95f6ac22c0be1fdccc97c0df8be36e1619f7caf8e4fdea115f563dfbab9f",
+      "year": 2026,
+      "holidayRecordsWritten": 16,
+      "fieldsChanged": [
+        "employeeId"
+      ],
+      "allOtherFieldsUnchanged": true,
+      "readbackVerified": true,
+      "appliedAtUtc": "2026-10-15T13:42:48.795Z",
+      "originalMigrationJournalRestored": false,
+      "liveDeviceHistoryRetestPending": true
     }
   },
   "mobileSource": {
@@ -142,7 +157,7 @@
   "verification": {
     "ruleCasesPassed": 115,
     "ruleCasesFailed": 0,
-    "mobileUnitPassed": 746,
+    "mobileUnitPassed": 796,
     "mobileUnitExpectedSkipped": 1,
     "webUnitPassed": 2175,
     "webUnitExistingSkipped": 53,
@@ -165,8 +180,10 @@
     "iosArtifactChecksPassed": 13,
     "nativeSdkBoundaryCasesPassed": 27,
     "nativeHistoryRuntimeCasesPassed": 3,
-    "ownerNativeHomeAndHistoryAccepted": true,
-    "nativePersistenceAndSignOutAccepted": false
+    "ownerNativeHomeAndHistoryAccepted": false,
+    "nativePersistenceAndSignOutAccepted": false,
+    "ownerNativeHistoryTransportAccepted": true,
+    "ownerHolidayCorrectnessAccepted": false
   },
   "rollback": {
     "priorFirestoreRuleset": "96ec8e22-b663-401f-9347-ddad0e1be603",
@@ -194,7 +211,8 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Complete owner native foreground/relaunch persistence, sign-out, disabled-account and account-switch/outbox acceptance; Home and live holiday/timesheet refresh are accepted on build93.",
+    "Re-test signed native persistence and recurring session verification failure; compare owner holiday entries after approved 16-link repair. Prior Home/HTTP200 transport success did not prove complete/correct holiday history.",
+    "Install reviewed next owner-only build for duplicate-spinner correction, restoration-race correction, honest incomplete-history states and pilot-only failure references; native rendering remains pending.",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
@@ -226,7 +244,7 @@
     "deviceAcceptancePending": true,
     "physicalInstallationConfirmed": true,
     "ownerConfirmedHomeOpened": true,
-    "nativeDataRefreshAccepted": true,
+    "nativeDataRefreshAccepted": false,
     "artifactInspectionPassed": true,
     "artifactChecksPassed": 13,
     "artifactInspectedAtUtc": "2026-10-15T12:52:03.183212+00:00",
@@ -258,7 +276,17 @@
       "lastObservedAtUtc": "2026-10-15T13:16:10.024Z",
       "deploymentId": "dpl_EKXmq2Sf7F1zqrNMH5PCzM7zDHNR",
       "scope": "pilot runtime entries include middleware and serverless; entry count is not a unique-request count"
-    }
+    },
+    "reopenVerification": {
+      "status": "failed-on-build93",
+      "ownerReports": "Slow startup, login flash then Home; recurring session verification error; holiday records missing",
+      "screenshotAtLocal": "2026-10-15T14:25:02+01:00",
+      "localFlashRegressionFixed": true,
+      "recurringServiceFailureRootCauseConfirmed": false,
+      "pilotDiagnosticReferencesPrepared": true,
+      "newBuildInstalled": false
+    },
+    "holidayCorrectnessAccepted": false
   },
   "iosPilotHistory": [
     {

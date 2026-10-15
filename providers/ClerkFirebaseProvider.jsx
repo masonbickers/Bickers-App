@@ -1,3 +1,4 @@
+import { describeClerkSessionFailure, withClerkAuthPhase } from '../lib/clerkSessionFailure';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ClerkProvider, useAuth as useClerkAuth, useClerk, useSignIn, useUser } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
@@ -99,8 +100,8 @@ function ClerkRuntime({ config, children }) {
       exchangeToken: createClerkBridgeClient({ origin: config.origin }),
       getFirebaseUid: () => auth.currentUser?.uid || null,
       signInFirebase: async customToken => {
-        const credential = await signInWithCustomToken(auth, customToken);
-        await syncEmployeeAuth({ idToken: await credential.user.getIdToken(true) });
+        const credential = await withClerkAuthPhase('firebase-sign-in', () => signInWithCustomToken(auth, customToken));
+        await withClerkAuthPhase('employee-sync', async () => syncEmployeeAuth({ idToken: await credential.user.getIdToken(true) }));
       },
       signOutFirebase: () => signOut(auth),
       signOutClerk: options => clerk.signOut(options),
@@ -111,7 +112,7 @@ function ClerkRuntime({ config, children }) {
         await clearAccountSessionCache(AsyncStorage);
       },
       onPending: () => invalidate(),
-      onBlocked: error => invalidate([401, 403].includes(error?.status) ? error.message : 'Your app session could not be verified. Check your connection or sign in again.'),
+      onBlocked: (error, context) => invalidate(describeClerkSessionFailure(error, { ...context, diagnostic: config.deploymentRole === 'pilot' })),
       onSignedOut: () => invalidate(),
       onReady: response => {
         permit.current = { ...identity(), uid: response.uid };
@@ -137,7 +138,7 @@ function ClerkRuntime({ config, children }) {
       void flow.current.cancel();
       if (coordinator.current === next) coordinator.current = null;
     };
-  }, [clerk, config.origin, identity]); // SDK methods/identity are read from the current ref.
+  }, [clerk, config.origin, config.deploymentRole, identity]); // SDK methods/identity are read from the current ref.
 
   useEffect(() => {
     if (isLoaded) void coordinator.current?.reconcile();

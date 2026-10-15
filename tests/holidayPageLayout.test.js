@@ -21,7 +21,7 @@ test("holiday page presents leave as an adaptive mobile table", () => {
 });
 
 test("negative allowance has one full warning and a concise balance chip", () => {
-  assert.match(holidaySource, /getHolidayBalancePresentation\(allowanceBalance\)/);
+  assert.match(holidaySource, /getHolidayBalancePresentation\(allowanceBalance, \{ historyComplete: historyReliable \}\)/);
   assert.match(holidaySource, /\{balanceLabel\}/);
   assert.doesNotMatch(holidaySource, /`Overbooked:/);
   assert.match(holidaySource, /Paid leave exceeds allowance by/);

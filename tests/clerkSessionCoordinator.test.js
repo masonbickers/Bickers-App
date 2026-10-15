@@ -104,3 +104,19 @@ test('a suspended renewal timer cannot leave an expired lease ready',async()=>{
   const {state,coordinator}=fixture();await coordinator.reconcile();state.now=1300000;
   assert.equal(coordinator.isReady(),false);
 });
+
+for (const [operation, expectedPhase] of [['getClerkToken', 'clerk-token'], ['exchangeToken', 'bridge'], ['clearAccountCache', 'account-cache'], ['signInFirebase', 'firebase-sign-in']]) {
+  test(`a ${operation} failure identifies its stage without granting readiness`, async () => {
+    const { deps, state } = fixture();
+    const failure = new Error('network unavailable');
+    deps[operation] = async () => { throw failure; };
+    let observed;
+    deps.onBlocked = (error, context) => { observed = { error, phase: context.phase }; };
+    const coordinator = createClerkSessionCoordinator(deps);
+    await coordinator.reconcile();
+    assert.equal(coordinator.isReady(), false);
+    assert.equal(observed.error, failure);
+    assert.equal(observed.phase, expectedPhase);
+    assert.deepEqual(state.ready, []);
+  });
+}

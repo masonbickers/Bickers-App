@@ -289,6 +289,11 @@ export default function PageShell<ItemT = unknown>({
     );
   }
 
+  // The native control already shows progress during an explicit refresh.
+  // Keep inline feedback for background updates, static pages and web.
+  const nativeRefreshVisible = mode !== "static" &&
+    (Platform.OS === "ios" || Platform.OS === "android") &&
+    refresh?.refreshing === true;
   const refreshStatus =
     asyncState === ASYNC_STATES.REFRESH_ERROR ? (
       <ErrorState
@@ -297,7 +302,7 @@ export default function PageShell<ItemT = unknown>({
         retrying={retrying}
         compact
       />
-    ) : asyncState === ASYNC_STATES.REFRESHING ? (
+    ) : asyncState === ASYNC_STATES.REFRESHING && !nativeRefreshVisible ? (
       <RefreshingIndicator />
     ) : null;
 

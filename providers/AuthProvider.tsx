@@ -242,6 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const transitionBusy = useRef(false);
   const setTransitionBusy = (busy: boolean) => { transitionBusy.current = busy; };
   const sessionGeneration = useRef(0);
+  const verifiedClerkRevision = useRef(-1);
   const [workingTermsAcceptance, setWorkingTermsAcceptance] = useState<Record<
     string,
     any
@@ -264,6 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loadSession = useCallback(async (firebaseUser: User | null) => {
     if (transitionBusy.current) return;
     const generation = ++sessionGeneration.current;
+    const clerkRevision = clerkRef.current.revision;
     const sameAccount = () => generation === sessionGeneration.current
       && auth.currentUser?.uid === firebaseUser?.uid && !transitionBusy.current;
     const isCurrent = () => sameAccount() && (!clerkRef.current.enabled || !firebaseUser
@@ -518,7 +520,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setEmployee(null);
       setWorkingTermsAcceptance(null);
     } finally {
-      if (generation === sessionGeneration.current) setSessionReady(true);
+      if (generation === sessionGeneration.current) {
+        if (sameAccount() && clerkRevision === clerkRef.current.revision) {
+          verifiedClerkRevision.current = clerkRevision;
+        }
+        setSessionReady(true);
+      }
     }
   }, []);
 
@@ -566,8 +573,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return clerkOK && firebaseUserOK && employeeOK && tenantOK && enabledOK && mobileAccessOK && !securityTransition && !signInPending;
   }, [clerk.enabled, clerk.ready, clerk.uid, user, employee, securityTransition, signInPending]);
 
+  // A bridge onReady render precedes the employee-loading effect. The old
+  // sessionReady flag must not briefly route a restored account to login.
   const loading = !(authReady && sessionReady) || clerk.loading
-    || (clerk.enabled && !!clerk.hasClerkSession && !clerk.ready && !clerk.error);
+    || (clerk.enabled && !!clerk.hasClerkSession && !clerk.ready && !clerk.error)
+    || (clerk.enabled && clerk.ready && (!user || clerk.uid !== user.uid
+      || verifiedClerkRevision.current !== clerk.revision));
 
   return (
     <AuthCtx.Provider

@@ -18,6 +18,7 @@ import { countHolidayDays } from "../../lib/holidayRequestParity";
 import { useHolidays } from "../../hooks/useOperationalData";
 import {
   getHolidayBalancePresentation,
+  getHolidayRowBalanceLabel,
   getHolidayLeaveType,
   getVisibleHolidayHistory,
   shouldStackHolidayRows,
@@ -314,6 +315,7 @@ export default function HolidayPage() {
   const [employeeData, setEmployeeData] = useState(null);
   const { data: holidays, error: historyLoadError, withheldCount, historyComplete, refresh: refreshHolidays } = useHolidays();
   const historyError = historyLoadError?.message || ((withheldCount || !historyComplete) ? "Some historical leave needs office ownership review." : null);
+  const historyReliable = historyComplete && !historyLoadError && !withheldCount;
   const [historyExpanded, setHistoryExpanded] = useState(false);
 
   // ✅ Lock to current year only (no selector UI)
@@ -539,7 +541,7 @@ export default function HolidayPage() {
     return toListItem(
       h,
       "Balance after",
-      `${Number(projectedBalance.toFixed(1))} days`
+      getHolidayRowBalanceLabel(projectedBalance, { historyComplete: historyReliable })
     );
   });
 
@@ -547,11 +549,11 @@ export default function HolidayPage() {
   const pastItems = pastConfirmed.map((h) => {
     const { displayType } = displayTypeAndColor(h);
     if (displayType === "Paid") pastBalance -= computeDays(h, isBankHoliday);
-    return toListItem(h, "Balance after", `${Number(pastBalance.toFixed(1))} days`);
+    return toListItem(h, "Balance after", getHolidayRowBalanceLabel(pastBalance, { historyComplete: historyReliable }));
   });
 
   const { isOverbooked, balanceValue, balanceLabel } =
-    getHolidayBalancePresentation(allowanceBalance);
+    getHolidayBalancePresentation(allowanceBalance, { historyComplete: historyReliable });
   const visiblePastItems = getVisibleHolidayHistory(pastItems, historyExpanded);
   const stackHolidayRows = shouldStackHolidayRows(width, fontScale);
 
@@ -617,15 +619,15 @@ export default function HolidayPage() {
             <View style={styles.statsGrid}>
               <Stat
                 label="Paid used"
-                value={Number(pastPaidUsed.toFixed(1))}
+                value={historyReliable ? Number(pastPaidUsed.toFixed(1)) : "—"}
               />
               <Stat
                 label="Paid booked"
-                value={Number(upcomingPaidBooked.toFixed(1))}
+                value={historyReliable ? Number(upcomingPaidBooked.toFixed(1)) : "—"}
               />
               <Stat
                 label="Unpaid"
-                value={Number(unpaid.toFixed(1))}
+                value={historyReliable ? Number(unpaid.toFixed(1)) : "—"}
               />
             </View>
 
@@ -653,9 +655,9 @@ export default function HolidayPage() {
 
             <HolidayTableSection
               title="Requests"
-              count={requestedItems.length}
+              count={historyReliable ? requestedItems.length : `${requestedItems.length} verified`}
               items={requestedItems}
-              emptyMessage="No holiday requests waiting for approval."
+              emptyMessage={historyReliable ? "No holiday requests waiting for approval." : "No verified requests to display while history is reviewed."}
               colors={colors}
               stacked={stackHolidayRows}
               onCancel={(item) => cancelHoliday(item.holiday.id)}
@@ -663,18 +665,18 @@ export default function HolidayPage() {
 
             <HolidayTableSection
               title="Upcoming confirmed"
-              count={upcomingItems.length}
+              count={historyReliable ? upcomingItems.length : `${upcomingItems.length} verified`}
               items={upcomingItems}
-              emptyMessage="No upcoming confirmed holidays."
+              emptyMessage={historyReliable ? "No upcoming confirmed holidays." : "No verified upcoming holidays to display while history is reviewed."}
               colors={colors}
               stacked={stackHolidayRows}
             />
 
             <HolidayTableSection
               title="Past holidays"
-              count={pastItems.length}
+              count={historyReliable ? pastItems.length : `${pastItems.length} verified`}
               items={visiblePastItems}
-              emptyMessage={`No confirmed holidays in ${selectedYear}.`}
+              emptyMessage={historyReliable ? `No confirmed holidays in ${selectedYear}.` : "No verified past holidays to display while history is reviewed."}
               colors={colors}
               stacked={stackHolidayRows}
               muted

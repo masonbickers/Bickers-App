@@ -25,3 +25,5 @@ output/
 *.key
 *.pem
 *.mobileprovision
+
+.firebase/

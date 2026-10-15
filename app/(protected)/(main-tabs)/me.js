@@ -1225,7 +1225,20 @@ export default function MePage() {
             <View
               style={[styles.sectionPanel, getCardSurfaceStyle(colors)]}
             >
-              {myHolidays.length === 0 ? (
+              {holidaysResource.isInitialLoading ? (
+                <LoadingState label="Loading holiday history…" compact presentation="grouped" />
+              ) : !holidaysResource.historyComplete || holidaysResource.error || holidaysResource.withheldCount ? (
+                <EmptyState
+                  icon="alert-circle"
+                  title="Holiday history needs attention"
+                  message="Your balance is unavailable while historical leave is reviewed. Open Holidays for details."
+                  actionLabel="Open Holidays"
+                  onAction={() => router.push("/holidaypage")}
+                  compact
+                  presentation="plain"
+                  style={styles.holidayEmptyState}
+                />
+              ) : myHolidays.length === 0 ? (
                 <EmptyState
                   icon="umbrella"
                   title="No holiday records"

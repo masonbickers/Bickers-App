@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getHolidayBalancePresentation,
+  getHolidayRowBalanceLabel,
   getVisibleHolidayHistory,
   shouldStackHolidayRows,
   getHolidayLeaveType,
@@ -38,4 +39,22 @@ test("holiday rows stack only when compact width or larger text needs it", () =>
   assert.equal(shouldStackHolidayRows(390, 1), false);
   assert.equal(shouldStackHolidayRows(390, 1.4), true);
   assert.equal(shouldStackHolidayRows(320, 1), true);
+});
+
+test("incomplete holiday history cannot claim an available or overbooked balance", () => {
+  for (const balance of [22, 0, -12]) {
+    assert.deepEqual(getHolidayBalancePresentation(balance, { historyComplete: false }), {
+      isOverbooked: false,
+      balanceValue: null,
+      balanceLabel: "Balance: awaiting review",
+    });
+  }
+});
+
+test("verified rows cannot imply a complete balance when other leave is withheld", () => {
+  // One verified day against 22 allowance does not prove 21 available when
+  // another 18 historical days have been withheld from this response.
+  assert.equal(getHolidayRowBalanceLabel(22 - 1, { historyComplete: false }), "Awaiting review");
+  assert.equal(getHolidayRowBalanceLabel(22 - 1, { historyComplete: true }), "21 days");
+  assert.equal(getHolidayRowBalanceLabel(-0.5, { historyComplete: true }), "-0.5 days");
 });

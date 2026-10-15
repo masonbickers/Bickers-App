@@ -5,6 +5,7 @@ import { createClerkBridgeClient, clerkClientConfig } from '../lib/clerkBridgeCl
 test('a production pilot can use only its fixed bridge and requires an explicit pilot role', () => {
   const pilot = { enabled: true, environment: 'production', publishableKey: 'pk_live_fixture', origin: 'https://pilot.bickers.co.uk', deploymentRole: 'pilot' };
   assert.equal(clerkClientConfig(pilot).origin, 'https://pilot.bickers.co.uk');
+  assert.equal(clerkClientConfig(pilot).deploymentRole, 'pilot');
   for (const patch of [{ deploymentRole: 'primary' }, { deploymentRole: 'other' }, { origin: 'https://booking.bickers.co.uk' }, { environment: 'staging' }]) assert.throws(() => clerkClientConfig({ ...pilot, ...patch }));
 });
 test('release clients require live keys and the trusted HTTPS bridge',()=>{
