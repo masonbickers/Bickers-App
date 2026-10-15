@@ -156,10 +156,33 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Owner iPhone device registration, signed pilot build and physical-device acceptance",
+    "Signed iPhone pilot build completion, owner installation and physical-device acceptance",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
     "Restore/reconcile temporary private owner/transition journals before further migration writes; prior temporary copies are no longer present"
-  ]
+  ],
+  "iosPilot": {
+    "buildId": "3f3ff6a7-112e-429f-815a-8445250328e9",
+    "sourceCommit": "8240bdeb0ad695043a9fb8de3111e5cd876a1eff",
+    "status": "IN_PROGRESS",
+    "version": "5.0.14",
+    "buildNumber": "92",
+    "distribution": "INTERNAL",
+    "profile": "clerk-pilot",
+    "channel": "clerk-pilot",
+    "runtimeVersion": "5.0.14",
+    "bundleIdentifier": "com.bickers.booking",
+    "physicalDeviceBuild": true,
+    "registeredOwnerIphoneCount": 1,
+    "adHocProfileDeviceCount": 1,
+    "existingDistributionCertificateReused": true,
+    "existingAppStoreCredentialsChanged": false,
+    "signingProfileExpiresAtUtc": "2026-11-03T10:42:51Z",
+    "createdAtUtc": "2026-10-15T12:04:23.586Z",
+    "includedCreditSufficientAtSubmission": true,
+    "appStoreSubmitted": false,
+    "otaPublished": false,
+    "deviceAcceptancePending": true
+  }
 }
