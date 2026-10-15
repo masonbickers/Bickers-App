@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-15T12:52:03.183212+00:00",
+  "verifiedAtUtc": "2026-10-15T13:09:24.225790+00:00",
   "scope": "isolated production authentication pilot; one approved owner account imported, no broad client cutover",
   "ownerPilot": {
     "productionImportedCount": 1,
@@ -35,7 +35,22 @@
     "readOnlyReconciliationAvailable": true,
     "reconciliationIsOriginalInverseJournal": false,
     "nativeHomeOpenedOnPriorBuild": true,
-    "nativeFreshDataAccepted": false
+    "nativeFreshDataAccepted": false,
+    "employeeUserIdRepair": {
+      "status": "prepared-awaiting-owner-approval",
+      "fields": [
+        "userId"
+      ],
+      "strongUidFieldsMatchCanonicalOwner": true,
+      "conflictingUserIdObserved": true,
+      "employeeRecordsRead": 1,
+      "directoryEnumerated": false,
+      "planSha256": "76baed1638387d374f6119db1172c2dd87990958fec579cc6ed5ae35d3e4e9a3",
+      "independentReviewPassed": true,
+      "focusedCasesPassed": 12,
+      "accountWrites": 0,
+      "originalMigrationJournalRestored": false
+    }
   },
   "mobileSource": {
     "commit": "9066a29d38b7c51d1968b5ef5bcc31e052ab861c",
@@ -117,7 +132,7 @@
   "verification": {
     "ruleCasesPassed": 115,
     "ruleCasesFailed": 0,
-    "mobileUnitPassed": 734,
+    "mobileUnitPassed": 746,
     "mobileUnitExpectedSkipped": 1,
     "webUnitPassed": 2175,
     "webUnitExistingSkipped": 53,
@@ -167,7 +182,7 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Owner installs finished, artifact-verified build93 and verifies fresh Home/history data, refresh, and native appearance.",
+    "Owner approves reviewed single-field employee userId reconciliation, then verifies Home/Holidays/Timesheets live refresh on installed build93.",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
@@ -197,8 +212,8 @@
     "createdAtUtc": "2026-10-15T12:39:33.019Z",
     "completedAtUtc": "2026-10-15T12:49:58.668Z",
     "deviceAcceptancePending": true,
-    "physicalInstallationConfirmed": false,
-    "ownerConfirmedHomeOpened": false,
+    "physicalInstallationConfirmed": true,
+    "ownerConfirmedHomeOpened": true,
     "nativeDataRefreshAccepted": false,
     "artifactInspectionPassed": true,
     "artifactChecksPassed": 13,
@@ -212,7 +227,11 @@
     "reportedExtraBuildCostUsd": 0,
     "nativeHistoryRuntimeCasesPassed": 3,
     "independentFocusedCasesPassed": 17,
-    "fixReason": "React Native-supported private-history timeout and focused Home shared-card surface correction"
+    "fixReason": "React Native-supported private-history timeout and focused Home shared-card surface correction",
+    "privateHistoryStatus": 409,
+    "privateHistoryRequestReachedBackend": true,
+    "homeQuickActionLightAppearanceObserved": true,
+    "nativeDarkAppearanceVerified": false
   },
   "iosPilotHistory": [
     {
