@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-15T10:41:17Z",
+  "verifiedAtUtc": "2026-10-15T12:31:33.062756+00:00",
   "scope": "isolated production authentication pilot; one approved owner account imported, no broad client cutover",
   "ownerPilot": {
     "productionImportedCount": 1,
@@ -59,16 +59,21 @@
     "unchangedRuleset": "e6e05f96-e5ef-4f11-8e97-f9f197b2e82f"
   },
   "webPilot": {
-    "sourceCommit": "89f75e4a63c39d0f4ac3a5409bdf226eba62615f",
+    "sourceCommit": "a5d164fc260c9117bbc412ac3a5324754a56ebc2",
     "projectId": "prj_heoSY0CZ9PUgO3XdtptrppXodotW",
-    "deploymentId": "dpl_FNaxcoTVMxQKEGuZwqyEwFMW4CRu",
+    "deploymentId": "dpl_EKXmq2Sf7F1zqrNMH5PCzM7zDHNR",
     "domain": "pilot.bickers.co.uk",
     "loginStatus": 200,
     "unauthenticatedBridgeStatus": 401,
     "unauthenticatedBootstrapStatus": 401,
     "ownerBootstrapStatus": 200,
-    "priorDeploymentId": "dpl_H6aatj8GCfDhyQiKQYpUQ2dqAaQb",
-    "changedExistingBookingDeployment": false
+    "priorDeploymentId": "dpl_FNaxcoTVMxQKEGuZwqyEwFMW4CRu",
+    "changedExistingBookingDeployment": false,
+    "nativeVerifierFixDeployed": true,
+    "nativeVerifierTargetedCasesPassed": 27,
+    "nativeVerifierIndependentlyReviewed": true,
+    "nativeVerifierSmokeCasesPassed": 5,
+    "liveAliasVerified": true
   },
   "apiPilot": {
     "sourceCommit": "d98b5a3fc0e4472095fbf7c5f3477b6f5e248fdb",
@@ -112,7 +117,7 @@
     "ruleCasesFailed": 0,
     "mobileUnitPassed": 731,
     "mobileUnitExpectedSkipped": 1,
-    "webUnitPassed": 2166,
+    "webUnitPassed": 2175,
     "webUnitExistingSkipped": 53,
     "webBootstrapCasesPassed": 40,
     "webProductionBuildPassed": true,
@@ -130,7 +135,8 @@
     "postRecoveryOldSessionMirrorGrantsAccess": false,
     "postRecoveryReadbackAtUtc": "2026-10-15T11:53:38.763Z",
     "signedIosBuildPassed": true,
-    "iosArtifactChecksPassed": 13
+    "iosArtifactChecksPassed": 13,
+    "nativeSdkBoundaryCasesPassed": 27
   },
   "rollback": {
     "priorFirestoreRuleset": "96ec8e22-b663-401f-9347-ddad0e1be603",
@@ -158,7 +164,7 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Owner iPhone pilot installation and physical-device authentication/data/callback acceptance",
+    "Owner iPhone pilot installed; reviewed native login correction live, owner retry and Home/data/refresh/callback acceptance pending",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
@@ -194,9 +200,20 @@
     "artifactInspectedAtUtc": "2026-10-15T12:15:14.015805+00:00",
     "installPage": "https://expo.dev/accounts/masonbickers/projects/bickers-app/builds/3f3ff6a7-112e-429f-815a-8445250328e9",
     "ownerConfirmedExistingOutboxSynced": true,
-    "physicalInstallationConfirmed": false,
+    "physicalInstallationConfirmed": true,
     "includedBuildCreditUsedUsd": 2,
     "includedBuildCreditLimitUsd": 45,
-    "reportedExtraBuildCostUsd": 0
+    "reportedExtraBuildCostUsd": 0,
+    "initialNativeLoginAccepted": false,
+    "initialNativeLoginFailure": {
+      "reportedAtLocal": "2026-10-15T13:23:02+01:00",
+      "message": "Your app session could not be verified. Please retry.",
+      "bridgeStatus": 401,
+      "requestAtUtc": "2026-10-15T12:22:07.707Z",
+      "fixSourceCommit": "a5d164fc260c9117bbc412ac3a5324754a56ebc2",
+      "fixDeploymentPending": false,
+      "fixDeploymentId": "dpl_EKXmq2Sf7F1zqrNMH5PCzM7zDHNR",
+      "ownerRetryPending": true
+    }
   }
 }
