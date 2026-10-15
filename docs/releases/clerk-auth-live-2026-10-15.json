@@ -37,7 +37,7 @@
     "nativeHomeOpenedOnPriorBuild": true,
     "nativeFreshDataAccepted": false,
     "employeeUserIdRepair": {
-      "status": "prepared-awaiting-owner-approval",
+      "status": "applied-awaiting-live-history-acceptance",
       "fields": [
         "userId"
       ],
@@ -48,8 +48,17 @@
       "planSha256": "76baed1638387d374f6119db1172c2dd87990958fec579cc6ed5ae35d3e4e9a3",
       "independentReviewPassed": true,
       "focusedCasesPassed": 12,
-      "accountWrites": 0,
-      "originalMigrationJournalRestored": false
+      "accountWrites": 1,
+      "originalMigrationJournalRestored": false,
+      "ownerApprovalReceived": true,
+      "appliedAtUtc": "2026-10-15T13:12:01.800Z",
+      "employeeRecordsWritten": 1,
+      "fieldsChanged": [
+        "userId"
+      ],
+      "readbackVerified": true,
+      "allThreeEmployeeUidFieldsMatchCanonicalOwner": true,
+      "newRepairJournalComplete": true
     }
   },
   "mobileSource": {
@@ -182,7 +191,7 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Owner approves reviewed single-field employee userId reconciliation, then verifies Home/Holidays/Timesheets live refresh on installed build93.",
+    "Owner retries Home/Me/Holidays on installed build93 after the approved employee userId repair; live history/refresh acceptance pending.",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
@@ -228,10 +237,11 @@
     "nativeHistoryRuntimeCasesPassed": 3,
     "independentFocusedCasesPassed": 17,
     "fixReason": "React Native-supported private-history timeout and focused Home shared-card surface correction",
-    "privateHistoryStatus": 409,
     "privateHistoryRequestReachedBackend": true,
     "homeQuickActionLightAppearanceObserved": true,
-    "nativeDarkAppearanceVerified": false
+    "nativeDarkAppearanceVerified": false,
+    "privateHistoryStatusBeforeOwnerLinkRepair": 409,
+    "postRepairLiveHistoryCheckPending": true
   },
   "iosPilotHistory": [
     {
