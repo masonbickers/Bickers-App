@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-15T13:09:24.225790+00:00",
+  "verifiedAtUtc": "2026-10-15T13:19:37.054Z",
   "scope": "isolated production authentication pilot; one approved owner account imported, no broad client cutover",
   "ownerPilot": {
     "productionImportedCount": 1,
@@ -35,9 +35,9 @@
     "readOnlyReconciliationAvailable": true,
     "reconciliationIsOriginalInverseJournal": false,
     "nativeHomeOpenedOnPriorBuild": true,
-    "nativeFreshDataAccepted": false,
+    "nativeFreshDataAccepted": true,
     "employeeUserIdRepair": {
-      "status": "applied-awaiting-live-history-acceptance",
+      "status": "applied-owner-live-history-accepted",
       "fields": [
         "userId"
       ],
@@ -58,7 +58,8 @@
       ],
       "readbackVerified": true,
       "allThreeEmployeeUidFieldsMatchCanonicalOwner": true,
-      "newRepairJournalComplete": true
+      "newRepairJournalComplete": true,
+      "liveHistoryAccepted": true
     }
   },
   "mobileSource": {
@@ -163,7 +164,9 @@
     "signedIosBuildPassed": true,
     "iosArtifactChecksPassed": 13,
     "nativeSdkBoundaryCasesPassed": 27,
-    "nativeHistoryRuntimeCasesPassed": 3
+    "nativeHistoryRuntimeCasesPassed": 3,
+    "ownerNativeHomeAndHistoryAccepted": true,
+    "nativePersistenceAndSignOutAccepted": false
   },
   "rollback": {
     "priorFirestoreRuleset": "96ec8e22-b663-401f-9347-ddad0e1be603",
@@ -191,7 +194,7 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Owner retries Home/Me/Holidays on installed build93 after the approved employee userId repair; live history/refresh acceptance pending.",
+    "Complete owner native foreground/relaunch persistence, sign-out, disabled-account and account-switch/outbox acceptance; Home and live holiday/timesheet refresh are accepted on build93.",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
@@ -223,7 +226,7 @@
     "deviceAcceptancePending": true,
     "physicalInstallationConfirmed": true,
     "ownerConfirmedHomeOpened": true,
-    "nativeDataRefreshAccepted": false,
+    "nativeDataRefreshAccepted": true,
     "artifactInspectionPassed": true,
     "artifactChecksPassed": 13,
     "artifactInspectedAtUtc": "2026-10-15T12:52:03.183212+00:00",
@@ -241,7 +244,21 @@
     "homeQuickActionLightAppearanceObserved": true,
     "nativeDarkAppearanceVerified": false,
     "privateHistoryStatusBeforeOwnerLinkRepair": 409,
-    "postRepairLiveHistoryCheckPending": true
+    "postRepairLiveHistoryCheckPending": false,
+    "livePrivateHistoryStatus": 200,
+    "ownerManualRefreshResult": "Warning cleared and records load",
+    "ownerManualRefreshRecordedAtUtc": "2026-10-15T13:19:37.054Z",
+    "liveHistoryEvidence": {
+      "path": "/api/hr/history",
+      "method": "GET",
+      "status": 200,
+      "successfulLogEntries": 4,
+      "serverlessSuccessObserved": true,
+      "firstObservedAtUtc": "2026-10-15T13:15:41.523Z",
+      "lastObservedAtUtc": "2026-10-15T13:16:10.024Z",
+      "deploymentId": "dpl_EKXmq2Sf7F1zqrNMH5PCzM7zDHNR",
+      "scope": "pilot runtime entries include middleware and serverless; entry count is not a unique-request count"
+    }
   },
   "iosPilotHistory": [
     {
