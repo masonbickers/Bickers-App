@@ -32,6 +32,9 @@ service cloud.firestore {
       let authData = userData.get("auth", {});
       let storedClerkId = userData.get("clerkUserId", "");
       let nestedClerkId = authData is map ? authData.get("clerkUserId", "") : "";
+      let clerkUserId = token.get("clerkUserId", "");
+      let employeeId = token.get("identityEmployeeId", null);
+      let sessionId = token.get("clerkSessionId", "");
       return firebaseClaims is map
         && firebaseClaims.get("sign_in_provider", "") == "custom"
         && token.get("authMethod", "") == "clerk"
@@ -40,17 +43,15 @@ service cloud.firestore {
         // The baseline did not require this claim. Only the unmarked path can
         // omit it; mobilePasswordAccessAllowed still requires its exact grant.
         && (!token.keys().hasAny(["clerkLeaseVersion", "clerkSessionId"])
-          || (token.get("clerkSessionId", "") is string
-            && token.get("clerkSessionId", "").size() > 0))
-        && token.get("clerkUserId", "") is string
-        && token.get("clerkUserId", "").size() > 0
+          || (sessionId is string && sessionId.size() > 0))
+        && clerkUserId is string && clerkUserId.size() > 0
         && userData.get("uid", "") == request.auth.uid
-        && (storedClerkId in ["", null] || storedClerkId == token.get("clerkUserId", ""))
-        && (nestedClerkId in ["", null] || nestedClerkId == token.get("clerkUserId", ""))
+        && (storedClerkId in ["", null] || storedClerkId == clerkUserId)
+        && (nestedClerkId in ["", null] || nestedClerkId == clerkUserId)
         && token.get("identityCompanyId", "") == userData.get("companyId", "")
-        && token.get("identityEmployeeId", null) is string
-        && (token.get("identityEmployeeId", "") == userData.get("employeeId", "")
-          || legacyEmptyEmployee && token.get("identityEmployeeId", "") == "");
+        && employeeId is string
+        && (employeeId == userData.get("employeeId", "")
+          || legacyEmptyEmployee && employeeId == "");
     }
 
     // Explicit, server-owned compatibility for the reconciled development cohort.
