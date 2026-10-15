@@ -16,13 +16,23 @@
     "firstSharedSignInAccepted": true,
     "homeRecordsAccepted": true,
     "refreshStayedSignedIn": true,
-    "activeUnexpiredLeaseCount": 1,
-    "activeLeaseOwnerAndCompanyVerified": true,
+    "activeUnexpiredLeaseCount": null,
+    "activeLeaseOwnerAndCompanyVerified": null,
     "mobilePilotPlatform": "ios",
     "stickyLeaseActivated": true,
-    "firebaseCredentialRetired": false
+    "firebaseCredentialRetired": false,
+    "preRecoveryLeaseReadback": {
+      "activeUnexpiredLeaseCount": 1,
+      "activeLeaseOwnerAndCompanyVerified": true
+    },
+    "postRecoveryLeaseReadbackPending": true,
+    "postResetFreshPasswordSignInAccepted": true,
+    "postResetHomeAccepted": true
   },
-  "mobileSource": { "commit": "40d7b7ec366bdac96bc1444c578085c5aa12bc97", "branch": "codex/shared-clerk-auth" },
+  "mobileSource": {
+    "commit": "40d7b7ec366bdac96bc1444c578085c5aa12bc97",
+    "branch": "codex/shared-clerk-auth"
+  },
   "firestore": {
     "project": "bickers-booking",
     "database": "(default)",
@@ -38,7 +48,10 @@
     "publishedAtUtc": "2026-10-15T09:57:05.426419Z",
     "sha256": "a30e37329779e6be1d48d7f9688f91c39781bc91671170b0a190d0c2f6646a12"
   },
-  "backupStorage": { "inScope": false, "unchangedRuleset": "e6e05f96-e5ef-4f11-8e97-f9f197b2e82f" },
+  "backupStorage": {
+    "inScope": false,
+    "unchangedRuleset": "e6e05f96-e5ef-4f11-8e97-f9f197b2e82f"
+  },
   "webPilot": {
     "sourceCommit": "89f75e4a63c39d0f4ac3a5409bdf226eba62615f",
     "projectId": "prj_heoSY0CZ9PUgO3XdtptrppXodotW",
@@ -61,13 +74,18 @@
   },
   "recoveryHosting": {
     "site": "bickers-booking",
-    "version": "23e213c8db5608d9",
-    "sourceCommit": "460acb3fbe73626c6f0ee972ef7f8268cbcc7604",
+    "version": "d46a96cdb3cb618f",
+    "sourceCommit": "906aa8b1b1efe3b5812a711dbd35e73ec1a6eb4d",
     "url": "https://auth.bickers.co.uk/reset-password",
     "defaultBackend": "pilot",
     "legacyHandler": "/legacy-reset-password",
-    "priorVersion": "abf6696023c4e9c6",
-    "realRecoveryAccepted": false
+    "priorVersion": "2bf22fd7e272ef20",
+    "realRecoveryAccepted": true,
+    "preCspFixVersion": "23e213c8db5608d9",
+    "ownerAcceptedAtUtc": "2026-10-15T11:46:05Z",
+    "freshPasswordSignInAccepted": true,
+    "postResetHomeAccepted": true,
+    "activeSessionGuidanceVerified": true
   },
   "compatibility": {
     "approvedDevelopmentCohortCount": 8,
@@ -86,7 +104,7 @@
   "verification": {
     "ruleCasesPassed": 115,
     "ruleCasesFailed": 0,
-    "mobileUnitPassed": 727,
+    "mobileUnitPassed": 731,
     "mobileUnitExpectedSkipped": 1,
     "webUnitPassed": 2166,
     "webUnitExistingSkipped": 53,
@@ -95,7 +113,10 @@
     "cloudCompilationPassed": true,
     "signedDeviceAccepted": false,
     "signedSyntheticWebhookStatus": 200,
-    "realSessionRevocationAccepted": false
+    "realSessionRevocationAccepted": false,
+    "recoveryFocusedCasesPassed": 33,
+    "recoveryBuildAndScopedLintPassed": true,
+    "recoveryAcceptedAtUtc": "2026-10-15T11:46:05Z"
   },
   "rollback": {
     "priorFirestoreRuleset": "96ec8e22-b663-401f-9347-ddad0e1be603",
@@ -124,8 +145,9 @@
   ],
   "pending": [
     "Owner iPhone device registration, signed pilot build and physical-device acceptance",
-    "Owner-performed real recovery and real-session revocation acceptance",
+    "Post-recovery canonical/lease readback and deliberate server-side session revocation acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
-    "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk"
+    "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
+    "Restore/reconcile temporary private owner/transition journals before further migration writes; prior temporary copies are no longer present"
   ]
 }
