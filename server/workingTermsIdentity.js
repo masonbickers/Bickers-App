@@ -1,4 +1,5 @@
 // Resolve an existing signature, never copy, rewrite or manufacture one.
+import { classifyIdentitySession } from './identitySession.js';
 const CURRENT_VERSION = "1.1";
 const TITLE = "Bickers Action Working Terms";
 const EFFECTIVE_DATE = "19/08/2026";
@@ -30,11 +31,10 @@ export function createWorkingTermsResolver({
   return async function resolveWorkingTerms(idToken) {
     if (!idToken) throw fail(401, "Sign in to check your Working Terms.");
     const decoded = await auth.verifyIdToken(idToken, true);
-    if (decoded.firebase?.sign_in_provider !== "password" || !decoded.uid) {
-      throw fail(403, "An approved password account is required.");
-    }
+    if (!decoded.uid) throw fail(403, 'An approved account is required.');
     const account = await db.collection("users").doc(decoded.uid).get();
     const user = account.exists ? account.data() : null;
+    if (classifyIdentitySession(decoded, user || {}) === 'denied') throw fail(403, 'An approved current account is required.');
     const employee = await findEmployeeForApprovedUid(decoded.uid);
     if (blocked(user) || user.mobileAccessStatus !== "active" ||
       !employee || blocked(employee) || employeeIsBlocked(employee) ||

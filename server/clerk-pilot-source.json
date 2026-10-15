@@ -1,0 +1,20 @@
+{
+  "liveSourceCommit": "d60c01815de5f8f3d9adc0c9c0f7aff799ad8dab",
+  "reviewedMobileSourceCommit": "49d865e6",
+  "purpose": "Isolated production pilot API, not the current mobile API release",
+  "files": {
+    "appPasswordSetup.js": "6e7031c7400910a49a00fb10f42932ba9db051541796d016aed5c7dbf33ceff1",
+    "deviceTokenIdentity.js": "12295ff6cf9affa74484eb29dd6770abd91b104b2431b6651b78193f04b2adbc",
+    "employeeAuthSession.js": "7b91cac2a1eda129cb365a99b0f5df50f940ab90f003a6a7023564f70e4ad8d9",
+    "hrHistoryProxy.js": "878b6a5cfc0688053f71345ab97f99738af7e672efedffd63e54a348ec44c180",
+    "identitySession.js": "3633b52011eb62de9f49f62d07a49b21b76d67c2588291158f2e2c5d45e0213e",
+    "index.js": "b8fa061423e257766a9579cf9a0ca818d4001fc74e814adbe1c1f104571df257",
+    "receiptProxy.js": "b7ceaf3faff4a218f6859a5ff4cc7ff5d568c5a1d03372ac68a6c35a7d7f419f",
+    "sessionGate.js": "fe8bb4ae1070cff272605103b271f39e385ffc1ae014f010b7c6c6741d61ab00",
+    "stagedPasswordTransition.js": "b36cf7772e0aa92afa7e1195c24c5839c22d07c0e5d117140b9c6f1563ef7be9",
+    "workingTermsIdentity.js": "75ac8931ad532d04f48396132bb8784a58fa2d4aa65ac88536bc1a1fa22c3f4e",
+    "workshopSubmission.js": "b69832b75b3bb68efe5fe8e27ad1512cd4030b80229db98d2bedce2033fb6161",
+    "package.json": "5fad658f90d0e0b56dda4eb3cff75656e6c46cdccf814d0de2eac460550e43c0",
+    "package-lock.json": "c831727445fc9248263df0aee1a5e5b39df3da20e43bacb7e76c0cc4f2582acf"
+  }
+}
