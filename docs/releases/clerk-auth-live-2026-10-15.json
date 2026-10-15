@@ -1,7 +1,19 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-15T10:00:00Z",
-  "scope": "isolated production authentication pilot; no production account import or broad client cutover",
+  "verifiedAtUtc": "2026-10-15T10:28:42Z",
+  "scope": "isolated production authentication pilot; one approved owner account imported, no broad client cutover",
+  "ownerPilot": {
+    "productionImportedCount": 1,
+    "privateJournalComplete": true,
+    "canonicalUidRetained": true,
+    "companyAndEmployeeLinksRetained": true,
+    "existingMobileAndWebApprovalsVerified": true,
+    "credentialFilesWritten": 0,
+    "productionKeyFilesWritten": 0,
+    "firstSharedSignInAccepted": false,
+    "stickyLeaseActivated": false,
+    "firebaseCredentialRetired": false
+  },
   "mobileSource": { "commit": "40d7b7ec366bdac96bc1444c578085c5aa12bc97", "branch": "codex/shared-clerk-auth" },
   "firestore": {
     "project": "bickers-booking",
@@ -96,8 +108,7 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Action-time approval for memory-only production Clerk key use and the guarded single-owner digest import",
-    "Fresh production conflict preflight at import time",
+    "Owner first shared production sign-in and live data-access acceptance",
     "Signed native pilot builds and physical-device acceptance",
     "Owner-performed real recovery and real-session revocation acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
