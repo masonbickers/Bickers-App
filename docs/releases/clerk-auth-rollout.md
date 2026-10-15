@@ -126,3 +126,11 @@ The live dashboard's **Reset password code** template already describes code ent
 Retain old release IDs/configuration and the private field-scoped import journal. Before any production sign-in, guarded inverse changes can restore only links that still exactly match this run's writes. After production credentials are used, do not blindly restore old provider IDs, passwords or user documents. Never clear global cutoffs/recovery markers, overwrite new production links or re-enable a retired old credential as a shortcut. Stop expansion and reconcile the individual account under its canonical UID.
 
 No staff announcement is authorized by this rollout document.
+
+## Owner native Home refresh follow-up — 15 October
+
+Owner confirmed native Home opens after the bridge correction; screenshot at13:33BST shows a persistent saved-data refresh warning, including after one Retry. Canonical read-only reconciliation at12:34:51UTC found two active unexpired matching owner leases (web and native), with original UID/company/employee and mobile approval retained. No account writes were performed by reconciliation. Home/data acceptance remains pending.
+
+The private-history adapter called AbortSignal.timeout, absent from React Native's actual abort-controller3.0.0 implementation. Runtime regression reproduced TypeError before network dispatch. Source9066a29d replaces it with AbortController plus the same45-second deadline, cleared after response parsing in finally. Three new real-runtime cases and full734pass/1skip; independent reviewer reran17 focused cases with no findings. Home QuickAction tiles now use the existing getCardSurfaceStyle adapter without the old shadow path or duplicated border/radius; updated native light/dark rendering remains pending. Existing Home lint debt is46errors/2warnings versus47errors/2warnings in its baseline; no lint policy or thresholds changed. Adapter, test and style module scoped lint passes.
+
+Replacement owner-only iOS5.0.14/build93 is in progress:8f9c41d8-b345-460c-aa94-fcdf93aa12e9, same Clerk pilot channel and frozen signing credentials. No App Store submission, OTA or staff migration. Verify its artifact and owner installation before requesting fresh Home/holiday data acceptance.

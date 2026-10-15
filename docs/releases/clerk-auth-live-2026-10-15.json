@@ -115,7 +115,7 @@
   "verification": {
     "ruleCasesPassed": 115,
     "ruleCasesFailed": 0,
-    "mobileUnitPassed": 731,
+    "mobileUnitPassed": 734,
     "mobileUnitExpectedSkipped": 1,
     "webUnitPassed": 2175,
     "webUnitExistingSkipped": 53,
@@ -136,7 +136,8 @@
     "postRecoveryReadbackAtUtc": "2026-10-15T11:53:38.763Z",
     "signedIosBuildPassed": true,
     "iosArtifactChecksPassed": 13,
-    "nativeSdkBoundaryCasesPassed": 27
+    "nativeSdkBoundaryCasesPassed": 27,
+    "nativeHistoryRuntimeCasesPassed": 3
   },
   "rollback": {
     "priorFirestoreRuleset": "96ec8e22-b663-401f-9347-ddad0e1be603",
@@ -164,7 +165,7 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Owner iPhone pilot installed; reviewed native login correction live, owner retry and Home/data/refresh/callback acceptance pending",
+    "Owner iPhone Home opened on build92 but refresh failed. Corrected build93 in progress; artifact, installation, live data and rendered appearance acceptance pending.",
     "Deliberate server-side session revocation and protected-resource denial acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk",
@@ -213,7 +214,22 @@
       "fixSourceCommit": "a5d164fc260c9117bbc412ac3a5324754a56ebc2",
       "fixDeploymentPending": false,
       "fixDeploymentId": "dpl_EKXmq2Sf7F1zqrNMH5PCzM7zDHNR",
-      "ownerRetryPending": true
+      "ownerRetryPending": false
+    },
+    "ownerConfirmedHomeOpened": true,
+    "ownerHomeEvidenceAtLocal": "2026-10-15T13:33:35+01:00",
+    "nativeDataRefreshAccepted": false,
+    "replacementBuild": {
+      "buildId": "8f9c41d8-b345-460c-aa94-fcdf93aa12e9",
+      "sourceCommit": "9066a29d38b7c51d1968b5ef5bcc31e052ab861c",
+      "buildNumber": "93",
+      "version": "5.0.14",
+      "status": "IN_PROGRESS",
+      "channel": "clerk-pilot",
+      "reason": "Native history request uses supported AbortController deadline; Home quick actions use flat shared card surface",
+      "artifactInspectionPending": true,
+      "ownerInstallationPending": true,
+      "freshDataAcceptancePending": true
     }
   }
 }
