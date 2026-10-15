@@ -42,6 +42,7 @@ export function createClerkResetClient({ publishableKey, loadClerk } = {}) {
     async requestReset(email) {
       attempt = undefined; recoveredSessionId = undefined;
       const clerk = await load();
+      if (clerk.session) throw Object.assign(new Error('recovery-session-active'), { code: 'recovery-session-active' });
       attempt = await clerk.client.signIn.create({ strategy: resetStrategy, identifier: email });
     },
     async verifyResetCode(code) {

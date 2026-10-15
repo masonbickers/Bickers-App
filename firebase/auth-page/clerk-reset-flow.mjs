@@ -61,6 +61,8 @@ export function createClerkResetFlow({ client, finishRecovery, redirect = () => 
       update({ view: 'request', busy: true, email, factors: [], factor: '' });
       try { await client.requestReset(email); canVerify = true; }
       catch (error) {
+        if (errorCode(error) === 'recovery-session-active') return update({ view: 'request', busy: false,
+          error: 'You are already signed in. Sign out of the booking website, then return here and reload to reset your password.' });
         if (!unknownAccount.has(errorCode(error))) return update({ view: 'request', busy: false,
           error: errorCode(error) === 'too_many_requests' ? 'Too many attempts. Please wait before trying again.' : 'The secure account service could not be reached. Check your connection and retry.' });
       }

@@ -81,3 +81,13 @@ test('an uncertain password response checks provider state instead of resubmitti
  await flow.request('staff@example.test');await flow.verify('123456');await flow.reset('New-password-123!','New-password-123!');assert.equal(flow.state.view,'uncertain');
  await flow.retry();assert.equal(flow.state.view,'success');assert.equal(calls.filter(row=>row[0]==='reset').length,1);
 });
+
+test('an existing signed-in session explains how to start recovery without being called a network failure', async () => {
+  const { flow, client } = setup();
+  client.requestReset = async () => { throw { code: 'recovery-session-active' }; };
+  const state = await flow.request('staff@example.test');
+  assert.equal(state.view, 'request');
+  assert.equal(state.busy, false);
+  assert.match(state.error, /sign out.*booking website/i);
+  assert.doesNotMatch(state.error, /connection|could not be reached/i);
+});

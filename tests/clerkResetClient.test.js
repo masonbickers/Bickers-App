@@ -15,7 +15,7 @@ function fixture() {
     resetPassword: async params => { calls.push(params); signIn.status = 'complete'; signIn.createdSessionId = 'recovered'; return signIn; },
     prepareSecondFactor: async params => { calls.push(params); }, attemptSecondFactor: async params => { calls.push(params); signIn.status = 'complete'; signIn.createdSessionId = 'recovered'; return signIn; },
   };
-  const clerk = { client: { signIn }, session: { id: 'ordinary', getToken: async () => 'wrong' },
+  const clerk = { client: { signIn }, session: null,
     setActive: async options => { calls.push(options.session); clerk.session = { id: options.session, getToken: async () => 'proof' }; await options.navigate({ session: clerk.session }); },
   };
   return { clerk, signIn, calls, client: createClerkResetClient({ loadClerk: async () => clerk }) };
@@ -30,7 +30,8 @@ test('SDK adapter uses supported email recovery APIs and activates only the reco
   assert.equal(h.calls[3], 'recovered');
 });
 test('ordinary signed-in sessions and unverified attempts cannot prove password recovery', async () => {
-  const h = fixture(); h.signIn.status = 'complete'; h.signIn.createdSessionId = 'ordinary';
+  const h = fixture(); h.clerk.session = { id: 'ordinary', getToken: async () => 'wrong' };
+  h.signIn.status = 'complete'; h.signIn.createdSessionId = 'ordinary';
   assert.equal(await h.client.resume(), null); await assert.rejects(h.client.activate());
   await assert.rejects(h.client.resetPassword('synthetic-password')); assert.deepEqual(h.calls, []);
 });
@@ -57,4 +58,14 @@ test('recovery confirmation sends only a bearer token to the fixed endpoint, nev
   assert.equal(received[0], 'https://booking.bickers.co.uk/api/security/clerk-recovery');
   assert.equal(received[1].credentials, 'omit'); assert.equal(received[1].headers.Authorization, 'Bearer proof'); assert.equal(received[1].body, undefined);
   await assert.rejects(confirmClerkRecovery('proof', async () => ({ ok: false })));
+});
+
+test('an active website session blocks recovery without sending another sign-in request', async () => {
+  const h = fixture();
+  h.clerk.session = { id: 'ordinary', status: 'active' };
+  await assert.rejects(h.client.requestReset('staff@bickers.co.uk'), /recovery-session-active/);
+  assert.deepEqual(h.calls, []);
+  h.clerk.session = null;
+  await h.client.requestReset('staff@bickers.co.uk');
+  assert.deepEqual(h.calls, [{ strategy: 'reset_password_email_code', identifier: 'staff@bickers.co.uk' }]);
 });
