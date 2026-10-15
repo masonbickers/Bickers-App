@@ -1,0 +1,6 @@
+{
+  "firestore": { "database": "(default)", "rules": "firebase/clerk-auth/firestore.rules" },
+  "storage": [
+    { "bucket": "bickers-booking.firebasestorage.app", "rules": "firebase/clerk-auth/storage.rules" }
+  ]
+}

@@ -1,9 +1,10 @@
 import { render, bind } from './view.mjs';
 import { createClerkResetFlow } from './clerk-reset-flow.mjs';
 import { createClerkResetClient, confirmClerkRecovery } from './clerk-client.mjs';
-import { clerkPublishableKey } from './config.mjs';
+import { clerkPublishableKey, clerkRecoveryConfig } from './config.mjs';
+import { selectRecoveryDeployment } from './recovery-deployment.mjs';
 
-const deployment = new URLSearchParams(location.search).get('deployment') === 'pilot' ? 'pilot' : 'primary';
+const deployment = selectRecoveryDeployment(location.search, clerkRecoveryConfig);
 const flow = createClerkResetFlow({ client: createClerkResetClient({ publishableKey: clerkPublishableKey }),
   deployment, finishRecovery: token => confirmClerkRecovery(token, fetch, deployment), redirect: url => location.assign(url), onState: render,
 });
