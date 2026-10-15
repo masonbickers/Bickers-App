@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "verifiedAtUtc": "2026-10-15T10:00:00Z",
+  "scope": "isolated production authentication pilot; no production account import or broad client cutover",
+  "mobileSource": { "commit": "40d7b7ec366bdac96bc1444c578085c5aa12bc97", "branch": "codex/shared-clerk-auth" },
+  "firestore": {
+    "project": "bickers-booking",
+    "database": "(default)",
+    "source": "firebase/clerk-auth/firestore.rules",
+    "ruleset": "97ad4814-2c5b-4c87-affc-941ea157208f",
+    "publishedAtUtc": "2026-10-15T09:57:09.945912Z",
+    "sha256": "fd7a79937cd905391112a0a6f351103f20a5c281176454c0601fe925a4341b96"
+  },
+  "storage": {
+    "bucket": "bickers-booking.firebasestorage.app",
+    "source": "firebase/clerk-auth/storage.rules",
+    "ruleset": "f652c031-0829-4f4b-a4fa-895c3a171f1a",
+    "publishedAtUtc": "2026-10-15T09:57:05.426419Z",
+    "sha256": "a30e37329779e6be1d48d7f9688f91c39781bc91671170b0a190d0c2f6646a12"
+  },
+  "backupStorage": { "inScope": false, "unchangedRuleset": "e6e05f96-e5ef-4f11-8e97-f9f197b2e82f" },
+  "webPilot": {
+    "sourceCommit": "522f09cec068ca3d993e2e21e6b62f25d8cb6059",
+    "projectId": "prj_heoSY0CZ9PUgO3XdtptrppXodotW",
+    "deploymentId": "dpl_H6aatj8GCfDhyQiKQYpUQ2dqAaQb",
+    "domain": "pilot.bickers.co.uk",
+    "loginStatus": 200,
+    "unauthenticatedBridgeStatus": 401,
+    "changedExistingBookingDeployment": false
+  },
+  "apiPilot": {
+    "sourceCommit": "d98b5a3fc0e4472095fbf7c5f3477b6f5e248fdb",
+    "serviceId": "srv-db88a8gm7kps73df8820",
+    "deploymentId": "dep-db88a8om7kps73df895g",
+    "url": "https://bickers-clerk-pilot-api.onrender.com",
+    "autoDeploy": false,
+    "changedExistingApi": false
+  },
+  "recoveryHosting": {
+    "site": "bickers-booking",
+    "version": "23e213c8db5608d9",
+    "sourceCommit": "460acb3fbe73626c6f0ee972ef7f8268cbcc7604",
+    "url": "https://auth.bickers.co.uk/reset-password",
+    "defaultBackend": "pilot",
+    "legacyHandler": "/legacy-reset-password",
+    "priorVersion": "abf6696023c4e9c6",
+    "realRecoveryAccepted": false
+  },
+  "compatibility": {
+    "approvedDevelopmentCohortCount": 8,
+    "policyReadbackVerified": true,
+    "fixedExpiresAtUtc": "2026-10-29T09:06:32.934Z",
+    "automaticExtension": false,
+    "sharedTokenLeaseVersion": 1,
+    "sharedProfileStickyField": "clerkLeaseRequired",
+    "legacyAllowanceField": "legacyClerkWebAccess",
+    "sharedLeaseMaximumSeconds": 300,
+    "legacyFallbackAfterSharedActivation": false,
+    "existingOwnerFreshWebSessionVerified": true,
+    "allEightPhysicalSignInsVerified": false,
+    "oldFailedTokenClaimsInspected": false
+  },
+  "verification": {
+    "ruleCasesPassed": 115,
+    "ruleCasesFailed": 0,
+    "mobileUnitPassed": 727,
+    "mobileUnitExpectedSkipped": 1,
+    "cloudCompilationPassed": true,
+    "signedDeviceAccepted": false,
+    "signedSyntheticWebhookStatus": 200,
+    "realSessionRevocationAccepted": false
+  },
+  "rollback": {
+    "priorFirestoreRuleset": "96ec8e22-b663-401f-9347-ddad0e1be603",
+    "priorFirestoreSource": "firebase/clerk-auth/firestore.baseline.rules",
+    "priorFirestoreSha256": "b06c9b6ef3d1f12f8d11b2f3b21881bbdbb0e697f14f751a75a12d369e2dbab5",
+    "priorStorageRuleset": "a11e7943-7ab0-4c59-b2a1-649a5c76c615",
+    "priorStorageSource": "firebase/clerk-auth/storage.baseline.rules",
+    "priorStorageSha256": "7311b8111621b3c88cd026900bdcb4433013ecea6bc3af544f6109340e83a481",
+    "limitation": "Re-read current releases before any rollback. After production sign-in or sticky lease activation, never blindly restore account links, credentials, user documents, recovery markers or older permissive rules. Stop expansion and reconcile the affected canonical account."
+  },
+  "webContractFiles": [
+    "src/app/config/clerkDeploymentConfig.mjs",
+    "src/app/api/auth/firebase-token/route.js",
+    "src/app/api/auth/sharedClerkBridge.mjs",
+    "src/app/api/auth/sharedClerkRuntime.js",
+    "src/app/api/auth/clerkRequestIdentity.js",
+    "src/app/api/auth/clerkSessionLease.mjs",
+    "src/app/api/auth/clerkLeaseRepository.mjs",
+    "src/app/api/auth/clerkRecovery.mjs",
+    "src/app/api/security/clerk-recovery/route.js",
+    "src/app/api/webhooks/clerk/route.js",
+    "src/app/api/_sessionSecurity.js",
+    "src/app/api/sessionSecurityService.mjs",
+    "src/app/utils/mobilePasswordAccess.js",
+    "src/app/context/authContext.js"
+  ],
+  "pending": [
+    "Action-time approval for memory-only production Clerk key use and the guarded single-owner digest import",
+    "Fresh production conflict preflight at import time",
+    "Signed native pilot builds and physical-device acceptance",
+    "Owner-performed real recovery and real-session revocation acceptance",
+    "Independent Play App Signing certificate evidence before store rollout",
+    "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk"
+  ]
+}
