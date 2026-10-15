@@ -1336,10 +1336,7 @@ export default function HomeScreen() {
                     style={[
                       styles.button,
                       !isLastVisibleColumn && styles.gridItemSpacing,
-                      {
-                        ...dashboardCards.quickActionCard,
-                        borderColor: withAlpha(actionTint, 0.14),
-                      },
+                      getCardSurfaceStyle(colors, { borderAccent: withAlpha(actionTint, 0.14) }),
                     ]}
                     activeOpacity={0.86}
                     onPress={() => {
