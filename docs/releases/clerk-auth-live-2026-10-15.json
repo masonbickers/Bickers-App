@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAtUtc": "2026-10-15T10:28:42Z",
+  "verifiedAtUtc": "2026-10-15T10:41:17Z",
   "scope": "isolated production authentication pilot; one approved owner account imported, no broad client cutover",
   "ownerPilot": {
     "productionImportedCount": 1,
@@ -10,8 +10,16 @@
     "existingMobileAndWebApprovalsVerified": true,
     "credentialFilesWritten": 0,
     "productionKeyFilesWritten": 0,
-    "firstSharedSignInAccepted": false,
-    "stickyLeaseActivated": false,
+    "providerSignInAccepted": true,
+    "firebaseBridgeAccepted": true,
+    "accessBootstrapAccepted": true,
+    "firstSharedSignInAccepted": true,
+    "homeRecordsAccepted": true,
+    "refreshStayedSignedIn": true,
+    "activeUnexpiredLeaseCount": 1,
+    "activeLeaseOwnerAndCompanyVerified": true,
+    "mobilePilotPlatform": "ios",
+    "stickyLeaseActivated": true,
     "firebaseCredentialRetired": false
   },
   "mobileSource": { "commit": "40d7b7ec366bdac96bc1444c578085c5aa12bc97", "branch": "codex/shared-clerk-auth" },
@@ -32,12 +40,15 @@
   },
   "backupStorage": { "inScope": false, "unchangedRuleset": "e6e05f96-e5ef-4f11-8e97-f9f197b2e82f" },
   "webPilot": {
-    "sourceCommit": "522f09cec068ca3d993e2e21e6b62f25d8cb6059",
+    "sourceCommit": "89f75e4a63c39d0f4ac3a5409bdf226eba62615f",
     "projectId": "prj_heoSY0CZ9PUgO3XdtptrppXodotW",
-    "deploymentId": "dpl_H6aatj8GCfDhyQiKQYpUQ2dqAaQb",
+    "deploymentId": "dpl_FNaxcoTVMxQKEGuZwqyEwFMW4CRu",
     "domain": "pilot.bickers.co.uk",
     "loginStatus": 200,
     "unauthenticatedBridgeStatus": 401,
+    "unauthenticatedBootstrapStatus": 401,
+    "ownerBootstrapStatus": 200,
+    "priorDeploymentId": "dpl_H6aatj8GCfDhyQiKQYpUQ2dqAaQb",
     "changedExistingBookingDeployment": false
   },
   "apiPilot": {
@@ -77,6 +88,10 @@
     "ruleCasesFailed": 0,
     "mobileUnitPassed": 727,
     "mobileUnitExpectedSkipped": 1,
+    "webUnitPassed": 2166,
+    "webUnitExistingSkipped": 53,
+    "webBootstrapCasesPassed": 40,
+    "webProductionBuildPassed": true,
     "cloudCompilationPassed": true,
     "signedDeviceAccepted": false,
     "signedSyntheticWebhookStatus": 200,
@@ -108,8 +123,7 @@
     "src/app/context/authContext.js"
   ],
   "pending": [
-    "Owner first shared production sign-in and live data-access acceptance",
-    "Signed native pilot builds and physical-device acceptance",
+    "Owner iPhone device registration, signed pilot build and physical-device acceptance",
     "Owner-performed real recovery and real-session revocation acceptance",
     "Independent Play App Signing certificate evidence before store rollout",
     "Original auth-subdomain sender preference; current sender is noreply@bickers.co.uk"
