@@ -1,3 +1,4 @@
+import StartupContentMarker from "../../../../components/startup/StartupContentMarker";
 import FooterPageSkeleton from "../../../../components/FooterPageSkeleton";
 import { getCardSurfaceStyle } from "../../../../lib/design/cardSurface";
 import {
@@ -609,6 +610,7 @@ export default function SchedulePage() {
       }}
       scrollProps={{ keyboardShouldPersistTaps: "handled" }}
     >
+      <StartupContentMarker enabled={!bookingsResource.isInitialLoading && !bookingsResource.error} updatedAt={bookingsResource.lastUpdatedAt} />
           <View style={styles.toolbarRow}>
             <SegmentedControl
               pill subtle density="compact"

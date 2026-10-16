@@ -14,6 +14,7 @@ test('verified Clerk Firebase sign-in is not blocked by the separate Render empl
   const sdk = { isLoaded: false, isSignedIn: false };
   const mocks = {
     './StartupSnapshotProvider': { useStartupSnapshot: () => ({ store: null }) },
+    '../lib/startup/timings': {startupTimings:{measure:async(_p,run)=>run(),mark(){}},beginForegroundTimings(){}},
     react: { ...hooks, default: hooks, __esModule: true },
     '@clerk/expo': { useAuth: () => sdk, useClerk: () => ({}), useSignIn: () => ({}), useUser: () => ({}) },
     '@clerk/expo/hosted-auth': { useHostedAuth: () => ({}) },

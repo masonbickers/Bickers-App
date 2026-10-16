@@ -15,6 +15,7 @@ const { code } = transformSync(readFileSync(filename, 'utf8') + '\nexport { Shel
 function render({ loading = true, isAuthed = false, group = '(auth)', securityTransition = null, startup = {enabled:false,restored:true,snapshot:null}, startupAccessStatus = 'restoring' } = {}) {
   const hooks = { ...React, useEffect() {}, useState: initial => [initial, () => {}], useRef: value => ({ current: value }) };
   const mocks = {
+    '../lib/startup/timings': {startupTimings:{measure:async(_p,run)=>run(),mark(){}},beginForegroundTimings(){}},
     react: { ...hooks, default: hooks, __esModule: true },
     'expo-router': { Slot: 'Slot', useSegments: () => [group], usePathname: () => group === '(auth)' ? '/login' : '/screens/homescreen', useRouter: () => ({ replace() {} }) },
     'react-native': { View: 'View', Platform: { OS: 'ios' } },

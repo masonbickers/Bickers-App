@@ -6,6 +6,7 @@ import { useHostedAuth } from '@clerk/expo/hosted-auth';
 import { onIdTokenChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Linking } from 'react-native';
+import { startupTimings, beginForegroundTimings } from '../lib/startup/timings';
 import { useStartupSnapshot } from './StartupSnapshotProvider';
 import { createStartupCacheLifecycle } from '../lib/startup/cacheLifecycle';
 import { auth } from '../firebaseConfig';
@@ -106,15 +107,15 @@ function ClerkRuntime({ config, children }) {
       ...lifecycle,
       invalidateDisplay: () => startupStore?.invalidate('signed-out'),
       getClerkIdentity: identity,
-      getClerkToken: () => sdk.current.getToken({ skipCache: true }),
-      exchangeToken: createClerkBridgeClient({ origin: config.origin }),
+      getClerkToken: () => startupTimings.measure('clerk-token', () => sdk.current.getToken({ skipCache: true })),
+      exchangeToken: request => startupTimings.measure('bridge', () => createClerkBridgeClient({ origin: config.origin })(request)),
       getFirebaseUid: () => auth.currentUser?.uid || null,
       signInFirebase: async customToken => {
         // The bridge checks the live canonical account and approval before
         // issuing this token. AuthProvider then independently reads current
         // permissions from Firestore before exposing protected routes. The
         // legacy Render sync must not add another dependency to Clerk startup.
-        await withClerkAuthPhase('firebase-sign-in', () => signInWithCustomToken(auth, customToken));
+        await startupTimings.measure('firebase-sign-in', () => withClerkAuthPhase('firebase-sign-in', () => signInWithCustomToken(auth, customToken)));
       },
       signOutFirebase: () => signOut(auth),
       signOutClerk: options => clerk.signOut(options),
@@ -130,17 +131,18 @@ function ClerkRuntime({ config, children }) {
     coordinator.current = next;
     const foreground = AppState.addEventListener('change', state => {
       if (state === 'active') {
-        if (sdk.current.isLoaded) void next.resume();
+        beginForegroundTimings();
+        if (sdk.current.isLoaded) void next.resume().catch(() => {});
       } else {
         next.suspend();
       }
     });
     // Covers older logout entry points while their shared session is active.
     const unsubscribe = onIdTokenChanged(auth, firebaseUser => {
-      if (!firebaseUser && !auth.currentUser && next.isReady()) void next.signOut();
+      if (!firebaseUser && !auth.currentUser && next.isReady()) void next.signOut().catch(() => {});
     });
     if (AppState.currentState && AppState.currentState !== "active") next.suspend();
-    else if (sdk.current.isLoaded) void next.reconcile();
+    else if (sdk.current.isLoaded) void next.reconcile().catch(() => {});
     return () => {
       mounted.current = false;
       permit.current = null;
@@ -155,8 +157,9 @@ function ClerkRuntime({ config, children }) {
 
   useEffect(() => {
     if (isLoaded) {
+      startupTimings.mark('clerk-restore');
       if (AppState.currentState && AppState.currentState !== "active") coordinator.current?.suspend();
-      else void coordinator.current?.resume();
+      else void coordinator.current?.resume().catch(() => {});
     }
   }, [isLoaded, isSignedIn, userId, sessionId]);
 
@@ -184,11 +187,8 @@ function ClerkRuntime({ config, children }) {
       reconcile: options => coordinator.current?.reconcile(options),
       signOutAccount: async () => {
         setBridge(current => ({ ...current, error: null }));
-        const invalidation = startupStore?.invalidate('signed-out');
-        await invalidation;
-        await flow.current.cancel();
-        if (coordinator.current) await coordinator.current.signOut();
-        else { await signOut(auth); await clerk.signOut(); }
+        if (coordinator.current) await Promise.all([coordinator.current.signOut(), flow.current.cancel()]);
+        else { await startupStore?.invalidate('signed-out'); await flow.current.cancel(); await signOut(auth); await clerk.signOut(); }
       },
       openRecovery,
       startBrowserSignIn: async () => {

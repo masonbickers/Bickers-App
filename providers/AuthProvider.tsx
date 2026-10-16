@@ -23,6 +23,7 @@ import React, {
   useState,
 } from "react";
 import { useClerkFirebase } from "./ClerkFirebaseProvider";
+import { startupTimings } from "../lib/startup/timings";
 import { useStartupSnapshot } from "./StartupSnapshotProvider";
 import { loadVerifiedSession } from "../lib/startup/loadVerifiedSession";
 import { clearAccountSessionCache } from "../lib/accountSessionCache";
@@ -281,24 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       && auth.currentUser?.uid === firebaseUser?.uid && !transitionBusy.current;
     const isCurrent = () => sameAccount() && (!clerkRef.current.enabled || !firebaseUser
       || clerkRef.current.isReady() && clerkRef.current.uid === firebaseUser.uid && clerkRef.current.revision === clerkRevision);
-    const readPreferences = () => AsyncStorage.multiGet([
-        "sessionRole",
-        "sessionIsService",
-        "sessionUserAccess",
-        "sessionServiceAccess",
-        "sessionCompanyId",
-        "displayName",
-        "employeeId",
-        "employeeEmail",
-        "employeeUserCode",
-        "timesheetYardStart",
-        "timesheetYardEnd",
-        "timesheetOfficeStart",
-        "timesheetOfficeEnd",
-        "timesheetWorkshopStart",
-        "timesheetWorkshopEnd",
-        "timesheetDefaultType",
-      ]);
+    const readPreferences = readSessionPreferences;
     let parallelSession = null;
     let verifiedClerk = null;
     let changedScope = false;
@@ -314,10 +298,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (clerkRef.current.enabled) {
           parallelSession = await loadVerifiedSession({
             readPreferences,
-            readTerms: () => loadWorkingTermsAcceptance(firebaseUser),
+            readTerms: () => startupTimings.measure("terms", () => loadWorkingTermsAcceptance(firebaseUser)),
             isCurrent,
             resolveAccess: async () => {
-              const access = await resolveMobileClerkAccess({
+              const access = await startupTimings.measure("access", () => resolveMobileClerkAccess({
             uid: firebaseUser.uid,
             getTokenResult: () => firebaseUser.getIdTokenResult(),
             readUser: async () => {
@@ -329,7 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               return snap.exists() ? { ...snap.data(), id: snap.id } : null;
             },
             isCurrent,
-          });
+          }));
               if (access && isCurrent() && startupRef.current?.getActive()) {
                 const identity = { clerkUserId: clerkRef.current.clerkUserId, clerkSessionId: clerkRef.current.clerkSessionId, uid: firebaseUser.uid, companyId: access.profile.companyId, employeeId: access.profile.employeeId };
                 if (!startupRef.current.matchesIdentity(identity)) {
@@ -544,7 +528,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const status = parallelSession?.termsError ? 'unavailable' : termsAcceptance ? 'verified' : 'terms-required';
           setStartupOutcome(status);
           if (status === 'terms-required') await startupRef.current?.invalidate('terms-required');
-          if (status === 'verified' && workspaceAccess.user && startupRef.current) {
+          if (status === 'verified' && workspaceAccess.user && startupRef.current && firebaseUser) {
             await startupRef.current.activate({ clerkUserId: clerkRef.current.clerkUserId, clerkSessionId: clerkRef.current.clerkSessionId, uid: firebaseUser.uid, companyId, employeeId }, Date.now(), isCurrent).catch(() => null);
           }
           if (!isCurrent()) return;
@@ -654,4 +638,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AuthCtx.Provider>
   );
+}
+
+function readSessionPreferences() {
+  return AsyncStorage.multiGet([
+        "sessionRole",
+        "sessionIsService",
+        "sessionUserAccess",
+        "sessionServiceAccess",
+        "sessionCompanyId",
+        "displayName",
+        "employeeId",
+        "employeeEmail",
+        "employeeUserCode",
+        "timesheetYardStart",
+        "timesheetYardEnd",
+        "timesheetOfficeStart",
+        "timesheetOfficeEnd",
+        "timesheetWorkshopStart",
+        "timesheetWorkshopEnd",
+        "timesheetDefaultType",
+      ]);
 }

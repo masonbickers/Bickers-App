@@ -51,6 +51,7 @@ import {
 } from "../lib/timesheetNotification";
 import { useReceiptSync } from "../hooks/useReceiptSync";
 import { getReceiptNotificationHref, isReceiptNotification } from "../lib/receipts/navigation";
+import { startupTimings } from "../lib/startup/timings";
 import StartupPreview from "../components/startup/StartupPreview";
 import { resolveStartupDisplay } from "../lib/startup/display";
 import { StartupSnapshotProvider, useStartupSnapshot } from "../providers/StartupSnapshotProvider";
@@ -237,7 +238,7 @@ function ShellInner() {
   useEffect(() => {
     if (securityTransition) return;
     if (updateRequired) return;
-    if (loading || preview || unavailable) return;
+    if (loading || savedSnapshot || unavailable) return;
     if (visualTestRoute) return;
     if (isAuthed && workingTermsAccepted && lastPreview.current && !isServiceOnlyUser) {
       const saved = lastPreview.current; lastPreview.current = null;
@@ -268,7 +269,7 @@ function ShellInner() {
       }
     }
   }, [
-    preview,
+    savedSnapshot,
     unavailable,
     loading,
     isAuthed,
@@ -441,9 +442,9 @@ function ShellInner() {
       />
 
       {holdSessionRoute && (preview ? (
-        <StartupPreview snapshot={preview} status={startupAccessStatus} onRetry={retryStartup}
+        <View style={{ flex: 1 }} onLayout={() => startupTimings.mark("first-saved-layout")}><StartupPreview snapshot={preview} status={startupAccessStatus} onRetry={retryStartup}
           onSelectDate={date => setPreviewSelection({ key: previewKey, date, jobId: null })}
-          onSelectJob={jobId => setPreviewSelection({ key: previewKey, date: preview.selectedDateISO, jobId })} />
+          onSelectJob={jobId => setPreviewSelection({ key: previewKey, date: preview.selectedDateISO, jobId })} /></View>
       ) : (
         <View style={{ flex: 1, justifyContent: "center", padding: t.spacing.xl }}>
           {unavailable ? <><Text variant="body">Unable to check account access. Please retry.</Text><AppButton label="Retry" onPress={retryStartup} layoutStyle={{ marginTop: t.spacing.md }} /></> : <LoadingState label="Checking account access…" />}

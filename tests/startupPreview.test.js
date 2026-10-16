@@ -27,3 +27,9 @@ test('actual preview shows saved summaries and timestamp with only local selecti
   const jobButton=buttons.find(n=>n.props.accessibilityLabel==='View saved job');assert.ok(jobButton);jobButton.props.onPress();assert.equal(selected,'j');
   assert.equal(buttons.some(n=>/submit|upload|edit|document|account/i.test(n.props.label||'')),false);
 });
+
+test('a restored Home selection retains its calendar date and rejects malformed route parameters',()=>{
+  assert.equal(typeof api.restoreStartupDate,'function');
+  const date=api.restoreStartupDate('2026-10-17');assert.equal(date.getFullYear(),2026);assert.equal(date.getMonth(),9);assert.equal(date.getDate(),17);
+  assert.equal(api.restoreStartupDate('2026-02-31'),null);assert.equal(api.restoreStartupDate(['2026-10-17']),null);
+});

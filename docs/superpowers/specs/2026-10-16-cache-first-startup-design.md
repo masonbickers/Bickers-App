@@ -1,7 +1,7 @@
 # Cache-first mobile startup
 
 Date: 16 October 2026
-Status: User approved this design and its cache limits on 16 October 2026. Implementation-plan review remains pending; no release approval claimed.
+Status: User approved this design and its cache limits on 16 October 2026. Implementation plan approved; implemented inline with final review pending; no release approval claimed.
 Implementation target: the shared Clerk pilot, including its existing uncommitted startup fix. The main checkout still contains the older Firebase login flow.
 
 ## Requested outcome

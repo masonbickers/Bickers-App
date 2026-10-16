@@ -1,3 +1,4 @@
+import StartupContentMarker from "../../../../components/startup/StartupContentMarker";
 import { getCardSurfaceStyle } from "../../../../lib/design/cardSurface";
 import { routeColors } from "../../../../lib/design/routePresentation/main-tabs-screens-homescreen-js.js";
 import { styles } from "../../../../lib/design/screenStyles/main-tabs-screens-homescreen-js.js";
@@ -6,7 +7,7 @@ import { SectionCard, AppButton, AppModal, Avatar, Divider, ListRow, StatusChip,
 // app/(protected)/screens/homescreen.js
 
 import {
-  useRouter } from "expo-router";
+  useRouter, useLocalSearchParams } from "expo-router";
 import { useCallback,
   useEffect,
   useMemo,
@@ -59,6 +60,7 @@ import {
   subscribeToInbox,
   } from "../../../../lib/notificationInbox";
 import { notificationVisibleToAccount } from "../../../../lib/notificationVisibility";
+import { restoreStartupDate } from "../../../../lib/startup/display";
 import { useStartupSnapshotCapture } from "../../../../hooks/useStartupSnapshotCapture";
 import { useAuth } from "../../../../providers/AuthProvider";
 import { useDataCache } from "../../../../providers/DataCacheProvider";
@@ -469,6 +471,7 @@ const isRecceDay = (job, dateISO) =>
 
 export default function HomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
 
   const { signOutAccount, user, employee, reloadSession } = useAuth();
   const { invalidate } = useDataCache();
@@ -488,7 +491,11 @@ export default function HomeScreen() {
   const [todayJobs, setTodayJobs] = useState([]);
   const [todayHolidayInfo, setTodayHolidayInfo] = useState(null);
 
-  const [selectedDate, setSelectedDate] = useState(getTomorrow);
+  const [selectedDate, setSelectedDate] = useState(() => restoreStartupDate(params.date) || getTomorrow());
+  useEffect(() => {
+    const restored = restoreStartupDate(params.date);
+    if (restored) setSelectedDate(restored);
+  }, [params.date]);
 
   const [dayJobs, setDayJobs] = useState([]);
   const [dayHolidayInfo, setDayHolidayInfo] = useState(null);
@@ -1407,6 +1414,7 @@ export default function HomeScreen() {
         }}
         scrollProps={{ showsVerticalScrollIndicator: false }}
       >
+        <StartupContentMarker enabled={!bookingsResource.isInitialLoading && !bookingsResource.error} updatedAt={bookingsResource.lastUpdatedAt} />
         <View
           style={[
             styles.heroCard,

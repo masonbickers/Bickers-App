@@ -136,10 +136,11 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
       }),
     [employee?.companyId, employee?.employeeId, employee?.userCode, user?.uid]
   );
-  const scopeEpoch = useRef({ scope, generation: 0 });
-  if (scopeEpoch.current.scope !== scope) scopeEpoch.current = { scope, generation: scopeEpoch.current.generation + 1 };
+  const exactScope = JSON.stringify([user?.uid, employee?.companyId, employee?.employeeId, employee?.userCode]);
+  const scopeEpoch = useRef({ scope: exactScope, generation: 0 });
+  if (scopeEpoch.current.scope !== exactScope) scopeEpoch.current = { scope: exactScope, generation: scopeEpoch.current.generation + 1 };
   const generation = scopeEpoch.current.generation;
-  const isCurrentScope = useCallback(() => scopeEpoch.current.generation === generation && scopeEpoch.current.scope === scope, [generation, scope]);
+  const isCurrentScope = useCallback(() => scopeEpoch.current.generation === generation && scopeEpoch.current.scope === exactScope, [generation, exactScope]);
   const writeTail = useRef<Promise<unknown>>(Promise.resolve());
   const inMemory = useRef<Map<string, CacheRecord>>(new Map());
   const requestDeduper = useRef(createRequestDeduper());
@@ -185,26 +186,29 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
     [isCurrentScope, scopedKey]
   );
 
+  const persistForScope = useCallback(async (storageKey: string, payload: string) => {
+    const run = async () => {
+      if (!isCurrentScope()) return;
+      try {
+        await AsyncStorage.setItem(storageKey, payload);
+        if (!isCurrentScope()) await AsyncStorage.removeItem(storageKey);
+      } catch { /* Memory caching remains available for the current scope. */ }
+    };
+    const pending = writeTail.current.then(run, run);
+    writeTail.current = pending.catch(() => {});
+    await pending;
+  }, [isCurrentScope]);
+
   const write = useCallback(
     async <T,>(key: string, data: T, ttlMs = DEFAULT_CACHE_TTL_MS) => {
-      const run = async () => {
-        if (!isCurrentScope()) return;
-        const fullKey = scopedKey(key);
-        const record: CacheRecord<T> = { data, updatedAt: Date.now(), ttlMs: normalizeCacheTtl(ttlMs) };
-        inMemory.current.set(fullKey, record);
-        try {
-          await AsyncStorage.setItem(toStorageKey(fullKey), JSON.stringify({ ...record, data: serializeForStorage(data) }));
-          if (!isCurrentScope()) {
-            inMemory.current.delete(fullKey);
-            await AsyncStorage.removeItem(toStorageKey(fullKey));
-          }
-        } catch { /* Memory caching remains available for the current scope. */ }
-      };
-      const pending = writeTail.current.then(run, run);
-      writeTail.current = pending.catch(() => {});
-      await pending;
+      if (!isCurrentScope()) return;
+      const fullKey = scopedKey(key);
+      const record: CacheRecord<T> = { data, updatedAt: Date.now(), ttlMs: normalizeCacheTtl(ttlMs) };
+      inMemory.current.set(fullKey, record);
+      await persistForScope(toStorageKey(fullKey), JSON.stringify({ ...record, data: serializeForStorage(data) }));
+      if (!isCurrentScope()) inMemory.current.delete(fullKey);
     },
-    [isCurrentScope, scopedKey]
+    [isCurrentScope, persistForScope, scopedKey]
   );
 
   const isExpired = useCallback(
@@ -255,6 +259,7 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
 
   const invalidate = useCallback(
     async (keyPrefix = "") => {
+      if (!isCurrentScope()) return;
       const fullPrefix = keyPrefix ? scopedKey(keyPrefix) : `${scope}.`;
       const writes: Promise<unknown>[] = [];
 
@@ -263,7 +268,7 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
         const next = { ...record, updatedAt: 0 };
         inMemory.current.set(key, next);
         writes.push(
-          AsyncStorage.setItem(
+          persistForScope(
             toStorageKey(key),
             JSON.stringify({ ...next, data: serializeForStorage(next.data) })
           ).catch(() => {})
@@ -276,12 +281,13 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
           cacheKeyMatchesPrefix(key, storagePrefix)
         );
         const stored = await AsyncStorage.multiGet(keys);
+        if (!isCurrentScope()) return;
         stored.forEach(([key, raw]) => {
           const record = parseStoredRecord(raw);
           if (!record) return;
           const next = { ...record, updatedAt: 0 };
           writes.push(
-            AsyncStorage.setItem(
+            persistForScope(
               key,
               JSON.stringify({ ...next, data: serializeForStorage(next.data) })
             ).catch(() => {})
@@ -292,7 +298,7 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
       await Promise.all(writes);
       setRefreshSignal((value) => value + 1);
     },
-    [scope, scopedKey]
+    [isCurrentScope, persistForScope, scope, scopedKey]
   );
 
   const clearScope = useCallback(async (targetScope: string) => {
@@ -313,7 +319,7 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
     requestDeduper.current.clear();
     await clearScope(scope);
     setRefreshSignal((value) => value + 1);
-  }, [authLoading, clearScope, scope, startupAccessStatus]);
+  }, [clearScope, scope]);
 
   useEffect(() => {
     if (authLoading || startupAccessStatus === "restoring" || startupAccessStatus === "unavailable") return;
@@ -325,7 +331,8 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
   }, [authLoading, clearScope, scope, startupAccessStatus]);
 
   useEffect(() => {
-    if (authLoading || isAuthed || startupAccessStatus === "restoring" || startupAccessStatus === "unavailable") return;
+    if (authLoading || isAuthed) return;
+    if (startupAccessStatus === "restoring" || startupAccessStatus === "unavailable") return;
     clear().catch(() => {});
   }, [authLoading, clear, isAuthed, startupAccessStatus]);
 

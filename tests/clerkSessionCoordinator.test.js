@@ -199,3 +199,10 @@ test('logout hides display synchronously and awaits durable invalidation before 
   await Promise.resolve();assert.deepEqual(state.mutations,[]);
   gate.resolve();await pending;assert.deepEqual(state.mutations,[['clear'],['out'],['clerk-out']]);
 });
+
+test('a failed durable logout retries logout rather than restoring access', async () => {
+  const {state,deps}=fixture();let locked=true,exchanges=0;
+  const coordinator=createClerkSessionCoordinator({...deps,invalidateDisplay:async()=>{if(locked)throw Error('secure storage locked');},exchangeToken:async()=>{exchanges++;return{customToken:'custom_1',uid:'uid_1',leaseExpiresAt:1300000};}});
+  await assert.rejects(coordinator.signOut());assert.equal(coordinator.isReady(),false);
+  locked=false;await coordinator.reconcile();assert.equal(exchanges,0);assert.equal(state.uid,null);assert.ok(state.mutations.some(row=>row[0]==='clerk-out'));
+});

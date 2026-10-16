@@ -34,3 +34,15 @@ test('concurrent screens deduplicate the same scoped fetch and invalidating jobs
   await value.write('vehicles',[2]);await value.invalidate('jobs');
   assert.deepEqual(value.peek('vehicles').data,[2]);assert.deepEqual(value.peek('jobs').data,[1]);assert.equal(value.peek('jobs').updatedAt,0);f.h.dispose();
 });
+
+test('a delayed invalidation cannot recreate a previous account record',async()=>{
+  const f=fixture(),old=f.h.render();f.h.effects();await old.write('jobs',[1]);
+  let release;const original=f.storage.multiGet;f.storage.multiGet=async keys=>{const rows=await original(keys);await new Promise(r=>{release=r;});return rows;};
+  const pending=old.invalidate('jobs');await tick();
+  f.setAuth({user:{uid:'v'},employee:{companyId:'d',employeeId:'x'},isAuthed:true,loading:false});f.h.render();f.h.effects();await tick();release();await pending;
+  assert.equal(f.disk.size,0);f.h.dispose();
+});
+test('case-distinct account identities cannot reuse an old writer even when legacy cache keys collide',async()=>{
+  const f=fixture(),old=f.h.render();f.h.effects();
+  f.setAuth({user:{uid:'U'},employee:{companyId:'c',employeeId:'e'},isAuthed:true,loading:false});f.h.render();f.h.effects();await tick();await old.write('jobs',['old']);assert.equal(f.disk.size,0);f.h.dispose();
+});

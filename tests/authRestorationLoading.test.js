@@ -33,6 +33,7 @@ function harness({ employee = null, ready = true, revision = 2, verifiedRevision
   const clerk = { enabled, ready, loading: false, hasClerkSession, error, revision, uid: 'owner', isReady: () => ready };
   const auth = { currentUser: user };
   const mocks = {
+    '../lib/startup/timings': {startupTimings:{measure:async(_p,run)=>run(),mark(){}},beginForegroundTimings(){}},
     react: { ...hooks, default: hooks, __esModule: true },
     '@react-native-async-storage/async-storage': { default: { multiGet: async () => [['employeeId', 'employee']] }, __esModule: true },
     'firebase/auth': {}, 'firebase/firestore': {},

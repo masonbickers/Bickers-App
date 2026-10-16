@@ -142,7 +142,7 @@ test("password sign-in stays on login until the account check and session reload
   assert.doesNotMatch(loginSource, /router\.replace/);
   const gate = authProviderSource.slice(authProviderSource.indexOf("const isAuthed = useMemo"));
   assert.match(gate, /mobileAccessOK && !securityTransition && !signInPending/);
-  assert.match(gate, /\[clerk\.enabled, clerk\.ready, clerk\.uid, user, employee, securityTransition, signInPending\]/);
+  assert.match(gate, /\[clerk\.enabled, clerk\.ready, clerk\.revision, clerk\.uid, user, employee, securityTransition, signInPending\]/);
 });
 
 test("logout cannot restore the employee session before Firebase signs out", () => {
