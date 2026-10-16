@@ -1,0 +1,46 @@
+{
+  "observedAt": "2026-10-16T15:19:12.583634+00:00",
+  "buildId": "7cfbbec6-4177-43f6-bd3d-a3a81a7e3955",
+  "buildStatus": "FINISHED",
+  "submissionId": "49d19794-061d-46f9-9a68-2b129b2ec611",
+  "submissionStatus": "FINISHED",
+  "sourceCommit": "712d048cb7f7208fb05f919f594361b92d74c39e",
+  "signedVerification": {
+    "appVersion": "5.0.14",
+    "buildNumber": "96",
+    "bundleIdentifier": "com.bickers.booking",
+    "runtime": "5.0.14",
+    "channel": "clerk-pilot",
+    "updatesEnabled": true,
+    "bundleBytes": 7623084,
+    "releaseMarkers": {
+      "https://pilot.bickers.co.uk": true,
+      "https://bickers-clerk-pilot-api.onrender.com": true,
+      "home-interactive": true,
+      "first-saved-layout": true,
+      "HomeDashboard": true
+    },
+    "codesignVerified": true,
+    "ipaSha256": "cc247c76d9042a4e62d299a36085c3e986160e2774d0e3b282d3338bca8b58a3"
+  },
+  "appleTestFlightState": {
+    "appVersion": "5.0.14",
+    "buildNumber": "96",
+    "processingState": "VALID",
+    "internalState": "IN_BETA_TESTING",
+    "externalState": "READY_FOR_BETA_SUBMISSION",
+    "uploadedDate": "2026-10-16T08:16:43-07:00",
+    "expired": false,
+    "easSubmissionId": "49d19794-061d-46f9-9a68-2b129b2ec611",
+    "easBuildId": "7cfbbec6-4177-43f6-bd3d-a3a81a7e3955",
+    "runtimeVersion": "5.0.14",
+    "fingerprintHash": "324186226f6beca03e028b4d946e996c131cd876"
+  },
+  "testPassed": 919,
+  "testSkipped": 1,
+  "typecheck": true,
+  "changedCodeLint": true,
+  "iosExport": true,
+  "appProductionVerified": false,
+  "hostedProjectControlPublished": false
+}
