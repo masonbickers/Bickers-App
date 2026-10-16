@@ -138,6 +138,7 @@ export default function WorkingTermsPage() {
     }
     setClosing(true);
     try {
+      await signOutAccount();
       await AsyncStorage.multiRemove([
         "sessionRole",
         "sessionIsService",
@@ -158,7 +159,6 @@ export default function WorkingTermsPage() {
         "timesheetDefaultType",
       ]);
       global.employee = null;
-      await signOutAccount();
       await reloadSession();
       router.replace("/(auth)/login");
     } catch (error) {

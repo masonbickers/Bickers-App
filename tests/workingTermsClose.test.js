@@ -33,7 +33,7 @@ test("signed terms opened without navigation history return to the app", async (
 test("closing required unsigned terms retains the logout flow", async () => {
   const { close, calls } = closeHandler({ accepted: false });
   await close();
-  assert.deepEqual(calls, ["clear-session", "sign-out", "reload-session", "/(auth)/login"]);
+  assert.deepEqual(calls, ["sign-out", "clear-session", "reload-session", "/(auth)/login"]);
 });
 
 test("closing is blocked while a signature is being submitted", async () => {

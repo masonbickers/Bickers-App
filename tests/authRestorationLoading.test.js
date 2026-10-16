@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadVerifiedSession } from '../lib/startup/loadVerifiedSession.js';
+import { resolveMobileClerkAccess } from '../lib/mobileClerkAccess.js';
 
 const require = createRequire(import.meta.url);
 const React = require('react');
@@ -17,7 +18,7 @@ const approved = { employeeId: 'employee', companyId: 'company', uid: 'owner', i
 
 // Reproduce the render between Clerk's bridge onReady and the effect that
 // reloads the employee session. Its previous sessionReady flag is still true.
-function harness({ employee = null, ready = true, revision = 2, verifiedRevision = 1, error = null, hasClerkSession = true, enabled = true, user = { uid: 'owner' }, resolveAccess = async () => null, snapshotStore = null, terms = async () => ({accepted:true}) } = {}) {
+function harness({ employee = null, ready = true, revision = 2, verifiedRevision = 1, error = null, hasClerkSession = true, enabled = true, user = { uid: 'owner' }, resolveAccess = async () => null, snapshotStore = null, terms = async () => ({accepted:true}), preferences = async () => [['employeeId', 'employee']] } = {}) {
   const states = [user, true, false, employee, true, null, { accepted: true }, null, 0];
   let stateIndex = 0;
   let refIndex = 0;
@@ -35,7 +36,7 @@ function harness({ employee = null, ready = true, revision = 2, verifiedRevision
   const mocks = {
     '../lib/startup/timings': {startupTimings:{measure:async(_p,run)=>run(),mark(){}},beginForegroundTimings(){}},
     react: { ...hooks, default: hooks, __esModule: true },
-    '@react-native-async-storage/async-storage': { default: { multiGet: async () => [['employeeId', 'employee']] }, __esModule: true },
+    '@react-native-async-storage/async-storage': { default: { multiGet: preferences }, __esModule: true },
     'firebase/auth': {}, 'firebase/firestore': {},
     './StartupSnapshotProvider': { useStartupSnapshot: () => ({store:snapshotStore}) },
     '../lib/startup/loadVerifiedSession': { loadVerifiedSession },
@@ -98,9 +99,9 @@ const verifiedAccess = {
   employee: { ...approved, id: 'employee', mobileAccess: { status: 'active' } },
 };
 function deferred() {
-  let resolve;
-  const promise = new Promise(done => { resolve = done; });
-  return { promise, resolve };
+  let resolve, reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 test('actual async session completion stamps only the checked revision', async () => {
@@ -162,3 +163,67 @@ for (const [label, resolveAccess, terms, expected] of [
     assert.equal(invalidations,['denied','terms-required'].includes(expected)?1:0);
   });
 }
+
+for (const code of ['permission-denied', 'unauthenticated', 'auth/user-disabled', 'auth/user-token-expired', 'auth/invalid-user-token', 'auth/user-not-found', 'unavailable', 'deadline-exceeded', 'auth/network-request-failed']) {
+  test(`actual access boundary and provider distinguish ${code}`, async () => {
+    let invalidations = 0, activations = 0;
+    const app = harness({
+      resolveAccess: deps => resolveMobileClerkAccess({...deps, getTokenResult: async () => {throw Object.assign(Error(code), {code});}}),
+      snapshotStore: {getActive: () => null, invalidate: async () => {invalidations++;}, activate: async () => {activations++;}},
+    });
+    await app.render().reloadSession();
+    const rejected = !['unavailable', 'deadline-exceeded', 'auth/network-request-failed'].includes(code);
+    assert.equal(app.render().startupAccessStatus, rejected ? 'denied' : 'unavailable');
+    assert.equal(invalidations, rejected ? 1 : 0);
+    assert.equal(activations, 0);
+    assert.equal(app.render().isAuthed, false);
+  });
+}
+
+test('an early preference failure cannot swallow a later access denial while terms remain pending', async () => {
+  const pending = deferred();
+  let invalidations = 0;
+  const app = harness({
+    preferences: async () => {throw Error('device storage unavailable');},
+    resolveAccess: () => pending.promise,
+    terms: () => new Promise(() => {}),
+    snapshotStore: {invalidate: async () => {invalidations++;}},
+  });
+  const loading = app.render().reloadSession();
+  await new Promise(setImmediate);
+  pending.reject(Object.assign(Error('denied'), {code: 'MOBILE_ACCESS_DENIED'}));
+  await loading;
+  assert.equal(app.render().startupAccessStatus, 'denied');
+  assert.equal(invalidations, 1);
+  assert.equal(app.render().isAuthed, false);
+});
+
+test('a preference failure after successful access never publishes partial authorization', async () => {
+  let activations = 0, invalidations = 0;
+  const app = harness({
+    preferences: async () => {throw Object.assign(Error('storage error'), {code: 'permission-denied'});},
+    resolveAccess: async () => verifiedAccess,
+    snapshotStore: {getActive: () => null, activate: async () => {activations++;}, invalidate: async () => {invalidations++;}},
+  });
+  await app.render().reloadSession();
+  assert.equal(app.render().startupAccessStatus, 'unavailable');
+  assert.equal(app.render().isAuthed, false);
+  assert.equal(activations, 0);
+  assert.equal(invalidations, 0);
+});
+
+test('an old Firebase rejection after account replacement cannot invalidate the current snapshot', async () => {
+  const pending = deferred();
+  let invalidations = 0;
+  const app = harness({
+    resolveAccess: deps => resolveMobileClerkAccess({...deps, getTokenResult: () => pending.promise}),
+    snapshotStore: {invalidate: async () => {invalidations++;}},
+  });
+  const loading = app.render().reloadSession();
+  await new Promise(setImmediate);
+  app.auth.currentUser = {uid: 'replacement'};
+  pending.reject(Object.assign(Error('revoked'), {code: 'auth/user-token-expired'}));
+  await loading;
+  assert.equal(invalidations, 0);
+  assert.equal(app.render().employee, null);
+});

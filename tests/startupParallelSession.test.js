@@ -22,3 +22,14 @@ test('confirmed denial is surfaced before a slow terms service finishes',async()
   const error=Object.assign(Error('denied'),{code:'MOBILE_ACCESS_DENIED'});
   await assert.rejects(api.loadVerifiedSession({readPreferences:async()=>[],resolveAccess:async()=>{throw error;},readTerms:()=>new Promise(()=>{}),isCurrent:()=>true}),{code:'MOBILE_ACCESS_DENIED'});
 });
+
+test('preference failure waits for access and cannot win over delayed denial', async () => {
+  const access = deferred();
+  const preferencesError = Error('storage unavailable');
+  const pending = api.loadVerifiedSession({readPreferences: async () => {throw preferencesError;}, resolveAccess: () => access.promise, readTerms: async () => null, isCurrent: () => true});
+  const observed = pending.catch(error => error);
+  await new Promise(setImmediate);
+  const denied = Object.assign(Error('denied'), {code: 'MOBILE_ACCESS_DENIED'});
+  access.reject(denied);
+  assert.equal(await observed, denied);
+});

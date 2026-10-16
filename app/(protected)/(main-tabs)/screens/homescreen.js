@@ -635,6 +635,7 @@ export default function HomeScreen() {
 
   const handleLogout = async () => {
     try {
+      await signOutAccount();
       await AsyncStorage.multiRemove([
         "sessionRole",
         "sessionIsService",
@@ -656,7 +657,6 @@ export default function HomeScreen() {
       ]);
 
       global.employee = null;
-      await signOutAccount();
       await reloadSession();
       router.replace("/(auth)/login");
     } catch (error) {

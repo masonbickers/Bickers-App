@@ -24,3 +24,11 @@ test('approval, account retirement proof and conflicting employee links remain e
 test('local approval rejection has a structured outcome distinct from network failure', async () => {
   await assert.rejects(resolveMobileClerkAccess({ uid:'u',getTokenResult:async()=>({claims:{sub:'other'}}),isCurrent:()=>true }),{code:'MOBILE_ACCESS_DENIED'});
 });
+
+for (const boundary of ['getTokenResult', 'readUser', 'readEmployee']) {
+  test(`Firebase denial from ${boundary} has an explicit access outcome`, async () => {
+    const {deps} = fixture();
+    deps[boundary] = async () => {throw Object.assign(Error('rejected'), {code: 'permission-denied'});};
+    await assert.rejects(resolveMobileClerkAccess(deps), {code: 'MOBILE_ACCESS_DENIED'});
+  });
+}

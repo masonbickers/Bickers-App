@@ -257,6 +257,7 @@ export default function ServiceSettingsPage() {
   const handleLogout = async () => {
     try {
       // clear role + employee session
+      await signOutAccount();
       await AsyncStorage.multiRemove([
         "sessionRole",
         "sessionIsService",
@@ -278,7 +279,6 @@ export default function ServiceSettingsPage() {
       ]);
 
       global.employee = null;
-      await signOutAccount();
       await reloadSession();
       router.replace("/(auth)/login");
     } catch (error) {

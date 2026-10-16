@@ -144,6 +144,7 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     try {
       setAllowLogout(true);
+      await signOutAccount();
       await AsyncStorage.multiRemove([
         "sessionRole",
         "sessionIsService",
@@ -165,7 +166,6 @@ export default function ProfilePage() {
       ]);
 
       global.employee = null;
-      await signOutAccount();
       if (reloadSession) await reloadSession();
       router.replace("/(auth)/login");
     } catch (err) {
