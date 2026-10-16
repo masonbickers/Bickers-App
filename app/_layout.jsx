@@ -53,7 +53,7 @@ import { useReceiptSync } from "../hooks/useReceiptSync";
 import { getReceiptNotificationHref, isReceiptNotification } from "../lib/receipts/navigation";
 import { startupTimings } from "../lib/startup/timings";
 import StartupPreview from "../components/startup/StartupPreview";
-import { resolveStartupDisplay } from "../lib/startup/display";
+import { resolveStartupDisplay, resolveStartupHandoff, restoreStartupRoute } from "../lib/startup/display";
 import { StartupSnapshotProvider, useStartupSnapshot } from "../providers/StartupSnapshotProvider";
 import { ClerkFirebaseProvider, useClerkFirebase } from "../providers/ClerkFirebaseProvider";
 import { AuthProvider, useAuth } from "../providers/AuthProvider";
@@ -119,6 +119,7 @@ function ShellInner() {
   const startup = useStartupSnapshot();
   const clerk = useClerkFirebase();
   const lastPreview = useRef(null);
+  const retainedPreview = useRef(null);
   const segments = useSegments();
   const router = useRouter();
   const pathname = usePathname(); // 👈 NEW
@@ -157,11 +158,16 @@ function ShellInner() {
     (visualPreviewPath === "/design-system" || visualPreviewPath === "/service/design-system");
 
   const savedSnapshot = resolveStartupDisplay({ snapshot: startup.snapshot, enabled: startup.enabled, clerk, startupAccessStatus, loading, isAuthed, workingTermsAccepted, securityTransition, updateRequired });
-  const preview = savedSnapshot;
-  if (preview) lastPreview.current = { route: preview.route, date: preview.selectedDateISO };
+  const preview = resolveStartupHandoff({ snapshot: savedSnapshot || retainedPreview.current, enabled: startup.enabled, clerk, startupAccessStatus, loading, isAuthed, workingTermsAccepted, securityTransition, updateRequired, pathname, isServiceOnlyUser, readyRoute: startup.readyRoute, readyCycle: startup.readyCycle, handoffCycle: startup.handoffCycle });
+  retainedPreview.current = preview;
+  if (savedSnapshot) lastPreview.current = { route: savedSnapshot.route, date: savedSnapshot.selectedDateISO };
+  const preparingLiveRoute = !!preview && !savedSnapshot && !loading && isAuthed && workingTermsAccepted;
   if (['signed-out', 'denied', 'terms-required'].includes(startupAccessStatus)) lastPreview.current = null;
   const unavailable = startup.enabled && startupAccessStatus === 'unavailable';
   const retryStartup = async () => { if (clerk.ready) await reloadSession(); else await clerk.reconcile?.({ requireFresh: true }); };
+
+  const { beginHandoff } = startup;
+  useEffect(() => { if (loading) beginHandoff(); }, [loading, beginHandoff]);
 
   // 👇 any route starting with "/service" uses the Service footer
   // e.g. /service, /service/pages/..., /service/whatever
@@ -240,7 +246,7 @@ function ShellInner() {
     if (visualTestRoute) return;
     if (isAuthed && workingTermsAccepted && lastPreview.current && !isServiceOnlyUser) {
       const saved = lastPreview.current; lastPreview.current = null;
-      router.replace({ pathname: saved.route === "schedule" ? "/(protected)/screens/schedule" : "/(protected)/screens/homescreen", params: { date: saved.date } });
+      restoreStartupRoute(router, saved, pathname);
       return;
     }
 
@@ -267,6 +273,7 @@ function ShellInner() {
       }
     }
   }, [
+    pathname,
     savedSnapshot,
     unavailable,
     loading,
@@ -440,8 +447,8 @@ function ShellInner() {
       />
 
       {holdSessionRoute && ((preview || (startup.enabled && loading && startupAccessStatus === "restoring")) ? (
-        <View style={{ flex: 1 }} onLayout={() => startupTimings.mark("first-saved-layout")}><StartupPreview snapshot={preview} status={startupAccessStatus} onRetry={retryStartup}
-          /></View>
+        <View style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 1 }} onLayout={() => startupTimings.mark("first-saved-layout")}><RootSurface><StartupPreview snapshot={preview} status={startupAccessStatus} onRetry={retryStartup}
+          /></RootSurface></View>
       ) : (
         <View style={{ flex: 1, justifyContent: "center", padding: t.spacing.xl }}>
           {unavailable ? <><Text variant="body">Unable to check account access. Please retry.</Text><AppButton label="Retry" onPress={retryStartup} layoutStyle={{ marginTop: t.spacing.md }} /></> : <LoadingState label="Checking account access…" />}
@@ -451,7 +458,7 @@ function ShellInner() {
         testID={visualTestRoute ? "visual-test-shell" : undefined}
         accessibilityElementsHidden={holdSessionRoute}
         importantForAccessibility={holdSessionRoute ? "no-hide-descendants" : "auto"}
-        style={{ flex: 1, display: holdSessionRoute ? "none" : "flex" }}
+        style={{ flex: 1, display: holdSessionRoute && !preparingLiveRoute ? "none" : "flex" }}
       >
         {securityTransition?.kind === "temporaryPassword" ? <TemporaryPasswordSetup /> : securityTransition ? <SecureAccount /> : <Slot />}
       </View>

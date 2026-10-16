@@ -107,7 +107,8 @@ function ClerkRuntime({ config, children }) {
       ...lifecycle,
       invalidateDisplay: () => startupStore?.invalidate('signed-out'),
       getClerkIdentity: identity,
-      getClerkToken: () => startupTimings.measure('clerk-token', () => sdk.current.getToken({ skipCache: true })),
+      // The SDK refreshes missing/expired tokens; the bridge checks live approval.
+      getClerkToken: () => startupTimings.measure('clerk-token', () => sdk.current.getToken()),
       exchangeToken: request => startupTimings.measure('bridge', () => createClerkBridgeClient({ origin: config.origin })(request)),
       getFirebaseUid: () => auth.currentUser?.uid || null,
       signInFirebase: async customToken => {

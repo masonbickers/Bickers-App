@@ -68,7 +68,7 @@ export default function HomeDashboard({ colors, reduceMotion = false, gridColumn
   account, timeOfDay, dateLabel, userInitials = "", notificationSummary = {unread:0},
   lastUpdatedAt = new Date(), selectedDate, todayCount = 0, todayContent, planningContent,
   goPrevDay, goNextDay, onOpenNotifications, onOpenAccount, onAction,
-  workDiaryAccess = false, refreshingAccess = false, refreshUnavailable = false, savedAt = null,
+  workDiaryAccess = false, refreshingAccess = false, dataPending = false, refreshUnavailable = false, savedAt = null,
 }) {
   const dashboardCards = createDashboardCardStyles(colors, "grouped");
   const groups = buttons.reduce((result, button) => {
@@ -364,8 +364,8 @@ export default function HomeDashboard({ colors, reduceMotion = false, gridColumn
             <View style={styles.heroUpdateStatus}>
               <Icon name={refreshingAccess ? "clock" : "refresh-cw"} size={12} color={colors.textMuted} />
               <Text tone={"muted"} style={[styles.heroUpdateText]}>
-                {refreshUnavailable ? "Update unavailable" : refreshingAccess
-                  ? (savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "Checking account…")
+                {refreshUnavailable ? "Update unavailable" : (refreshingAccess || dataPending)
+                  ? (savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : (refreshingAccess ? "Checking account…" : "Checking schedule…"))
                   : `Updated ${lastUpdatedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`}
               </Text>
             </View>

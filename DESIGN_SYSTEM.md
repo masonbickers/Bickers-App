@@ -76,6 +76,15 @@ accessibility remain disabled. Other controls retain the default `"dimmed"`
 appearance. Missing snapshots
 show a neutral account-check label, and failed checks retain the retry treatment.
 
+Home keeps one dashboard tree mounted while account-scoped saved data gives way
+to loaded operational data. `StartupHomeDashboard liveProps` supplies the live
+presentation in place; omitting it preserves the disabled, display-only preview.
+Resource failures retain the dashboard with the shared inline retry treatment.
+Once account access is verified, Home navigation does not wait for operational
+resources. `HomeDashboard dataPending` retains the static saved/checking label
+without disabling controls. Individual work sections keep saved content until
+their booking and holiday status is known; vehicle enrichment never blocks them.
+
 Home uses the same grouped shell and neutral card surfaces in both themes.
 `SectionCard tone="grouped"` and `createDashboardCardStyles(colors, "grouped")`
 opt into that surface without changing other consumers. Action icons retain
@@ -524,3 +533,5 @@ same card in saved and verified Home. Snapshot projection allows only the known
 status labels and bounded display strings; email, leave history/reasons, raw
 profile records, credentials and attachments are excluded. Saved presentation
 remains account-scoped, display-only and subject to the existing 24-hour limit.
+
+Native startup handoff keeps its eligible saved preview over the verified destination until that route reports native layout and two frame callbacks. Mount the destination beneath this display-only overlay; do not remove the preview solely because account verification finished. Denial, sign-out, terms and recovery eligibility still take priority. Home and Schedule share the layout marker; operational data readiness does not delay the handoff.

@@ -11,13 +11,13 @@ import { designTokens as t } from '../../lib/design/tokens';
 
 const dateISO = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 
-/** Display-only Home: consumes the existing account-scoped snapshot, never fetches or navigates. */
-export default function StartupHomeDashboard({ snapshot, status, onRetry, account }) {
+/** One dashboard tree for saved and live content. Omit liveProps for a display-only preview. */
+export default function StartupHomeDashboard({ snapshot, status, onRetry, account, liveProps }) {
   const { colors } = useTheme();
   const layout = useResponsiveLayout();
   const today = new Date();
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate()+1);
-  const planningDate = snapshot?.selectedDateISO ? new Date(`${snapshot.selectedDateISO}T12:00:00`) : tomorrow;
+  const planningDate = liveProps?.selectedDate || (snapshot?.selectedDateISO ? new Date(`${snapshot.selectedDateISO}T12:00:00`) : tomorrow);
   const todayJobs = (snapshot?.jobs || []).filter(job => job.dateISO === dateISO(today));
   const planningJobs = (snapshot?.jobs || []).filter(job => job.dateISO === dateISO(planningDate));
   const unavailable = status === 'unavailable';
@@ -49,7 +49,8 @@ export default function StartupHomeDashboard({ snapshot, status, onRetry, accoun
       dateLabel={today.toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})}
       selectedDate={planningDate} todayCount={todayJobs.length}
       todayContent={workContent(todayJobs, today)} planningContent={workContent(planningJobs, planningDate, true)} refreshingAccess refreshUnavailable={unavailable} savedAt={snapshot?.savedAt}
+      {...liveProps}
     />
-    {unavailable && <AppButton label="Retry" variant="secondary" onPress={onRetry} layoutStyle={{marginTop:t.spacing.md}} />}
+    {!liveProps && unavailable && <AppButton label="Retry" variant="secondary" onPress={onRetry} layoutStyle={{marginTop:t.spacing.md}} />}
   </>;
 }

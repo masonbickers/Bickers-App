@@ -1,7 +1,7 @@
+import { startupTimings } from "../../../../lib/startup/timings";
 import { useStartupSnapshot } from "../../../../providers/StartupSnapshotProvider";
 import HomeDayStatus from "../../../../components/home/HomeDayStatus";
 import { getHomeDayLabel } from "../../../../lib/homeDayStatus";
-import HomeDashboard from "../../../../components/home/HomeDashboard";
 import StartupContentMarker from "../../../../components/startup/StartupContentMarker";
 import { routeColors } from "../../../../lib/design/routePresentation/main-tabs-screens-homescreen-js.js";
 import { styles } from "../../../../lib/design/screenStyles/main-tabs-screens-homescreen-js.js";
@@ -14,7 +14,6 @@ import {
 import { useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState } from "react";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -416,7 +415,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  const { signOutAccount, user, employee, reloadSession } = useAuth();
+  const { signOutAccount, user, employee, reloadSession, isAuthed, loading: sessionLoading } = useAuth();
   const { invalidate } = useDataCache();
   const { snapshot: savedHome } = useStartupSnapshot();
   const { colors, colorScheme } = useTheme();
@@ -426,28 +425,31 @@ export default function HomeScreen() {
   const holidaysResource = useHolidays();
   const vehiclesResource = useVehicles();
 
+  useEffect(() => {
+    for (const [phase, resource] of [
+      ["home-bookings", bookingsResource],
+      ["home-holidays", holidaysResource],
+      ["home-vehicles", vehiclesResource],
+    ]) {
+      if (!resource.isInitialLoading && !resource.error && resource.lastUpdatedAt) {
+        startupTimings.mark(phase);
+      }
+    }
+  }, [bookingsResource, holidaysResource, vehiclesResource]);
+
 
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [notificationItems, setNotificationItems] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
 
-  const [todayJobs, setTodayJobs] = useState([]);
-  const [todayHolidayInfo, setTodayHolidayInfo] = useState(null);
-
-  const [selectedDate, setSelectedDate] = useState(() => restoreStartupDate(params.date) || getTomorrow());
+  const [selectedDate, setSelectedDate] = useState(() => restoreStartupDate(params.date) || (savedHome?.route === "home" && restoreStartupDate(savedHome.selectedDateISO)) || getTomorrow());
   useEffect(() => {
     const restored = restoreStartupDate(params.date);
     if (restored) setSelectedDate(restored);
   }, [params.date]);
 
-  const [dayJobs, setDayJobs] = useState([]);
-  const [dayHolidayInfo, setDayHolidayInfo] = useState(null);
-
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(() => new Date());
-
-  const planningDataRef = useRef({ jobs: [], holidaysRaw: [], allEmployees: [] });
-  const [planningVersion, setPlanningVersion] = useState(0);
 
   const [recceOpen, setRecceOpen] = useState(false);
   const [recceJob, setRecceJob] = useState(null);
@@ -611,9 +613,9 @@ export default function HomeScreen() {
     [vehicleDisplayList]
   );
 
-  const loadPlanningData = useCallback(() => {
-    if (!employee || !companyId) return null;
-    const next = {
+  const planningData = useMemo(() => {
+    if (!employee || !companyId) return { jobs: [], holidaysRaw: [], allEmployees: [] };
+    return {
       jobs: bookingsResource.data.filter(isCrewedBooking).filter((job) => {
         const dates = Array.isArray(job.bookingDates) ? job.bookingDates : [];
         return dates.some((date) => planningDates.includes(toISODate(date)));
@@ -621,9 +623,6 @@ export default function HomeScreen() {
       holidaysRaw: holidaysResource.data,
       allEmployees: bookingsResource.employees,
     };
-    planningDataRef.current = next;
-    setPlanningVersion((prev) => prev + 1);
-    return next;
   }, [
     bookingsResource.data,
     bookingsResource.employees,
@@ -633,13 +632,8 @@ export default function HomeScreen() {
     planningDates,
   ]);
 
-  useEffect(() => {
-    if (!employee) return;
-    loadPlanningData();
-  }, [employee, loadPlanningData]);
-
   const buildJobsForDate = useCallback(
-    (dateISO, source = planningDataRef.current) => {
+    (dateISO, source = planningData) => {
       if (!employee || !dateISO) return [];
 
       const meCode = canonicalEmployeeCode(employee.userCode);
@@ -680,7 +674,7 @@ export default function HomeScreen() {
 
       return collapseLinkedJobsForDay(dayJobsList, dateISO);
     },
-    [employee]
+    [employee, planningData]
   );
 
   const startupJobs = useMemo(() => planningDates.flatMap(dateISO =>
@@ -693,7 +687,7 @@ export default function HomeScreen() {
     enabled: !holidaysResource.isInitialLoading && !holidaysResource.error && !!holidaysResource.lastUpdatedAt && !bookingsResource.isInitialLoading && !bookingsResource.error && !!bookingsResource.lastUpdatedAt });
 
   const holidayForDate = useCallback(
-    (dateISO, source = planningDataRef.current) => {
+    (dateISO, source = planningData) => {
       if (!dateISO) return null;
 
       const holidaysRaw = Array.isArray(source?.holidaysRaw)
@@ -702,66 +696,22 @@ export default function HomeScreen() {
 
       return pickHolidayInfoForDate(holidaysRaw, employee, dateISO);
     },
-    [employee]
+    [employee, planningData]
   );
 
-  const loadDayStatus = useCallback(
-    (date, source = planningDataRef.current) => {
-      if (!employee) {
-        setDayJobs([]);
-        setDayHolidayInfo(null);
-        return;
-      }
-
-      const dateISO = toISODate(date);
-
-      if (!dateISO) {
-        setDayJobs([]);
-        setDayHolidayInfo(null);
-        return;
-      }
-
-      const dayJobsList = buildJobsForDate(dateISO, source);
-
-      setDayJobs(dayJobsList);
-
-      const info = holidayForDate(dateISO, source);
-
-      setDayHolidayInfo(dayJobsList.length === 0 ? info : null);
-    },
-    [employee, buildJobsForDate, holidayForDate]
-  );
-
+  // Derive summaries in the same render as the resource update. Effect-driven
+  // copies briefly presented an empty day before the assigned work appeared.
+  const todayJobs = useMemo(() => buildJobsForDate(todayISO), [buildJobsForDate, todayISO]);
+  const dayJobs = useMemo(() => buildJobsForDate(selectedISO), [buildJobsForDate, selectedISO]);
+  const todayHolidayInfo = todayJobs.length === 0 ? holidayForDate(todayISO) : null;
+  const dayHolidayInfo = dayJobs.length === 0 ? holidayForDate(selectedISO) : null;
+  const bookingsReady = !bookingsResource.isInitialLoading && !!bookingsResource.lastUpdatedAt;
+  const holidaysReady = !holidaysResource.isInitialLoading && !!holidaysResource.lastUpdatedAt;
+  const dashboardPending = !bookingsReady || !holidaysReady || vehiclesResource.isInitialLoading;
+  const accountPending = sessionLoading || !isAuthed;
   useEffect(() => {
-    loadDayStatus(selectedDate);
-  }, [selectedDate, loadDayStatus, planningVersion]);
-
-  const loadHeaderStatus = useCallback(
-    (source = planningDataRef.current) => {
-      if (!employee) {
-        setTodayJobs([]);
-        setTodayHolidayInfo(null);
-        return;
-      }
-
-      const today = new Date();
-
-      const todayDateISO = toISODate(today);
-
-      const todaysJobsList = buildJobsForDate(todayDateISO, source);
-
-      setTodayJobs(todaysJobsList);
-
-      const todayInfo = holidayForDate(todayDateISO, source);
-
-      setTodayHolidayInfo(todaysJobsList.length === 0 ? todayInfo : null);
-    },
-    [employee, buildJobsForDate, holidayForDate]
-  );
-
-  useEffect(() => {
-    loadHeaderStatus();
-  }, [loadHeaderStatus, planningVersion]);
+    if (!accountPending) startupTimings.mark("home-interactive");
+  }, [accountPending]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1132,27 +1082,38 @@ export default function HomeScreen() {
         refresh={{ refreshing, onRefresh }}
         state={{
           resources: [bookingsResource, holidaysResource, vehiclesResource],
-          hasContent:
-            bookingsResource.data.length > 0 || holidaysResource.data.length > 0,
+          // Home always has its saved dashboard and action layout. Keep that
+          // tree mounted; failures use PageShell's inline retry treatment.
+          hasContent: true,
           onRetry: onRefresh,
-          loadingLabel: "Loading your dashboard…",
-          loadingContent: <StartupHomeDashboard snapshot={savedHome} account={account} />,
         }}
         scrollProps={{ showsVerticalScrollIndicator: false }}
       >
         <StartupContentMarker enabled={!bookingsResource.isInitialLoading && !bookingsResource.error} updatedAt={bookingsResource.lastUpdatedAt} />
-        <HomeDashboard
-          colors={colors} reduceMotion={reduceMotion} gridColumnCount={gridColumnCount}
-          account={account} timeOfDay={timeOfDay} dateLabel={fmtUK(new Date())}
-          userInitials={userInitials} notificationSummary={notificationSummary}
-          lastUpdatedAt={lastUpdatedAt} selectedDate={selectedDate} todayCount={todayJobs.length}
-          todayContent={todayJobs.length > 0 ? todayJobs.map(job => renderJobCard(job, todayISO)) : renderStatusFallback(todayHolidayInfo, new Date())}
-          planningContent={dayJobs.length > 0 ? dayJobs.map(job => renderJobCard(job, selectedISO)) : renderStatusFallback(dayHolidayInfo, selectedDate, {upcoming:true})}
-          goPrevDay={goPrevDay} goNextDay={goNextDay}
-          onOpenNotifications={() => router.push("/notifications")}
-          onOpenAccount={() => { loadAccountNotifications(); setShowAccountModal(true); }}
-          onAction={route => { if (route === "/timesheet") router.navigate(route); else if (route) router.push(route); }}
-          workDiaryAccess={employee?.workDiaryAccess === true}
+        <StartupHomeDashboard snapshot={savedHome} account={account}
+          liveProps={{
+            colors, reduceMotion, gridColumnCount,
+            account, timeOfDay, dateLabel: fmtUK(new Date()),
+            userInitials, notificationSummary,
+            lastUpdatedAt, selectedDate,
+            // Each section replaces its saved contents only when enough data
+            // is known. An unfinished holiday lookup cannot imply a yard day.
+            ...(bookingsReady ? { todayCount: todayJobs.length } : {}),
+            ...(bookingsReady && (todayJobs.length > 0 || holidaysReady) ? {
+              todayContent: todayJobs.length > 0 ? todayJobs.map(job => renderJobCard(job, todayISO)) : renderStatusFallback(todayHolidayInfo, new Date()),
+            } : {}),
+            ...(bookingsReady && (dayJobs.length > 0 || holidaysReady) ? {
+              planningContent: dayJobs.length > 0 ? dayJobs.map(job => renderJobCard(job, selectedISO)) : renderStatusFallback(dayHolidayInfo, selectedDate, { upcoming: true }),
+            } : {}),
+            goPrevDay, goNextDay,
+            onOpenNotifications: () => router.push("/notifications"),
+            onOpenAccount: () => { loadAccountNotifications(); setShowAccountModal(true); },
+            onAction: route => { if (route === "/timesheet") router.navigate(route); else if (route) router.push(route); },
+            workDiaryAccess: employee?.workDiaryAccess === true,
+            refreshingAccess: accountPending,
+            dataPending: dashboardPending,
+            refreshUnavailable: [bookingsResource, holidaysResource, vehiclesResource].some(resource => !!resource.error),
+          }}
         />
       </PageShell>
 

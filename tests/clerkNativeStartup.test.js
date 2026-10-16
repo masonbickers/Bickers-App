@@ -11,7 +11,8 @@ test('verified Clerk Firebase sign-in is not blocked by the separate Render empl
   const effects = []; let deps;
   const user = { uid: 'owner', getIdToken: async () => 'firebase-token' };
   const hooks = { ...React, useEffect: effect => effects.push(effect), useRef: current => ({ current }), useState: initial => [initial, () => {}], useCallback: fn => fn };
-  const sdk = { isLoaded: false, isSignedIn: false };
+  let tokenOptions;
+  const sdk = { isLoaded: false, isSignedIn: false, getToken: async options => { tokenOptions = options; return 'valid-sdk-token'; } };
   const mocks = {
     './StartupSnapshotProvider': { useStartupSnapshot: () => ({ store: null }) },
     '../lib/startup/timings': {startupTimings:{measure:async(_p,run)=>run(),mark(){}},beginForegroundTimings(){}},
@@ -32,4 +33,6 @@ test('verified Clerk Firebase sign-in is not blocked by the separate Render empl
   module.exports.ClerkRuntime({ config: { origin: 'https://pilot.bickers.co.uk', deploymentRole: 'pilot' }, children: null });
   effects[0]();
   await assert.doesNotReject(deps.signInFirebase('verified-custom-token'));
+  assert.equal(await deps.getClerkToken(), 'valid-sdk-token');
+  assert.notEqual(tokenOptions?.skipCache, true, 'startup should use the SDK valid-token cache rather than force a redundant request');
 });

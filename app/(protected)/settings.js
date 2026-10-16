@@ -1,4 +1,4 @@
-import { AppButton, ListRow, PageSection, SegmentedControl, ToggleRow } from "../../components/ui/AppPrimitives";
+import { AppButton, AppText, ListRow, PageSection, SegmentedControl, ToggleRow } from "../../components/ui/AppPrimitives";
 import {
   useRouter } from "expo-router";
 import * as Application from "expo-application";
@@ -525,6 +525,9 @@ export default function SettingsPage() {
         </PageSection>
       ))}
       </View>
+      <AppText variant="metadata" tone="secondary" layoutStyle={{ alignSelf: "center", paddingVertical: t.spacing.md }}>
+        Version {getCurrentAppVersion()}{Application.nativeBuildVersion ? ` (Build ${Application.nativeBuildVersion})` : ""}
+      </AppText>
       <ChangePasswordModal
         visible={passwordModalVisible}
         colors={colors}

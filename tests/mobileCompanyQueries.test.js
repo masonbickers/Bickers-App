@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { createStartupTimings } from "../lib/startup/timings.js";
 
 // Execute the production hooks with only React scheduling/cache and the external
 // Firestore boundary replaced. Removing a company constraint must fail these tests.
@@ -11,6 +12,7 @@ function harness(file, auth = {}) {
   const cacheCalls = [];
   const effects = [];
   const context = vm.createContext({
+    startupTimings: createStartupTimings(),
     db: {},
     useAuth: () => ({ employee: { uid: "crew", employeeId: "employee-crew", companyId: " bickers ", userCode: " EMP1 " }, isAuthed: true, loading: false, ...auth }),
     collection: (_db, name) => ({ name, constraints: [] }),

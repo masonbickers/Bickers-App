@@ -1,3 +1,4 @@
+import { startupTimings } from "../lib/startup/timings";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { useCallback, useMemo } from "react";
 
@@ -18,9 +19,12 @@ function belongsToCompany(row, companyId) {
 
 async function fetchCollection(collectionName, companyId) {
   if (!companyId) return EMPTY_ROWS;
-  const snapshot = await getDocs(
+  const read = () => getDocs(
     query(collection(db, collectionName), where("companyId", "==", companyId))
   );
+  const snapshot = await (["bookings", "employees", "vehicles"].includes(collectionName)
+    ? startupTimings.measure(`data-${collectionName}`, read)
+    : read());
   return snapshot.docs
     .map((document) => ({ ...document.data(), id: document.id }))
     .filter((row) => belongsToCompany(row, companyId));
@@ -76,7 +80,7 @@ export function useHolidays(options) {
     key: cacheKey,
     enabled: !loading && isAuthed && !!employee?.userCode && (options?.enabled ?? true),
     ttlMs: options?.ttlMs,
-    fetcher: () => fetchEmployeeHistory(user, employee, "holidays"),
+    fetcher: () => startupTimings.measure("data-holidays", () => fetchEmployeeHistory(user, employee, "holidays")),
   });
   return {
     ...resource,

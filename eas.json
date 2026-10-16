@@ -14,7 +14,8 @@
         "EXPO_PUBLIC_CLERK_BRIDGE_ORIGIN": "https://pilot.bickers.co.uk",
         "EXPO_PUBLIC_CLERK_DEPLOYMENT_ROLE": "pilot",
         "EXPO_PUBLIC_API_URL": "https://bickers-clerk-pilot-api.onrender.com"
-      }
+      },
+      "distribution": "store"
     },
     "preview": {
       "distribution": "internal",

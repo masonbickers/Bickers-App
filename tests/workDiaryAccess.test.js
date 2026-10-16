@@ -106,7 +106,7 @@ test("both direct routes wrap their data-fetching components in the gate", () =>
     assert.ok(source.indexOf(`function ${content}()`) > source.indexOf("export default function"));
   }
   const home = readFileSync(new URL("../app/(protected)/(main-tabs)/screens/homescreen.js", import.meta.url), "utf8");
-  assert.match(home, /workDiaryAccess=\{employee\?\.workDiaryAccess === true\}/);
+  assert.match(home, /workDiaryAccess: employee\?\.workDiaryAccess === true/);
   const presentation = readFileSync(new URL("../components/home/HomeDashboard.jsx", import.meta.url), "utf8");
   assert.match(presentation, /return workDiaryAccess === true/);
   assert.doesNotMatch(home, /ALLOWED_WORK_DIARY_CODES/);
