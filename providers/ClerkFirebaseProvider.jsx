@@ -8,7 +8,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState, Linking } from 'react-native';
 import { auth } from '../firebaseConfig';
 import { clearAccountSessionCache } from '../lib/accountSessionCache';
-import { syncEmployeeAuth } from '../lib/authApi';
 import { clerkClientConfig, createClerkBridgeClient } from '../lib/clerkBridgeClient';
 import { createClerkSessionCoordinator } from '../lib/clerkSessionCoordinator';
 import { createClerkSignInFlow } from '../lib/clerkSignInFlow';
@@ -100,8 +99,11 @@ function ClerkRuntime({ config, children }) {
       exchangeToken: createClerkBridgeClient({ origin: config.origin }),
       getFirebaseUid: () => auth.currentUser?.uid || null,
       signInFirebase: async customToken => {
-        const credential = await withClerkAuthPhase('firebase-sign-in', () => signInWithCustomToken(auth, customToken));
-        await withClerkAuthPhase('employee-sync', async () => syncEmployeeAuth({ idToken: await credential.user.getIdToken(true) }));
+        // The bridge checks the live canonical account and approval before
+        // issuing this token. AuthProvider then independently reads current
+        // permissions from Firestore before exposing protected routes. The
+        // legacy Render sync must not add another dependency to Clerk startup.
+        await withClerkAuthPhase('firebase-sign-in', () => signInWithCustomToken(auth, customToken));
       },
       signOutFirebase: () => signOut(auth),
       signOutClerk: options => clerk.signOut(options),
