@@ -26,7 +26,7 @@ test("home prioritises work and actions with compact status summaries", () => {
 });
 
 test("home starts planning on tomorrow and supports browsing both directions", () => {
-  assert.match(homeSource, /const \[selectedDate, setSelectedDate\] = useState\(getTomorrow\)/);
+  assert.match(homeSource, /const \[selectedDate, setSelectedDate\] = useState\(\(\) => restoreStartupDate\(params\.date\) \|\| getTomorrow\(\)\)/);
   assert.doesNotMatch(homeSource, /disabled=\{isEarliestPlanningDay\}/);
   assert.doesNotMatch(homeSource, /toISODate\(nd\) < toISODate\(getTomorrow\(\)\)/);
   assert.match(homeSource, /const goPrevDay[\s\S]*nd\.setDate\(nd\.getDate\(\) - 1\);[\s\S]*return nd;/);
