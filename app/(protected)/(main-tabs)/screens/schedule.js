@@ -42,6 +42,7 @@ import {
   getBookingVehicleReferences,
   getVehicleDisplayList,
 } from "../../../../lib/fleetSchema";
+import { useStartupSnapshotCapture } from "../../../../hooks/useStartupSnapshotCapture";
 import { useAuth } from "../../../../providers/AuthProvider";
 import { useTheme } from "../../../../providers/ThemeProvider";
 import { withAlpha } from "../../../../lib/design/color";
@@ -260,7 +261,8 @@ function isApprovedHoliday(h) {
 
 export default function SchedulePage() {
   const params = useLocalSearchParams();
-  const { employee, isAuthed, loading } = useAuth();
+  const { employee, user, isAuthed, loading } = useAuth();
+  const snapshotScope = JSON.stringify([user?.uid, employee?.companyId, employee?.employeeId]);
   const { colors, colorScheme } = useTheme();
   const responsive = useResponsiveLayout();
   const dayMetrics = calendarDayMetrics(t, responsive.fontScale);
@@ -462,12 +464,13 @@ export default function SchedulePage() {
       });
 
       setMarkedDates(marks);
-      setDayInfo({ jobs: jobMap, holidayByDate, bankHolidays: bh });
+      setDayInfo({ jobs: jobMap, holidayByDate, bankHolidays: bh, snapshotScope, sourceBookings: bookingsResource.data, sourceEmployees: bookingsResource.employees });
     };
 
     loadData();
   }, [
     bankHolidayMap,
+    snapshotScope,
     bookingsResource.data,
     bookingsResource.employees,
     employee?.displayName,
@@ -547,6 +550,16 @@ export default function SchedulePage() {
         bankHoliday: dayInfo.bankHolidays?.[date] || null,
       }));
   }, [dayInfo]);
+
+  const startupDate = selectedDay || calendarCurrent;
+  const startupJobs = useMemo(() => Object.entries(dayInfo?.jobs || {})
+    .sort(([a], [b]) => Math.abs(Date.parse(a) - Date.parse(startupDate)) - Math.abs(Date.parse(b) - Date.parse(startupDate)))
+    .slice(0, 31).flatMap(([dateISO, jobs]) => jobs.map(job => ({
+      id: job.id, dateISO, title: job.title || job.production || '', jobNumber: String(displayJobNumber(job) || ''), callTime: getCallTime(job, dateISO) || '', location: job.location || '',
+    }))), [dayInfo, startupDate]);
+  useStartupSnapshotCapture({ route: 'schedule', selectedDateISO: startupDate, jobs: startupJobs, completeDates: [startupDate],
+    enabled: dayInfo?.snapshotScope === snapshotScope && dayInfo?.sourceBookings === bookingsResource.data && dayInfo?.sourceEmployees === bookingsResource.employees
+      && !bookingsResource.isInitialLoading && !bookingsResource.error && !!bookingsResource.lastUpdatedAt });
 
   const refreshBookings = bookingsResource.refresh;
   const refreshHolidays = holidaysResource.refresh;

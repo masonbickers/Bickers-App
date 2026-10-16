@@ -59,6 +59,7 @@ import {
   subscribeToInbox,
   } from "../../../../lib/notificationInbox";
 import { notificationVisibleToAccount } from "../../../../lib/notificationVisibility";
+import { useStartupSnapshotCapture } from "../../../../hooks/useStartupSnapshotCapture";
 import { useAuth } from "../../../../providers/AuthProvider";
 import { useDataCache } from "../../../../providers/DataCacheProvider";
 import { useTheme } from "../../../../providers/ThemeProvider";
@@ -737,6 +738,14 @@ export default function HomeScreen() {
     },
     [employee]
   );
+
+  const startupJobs = useMemo(() => planningDates.flatMap(dateISO =>
+    buildJobsForDate(dateISO, { jobs: bookingsResource.data.filter(isCrewedBooking), allEmployees: bookingsResource.employees }).map(job => ({
+      id: job.id, dateISO, title: job.title || job.production || '', jobNumber: String(displayJobNumber(job) || ''), callTime: getCallTime(job, dateISO) || '', location: job.location || '',
+    }))
+  ), [planningDates, buildJobsForDate, bookingsResource.data, bookingsResource.employees]);
+  useStartupSnapshotCapture({ route: 'home', selectedDateISO: selectedISO, selectedJobId: selectedJob?.id, jobs: startupJobs, completeDates: planningDates,
+    enabled: !bookingsResource.isInitialLoading && !bookingsResource.error && !!bookingsResource.lastUpdatedAt });
 
   const holidayForDate = useCallback(
     (dateISO, source = planningDataRef.current) => {

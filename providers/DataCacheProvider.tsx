@@ -18,6 +18,7 @@ import {
   isCacheRecordExpired,
   normalizeCacheTtl,
 } from "../lib/sessionCache";
+import { createRefreshCoalescer } from "../lib/startup/refresh";
 import { useAuth } from "./AuthProvider";
 
 const CACHE_PREFIX = "@bickers.dataCache.v2";
@@ -330,19 +331,21 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isAuthed) return undefined;
+    const coalescer = createRefreshCoalescer({ refresh: () => setRefreshSignal(value => value + 1) });
     const appStateSub = AppState.addEventListener("change", (state) => {
-      if (state === "active") setRefreshSignal((value) => value + 1);
+      if (state === "active") coalescer.request();
     });
     const netSub = NetInfo.addEventListener((state) => {
       if (state.isConnected && state.isInternetReachable !== false) {
-        setRefreshSignal((value) => value + 1);
+        coalescer.request();
       }
     });
     return () => {
+      coalescer.dispose();
       appStateSub.remove();
       netSub();
     };
-  }, [isAuthed]);
+  }, [isAuthed, scope]);
 
   const value = useMemo(
     () => ({

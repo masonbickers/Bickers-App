@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { providerHarness } from './helpers/providerHarness.js';
+import {createRefreshCoalescer} from '../lib/startup/refresh.js';
 import * as session from '../lib/sessionCache.js';
 const tick=()=>new Promise(r=>setImmediate(r));
 function fixture(){
@@ -8,7 +9,7 @@ function fixture(){
   const disk=new Map();
   const storage={getItem:async k=>disk.get(k),setItem:async(k,v)=>{disk.set(k,v);},removeItem:async k=>disk.delete(k),getAllKeys:async()=>[...disk.keys()],multiGet:async keys=>keys.map(k=>[k,disk.get(k)]),multiRemove:async keys=>keys.forEach(k=>disk.delete(k))};
   const h=providerHarness(new URL('../providers/DataCacheProvider.tsx',import.meta.url).pathname,'DataCacheProvider',{
-    '@react-native-async-storage/async-storage':{default:storage,__esModule:true},'@react-native-community/netinfo':{default:{addEventListener:()=>()=>{}},__esModule:true},'react-native':{AppState:{addEventListener:()=>({remove(){}})}},'../lib/sessionCache':session,'./AuthProvider':{useAuth:()=>auth}
+    '@react-native-async-storage/async-storage':{default:storage,__esModule:true},'@react-native-community/netinfo':{default:{addEventListener:()=>()=>{}},__esModule:true},'react-native':{AppState:{addEventListener:()=>({remove(){}})}},'../lib/startup/refresh':{createRefreshCoalescer},'../lib/sessionCache':session,'./AuthProvider':{useAuth:()=>auth}
   });
   return{h,disk,storage,setAuth:value=>{auth=value;}};
 }
@@ -24,4 +25,12 @@ test('late old-account fetches and writes cannot repopulate persistent cache aft
   f.setAuth({user:{uid:'v'},employee:{companyId:'d',employeeId:'x'},isAuthed:true,loading:false});const current=f.h.render();f.h.effects();await tick();
   release(['old']);await pending;await old.write('late',['old']);
   assert.equal(current.peek('jobs'),null);assert.equal(f.disk.size,0);f.h.dispose();
+});
+
+test('concurrent screens deduplicate the same scoped fetch and invalidating jobs retains other sections',async()=>{
+  const f=fixture(),value=f.h.render();f.h.effects();let release,calls=0;
+  const fetch=()=>{calls++;return new Promise(r=>{release=r;});};
+  const a=value.getOrFetch('jobs',fetch,{force:true}),b=value.getOrFetch('jobs',fetch,{force:true});await tick();assert.equal(calls,1);release([1]);await Promise.all([a,b]);
+  await value.write('vehicles',[2]);await value.invalidate('jobs');
+  assert.deepEqual(value.peek('vehicles').data,[2]);assert.deepEqual(value.peek('jobs').data,[1]);assert.equal(value.peek('jobs').updatedAt,0);f.h.dispose();
 });
