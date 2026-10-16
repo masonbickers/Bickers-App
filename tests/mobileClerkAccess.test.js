@@ -20,3 +20,7 @@ test('approval, account retirement proof and conflicting employee links remain e
   const {state,deps}=fixture();change(state);await assert.rejects(resolveMobileClerkAccess(deps));
  }
 });
+
+test('local approval rejection has a structured outcome distinct from network failure', async () => {
+  await assert.rejects(resolveMobileClerkAccess({ uid:'u',getTokenResult:async()=>({claims:{sub:'other'}}),isCurrent:()=>true }),{code:'MOBILE_ACCESS_DENIED'});
+});

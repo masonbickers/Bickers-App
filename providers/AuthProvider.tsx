@@ -23,6 +23,9 @@ import React, {
   useState,
 } from "react";
 import { useClerkFirebase } from "./ClerkFirebaseProvider";
+import { useStartupSnapshot } from "./StartupSnapshotProvider";
+import { loadVerifiedSession } from "../lib/startup/loadVerifiedSession";
+import { clearAccountSessionCache } from "../lib/accountSessionCache";
 import { resolveMobileClerkAccess } from "../lib/mobileClerkAccess";
 import { resolveWorkspaceAccess } from "../lib/access";
 import { loadWorkingTermsAcceptance } from "../lib/workingTermsApi";
@@ -70,6 +73,7 @@ type EmployeeSession = {
 type Ctx = {
   user: User | null;
   loading: boolean;
+  startupAccessStatus: string;
   isAuthed: boolean;
   employee: EmployeeSession | null;
   reloadSession: () => Promise<void>;
@@ -90,6 +94,7 @@ type Ctx = {
 const AuthCtx = createContext<Ctx>({
   user: null,
   loading: true,
+  startupAccessStatus: "restoring",
   isAuthed: false,
   employee: null,
   reloadSession: async () => {},
@@ -226,6 +231,9 @@ async function persistRecoveredSession(session: EmployeeSession) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clerk = useClerkFirebase();
+  const { store: startupStore } = useStartupSnapshot();
+  const startupRef = useRef(startupStore);
+  startupRef.current = startupStore;
   const clerkRef = useRef(clerk);
   clerkRef.current = clerk;
   const [user, setUser] = useState<User | null>(null);
@@ -233,10 +241,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [signInPending, setSignInPending] = useState(false);
 
   const [employee, setEmployee] = useState<EmployeeSession | null>(null);
-  useEffect(() => {
-    bindSyncIdentity(!clerk.enabled || clerk.ready ? employee : null);
-    return () => bindSyncIdentity(null);
-  }, [clerk.enabled, clerk.ready, employee]);
   const [sessionReady, setSessionReady] = useState(false);
   const [securityTransition, setSecurityTransition] = useState<Record<string, any> | null>(null);
   const transitionBusy = useRef(false);
@@ -251,6 +255,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 🔥 NEW — Whenever this value changes, all pages listening will update
   const [jobsUpdatedAt, setJobsUpdatedAt] = useState(Date.now());
+  const [startupOutcome, setStartupOutcome] = useState("restoring");
+
+  useEffect(() => {
+    bindSyncIdentity(!clerk.enabled || (clerk.ready && verifiedClerkRevision.current === clerk.revision && workingTermsAcceptance) ? employee : null);
+    return () => bindSyncIdentity(null);
+  }, [clerk.enabled, clerk.ready, clerk.revision, employee, workingTermsAcceptance]);
 
   // Firebase auth listener
   useEffect(() => {
@@ -265,12 +275,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loadSession = useCallback(async (firebaseUser: User | null) => {
     if (transitionBusy.current) return;
     const generation = ++sessionGeneration.current;
+    setStartupOutcome("restoring");
     const clerkRevision = clerkRef.current.revision;
     const sameAccount = () => generation === sessionGeneration.current
       && auth.currentUser?.uid === firebaseUser?.uid && !transitionBusy.current;
     const isCurrent = () => sameAccount() && (!clerkRef.current.enabled || !firebaseUser
-      || clerkRef.current.isReady() && clerkRef.current.uid === firebaseUser.uid);
+      || clerkRef.current.isReady() && clerkRef.current.uid === firebaseUser.uid && clerkRef.current.revision === clerkRevision);
+    const readPreferences = () => AsyncStorage.multiGet([
+        "sessionRole",
+        "sessionIsService",
+        "sessionUserAccess",
+        "sessionServiceAccess",
+        "sessionCompanyId",
+        "displayName",
+        "employeeId",
+        "employeeEmail",
+        "employeeUserCode",
+        "timesheetYardStart",
+        "timesheetYardEnd",
+        "timesheetOfficeStart",
+        "timesheetOfficeEnd",
+        "timesheetWorkshopStart",
+        "timesheetWorkshopEnd",
+        "timesheetDefaultType",
+      ]);
+    let parallelSession = null;
     let verifiedClerk = null;
+    let changedScope = false;
     if (clerkRef.current.enabled && !clerkRef.current.isReady()) {
       setEmployee(null);
       setWorkingTermsAcceptance(null);
@@ -281,7 +312,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (firebaseUser && !firebaseUser.isAnonymous) {
         if (clerkRef.current.enabled) {
-          verifiedClerk = await resolveMobileClerkAccess({
+          parallelSession = await loadVerifiedSession({
+            readPreferences,
+            readTerms: () => loadWorkingTermsAcceptance(firebaseUser),
+            isCurrent,
+            resolveAccess: async () => {
+              const access = await resolveMobileClerkAccess({
             uid: firebaseUser.uid,
             getTokenResult: () => firebaseUser.getIdTokenResult(),
             readUser: async () => {
@@ -294,6 +330,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             },
             isCurrent,
           });
+              if (access && isCurrent() && startupRef.current?.getActive()) {
+                const identity = { clerkUserId: clerkRef.current.clerkUserId, clerkSessionId: clerkRef.current.clerkSessionId, uid: firebaseUser.uid, companyId: access.profile.companyId, employeeId: access.profile.employeeId };
+                if (!startupRef.current.matchesIdentity(identity)) {
+                  changedScope = true;
+                  await startupRef.current.invalidate('identity-changed');
+                  if (isCurrent()) await clearAccountSessionCache(AsyncStorage);
+                }
+              }
+              return access;
+            },
+          });
+          verifiedClerk = parallelSession?.access;
           if (!verifiedClerk || !isCurrent()) return;
         } else {
         try {
@@ -341,33 +389,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
       setSecurityTransition(null);
-      const entries = await AsyncStorage.multiGet([
-        "sessionRole",
-        "sessionIsService",
-        "sessionUserAccess",
-        "sessionServiceAccess",
-        "sessionCompanyId",
-        "displayName",
-        "employeeId",
-        "employeeEmail",
-        "employeeUserCode",
-        "timesheetYardStart",
-        "timesheetYardEnd",
-        "timesheetOfficeStart",
-        "timesheetOfficeEnd",
-        "timesheetWorkshopStart",
-        "timesheetWorkshopEnd",
-        "timesheetDefaultType",
-      ]);
+      const entries = parallelSession ? parallelSession.preferences : await readPreferences();
 
       if (!isCurrent()) return;
-      const m = Object.fromEntries(entries);
+      const m = Object.fromEntries(changedScope ? [] : entries);
       const userProfile = verifiedClerk?.profile || await loadUserProfile(firebaseUser);
       if (!isCurrent()) return;
       let termsAcceptance = null;
       setWorkingTermsError(null);
       try {
-        termsAcceptance = await loadWorkingTermsAcceptance(firebaseUser);
+        if (parallelSession?.termsError) throw parallelSession.termsError;
+        termsAcceptance = parallelSession ? parallelSession.terms : await loadWorkingTermsAcceptance(firebaseUser);
       } catch (error) {
         if (!isCurrent()) return;
         setWorkingTermsError(error instanceof Error ? error.message : "We could not check your existing Working Terms. Please try again.");
@@ -508,6 +540,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
 
         if (!isCurrent()) return;
+        if (clerkRef.current.enabled) {
+          const status = parallelSession?.termsError ? 'unavailable' : termsAcceptance ? 'verified' : 'terms-required';
+          setStartupOutcome(status);
+          if (status === 'terms-required') await startupRef.current?.invalidate('terms-required');
+          if (status === 'verified' && workspaceAccess.user && startupRef.current) {
+            await startupRef.current.activate({ clerkUserId: clerkRef.current.clerkUserId, clerkSessionId: clerkRef.current.clerkSessionId, uid: firebaseUser.uid, companyId, employeeId }, Date.now(), isCurrent).catch(() => null);
+          }
+          if (!isCurrent()) return;
+        }
         setEmployee(nextEmployee);
         if (!storedEmployeeId && employeeSource?.id) {
           persistRecoveredSession(nextEmployee).catch(() => {});
@@ -515,8 +556,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setEmployee(null);
       }
-    } catch {
-      if (!sameAccount()) return;
+    } catch (error) {
+      if (!isCurrent()) return;
+      const denied = (error as { code?: string })?.code === "MOBILE_ACCESS_DENIED";
+      setStartupOutcome(denied ? "denied" : "unavailable");
+      if (denied) await startupRef.current?.invalidate("denied").catch(() => {});
+      if (!isCurrent()) return;
       setEmployee(null);
       setWorkingTermsAcceptance(null);
     } finally {
@@ -553,13 +598,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const acceptance = await loadWorkingTermsAcceptance(auth.currentUser);
       setWorkingTermsError(null);
       setWorkingTermsAcceptance(acceptance);
+      if (acceptance && clerkRef.current.enabled) await loadSession(auth.currentUser);
       return !!acceptance;
     } catch (error) {
       setWorkingTermsError(error instanceof Error ? error.message : "We could not check your existing Working Terms. Please try again.");
       setWorkingTermsAcceptance(null);
       return false;
     }
-  }, []);
+  }, [loadSession]);
 
   // Only an approved account that has completed the server-side identity check
   // may enter protected routes. A Firebase password on its own is insufficient.
@@ -569,9 +615,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const tenantOK = !!employee?.companyId;
     const enabledOK = employee?.isEnabled !== false;
     const mobileAccessOK = employee?.mobileAccessStatus === "active";
-    const clerkOK = !clerk.enabled || clerk.ready && clerk.uid === user?.uid;
+    const clerkOK = !clerk.enabled || clerk.ready && clerk.uid === user?.uid && verifiedClerkRevision.current === clerk.revision;
     return clerkOK && firebaseUserOK && employeeOK && tenantOK && enabledOK && mobileAccessOK && !securityTransition && !signInPending;
-  }, [clerk.enabled, clerk.ready, clerk.uid, user, employee, securityTransition, signInPending]);
+  }, [clerk.enabled, clerk.ready, clerk.revision, clerk.uid, user, employee, securityTransition, signInPending]);
 
   // A bridge onReady render precedes the employee-loading effect. The old
   // sessionReady flag must not briefly route a restored account to login.
@@ -585,6 +631,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         loading,
+        startupAccessStatus: !clerk.enabled ? (loading ? 'restoring' : isAuthed ? 'verified' : 'signed-out')
+          : !clerk.ready ? (clerk.sessionStatus || 'restoring')
+          : loading ? 'restoring' : startupOutcome,
         isAuthed,
         employee,
         reloadSession,

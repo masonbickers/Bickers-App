@@ -52,3 +52,9 @@ test('secure read failure and malformed payload never become display eligible', 
   const f=setup(); f.deps.secureStorage.getItem=async()=>{throw Error('locked');};
   const store=f.make(); await store.restore(); assert.equal(store.getState().status,'unavailable');
 });
+
+test('a superseded verification cannot activate a snapshot after storage restoration yields', async () => {
+  const f=setup(),store=f.make();await store.restore();let current=true;
+  const pending=store.activate(identity,1000,()=>current);current=false;
+  assert.equal(await pending,null);assert.equal(store.getActive(),null);
+});

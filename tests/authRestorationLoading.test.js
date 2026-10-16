@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import test from 'node:test';
+import { loadVerifiedSession } from '../lib/startup/loadVerifiedSession.js';
 
 const require = createRequire(import.meta.url);
 const React = require('react');
@@ -16,7 +17,7 @@ const approved = { employeeId: 'employee', companyId: 'company', uid: 'owner', i
 
 // Reproduce the render between Clerk's bridge onReady and the effect that
 // reloads the employee session. Its previous sessionReady flag is still true.
-function harness({ employee = null, ready = true, revision = 2, verifiedRevision = 1, error = null, hasClerkSession = true, enabled = true, user = { uid: 'owner' }, resolveAccess = async () => null } = {}) {
+function harness({ employee = null, ready = true, revision = 2, verifiedRevision = 1, error = null, hasClerkSession = true, enabled = true, user = { uid: 'owner' }, resolveAccess = async () => null, snapshotStore = null, terms = async () => ({accepted:true}) } = {}) {
   const states = [user, true, false, employee, true, null, { accepted: true }, null, 0];
   let stateIndex = 0;
   let refIndex = 0;
@@ -35,8 +36,11 @@ function harness({ employee = null, ready = true, revision = 2, verifiedRevision
     react: { ...hooks, default: hooks, __esModule: true },
     '@react-native-async-storage/async-storage': { default: { multiGet: async () => [['employeeId', 'employee']] }, __esModule: true },
     'firebase/auth': {}, 'firebase/firestore': {},
+    './StartupSnapshotProvider': { useStartupSnapshot: () => ({store:snapshotStore}) },
+    '../lib/startup/loadVerifiedSession': { loadVerifiedSession },
+    '../lib/accountSessionCache': {},
     './ClerkFirebaseProvider': { useClerkFirebase: () => clerk },
-    '../lib/mobileClerkAccess': { resolveMobileClerkAccess: resolveAccess }, '../lib/access': { resolveWorkspaceAccess: () => ({ user: true, service: false }) }, '../lib/workingTermsApi': { loadWorkingTermsAcceptance: async () => ({ accepted: true }) },
+    '../lib/mobileClerkAccess': { resolveMobileClerkAccess: resolveAccess }, '../lib/access': { resolveWorkspaceAccess: () => ({ user: true, service: false }) }, '../lib/workingTermsApi': { loadWorkingTermsAcceptance: terms },
     '../firebaseConfig': { auth, db: {} },
     '../lib/sync/identity': {}, '../lib/authApi': {}, '../lib/workDiaryAccess': { resolveWorkDiaryAccess: () => false },
   };
@@ -141,3 +145,19 @@ test('a superseded load cannot clear the newer load pending state', async () => 
   assert.equal(app.render().loading, false);
   assert.equal(app.render().isAuthed, true);
 });
+
+for (const [label, resolveAccess, terms, expected] of [
+  ['approved', async () => verifiedAccess, async () => ({accepted:true}), 'verified'],
+  ['offline terms', async () => verifiedAccess, async () => {throw Error('offline');}, 'unavailable'],
+  ['absent terms', async () => verifiedAccess, async () => null, 'terms-required'],
+  ['denied', async () => {throw Object.assign(Error('denied'),{code:'MOBILE_ACCESS_DENIED'});}, async () => ({accepted:true}), 'denied'],
+]) {
+  test(`Auth publishes ${label} separately and only full verification activates a snapshot`, async () => {
+    let activations=0, invalidations=0;
+    const h=harness({resolveAccess,terms,snapshotStore:{getActive:()=>null,activate:async()=>{activations++;},invalidate:async()=>{invalidations++;}}});
+    await h.render().reloadSession();const result=h.render();
+    assert.equal(result.startupAccessStatus,expected);
+    assert.equal(activations,expected==='verified'?1:0);
+    assert.equal(invalidations,['denied','terms-required'].includes(expected)?1:0);
+  });
+}
