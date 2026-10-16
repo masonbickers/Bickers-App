@@ -1,8 +1,10 @@
+import { useHolidayCalendar } from "../../../hooks/useHolidayCalendar";
+import { getHolidaySummaryMode, isHolidayBalanceVerified } from "../../../lib/holidayPresentation";
 import FooterPageSkeleton from "../../../components/FooterPageSkeleton";
 import { getCardSurfaceStyle } from "../../../lib/design/cardSurface";
 import { routeColors } from "../../../lib/design/routePresentation/main-tabs-me-js.js";
 import { styles } from "../../../lib/design/screenStyles/main-tabs-me-js.js";
-import { AppButton, AppText as Text, AppPressable as TouchableOpacity, Checkbox, FormField, IconButton, SegmentedControl } from "../../../components/ui/AppPrimitives";
+import { Banner, AppButton, AppText as Text, AppPressable as TouchableOpacity, Checkbox, FormField, IconButton, SegmentedControl } from "../../../components/ui/AppPrimitives";
 // app/(protected)/me.js
 import {
   useRouter } from "expo-router";
@@ -124,57 +126,10 @@ export default function MePage() {
 
   // ✅ Bank holidays (UK Gov JSON) for current year
   const currentYear = new Date().getFullYear();
-  const [bankHolidaySet, setBankHolidaySet] = useState(() => new Set());
-
-  const isBankHoliday = useMemo(() => {
-    return (d) => {
-      if (!d) return false;
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return bankHolidaySet.has(`${y}-${m}-${day}`);
-    };
-  }, [bankHolidaySet]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const loadBankHolidays = async () => {
-      try {
-        const REGION = "england-and-wales"; // "scotland" | "northern-ireland"
-        const res = await fetch("https://www.gov.uk/bank-holidays.json", {
-          signal: controller.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error(`Bank holidays fetch failed: ${res.status}`);
-        const json = await res.json();
-        const list = json?.[REGION]?.events || [];
-
-        const set = new Set(
-          list
-            .map((ev) => {
-              const d = parseYMD(ev?.date);
-              if (!d) return null;
-              if (d.getFullYear() !== Number(currentYear)) return null;
-              const y = d.getFullYear();
-              const m = String(d.getMonth() + 1).padStart(2, "0");
-              const day = String(d.getDate()).padStart(2, "0");
-              return `${y}-${m}-${day}`;
-            })
-            .filter(Boolean)
-        );
-
-        setBankHolidaySet(set);
-      } catch (e) {
-        if (e?.name === "AbortError") return;
-        console.warn("Bank holidays unavailable:", e);
-        setBankHolidaySet(new Set());
-      }
-    };
-
-    loadBankHolidays();
-    return () => controller.abort();
-  }, [currentYear]);
+  const holidayCalendar = useHolidayCalendar(currentYear);
+  const {dates:bankHolidaySet, isBankHoliday, refresh:refreshHolidayCalendar} = holidayCalendar;
+  const [holidayCalculationCalendar, setHolidayCalculationCalendar] = useState(null);
+  const [holidayCalculationEmployeeId, setHolidayCalculationEmployeeId] = useState(null);
 
   // Account card
   const firebaseUser = user ?? auth.currentUser;
@@ -266,18 +221,7 @@ export default function MePage() {
       // ============================================================
       // 1) Find employee record (same approach as HolidayPage)
       // ============================================================
-      const empRecord = employeeRows.find((candidate) => {
-        const candidateCode = String(candidate.userCode || "").trim();
-        const candidateEmail = String(candidate.email || "").trim().toLowerCase();
-        const candidateName = String(candidate.name || candidate.displayName || "")
-          .trim()
-          .toLowerCase();
-        return (
-          (!!userCode && candidateCode === String(userCode).trim()) ||
-          (!!email && candidateEmail === String(email).trim().toLowerCase()) ||
-          (!!empName && candidateName === String(empName).trim().toLowerCase())
-        );
-      }) || null;
+      const empRecord = employeeRows.find(candidate => candidate.id === employee?.employeeId) || null;
 
       // ============================================================
       // 2) Load my holidays (filter like HolidayPage: name OR code)
@@ -335,6 +279,8 @@ export default function MePage() {
       setHolidayUsedDays(used);
       setHolidayBookedDays(booked);
       setHolidayRemaining(remaining);
+      setHolidayCalculationCalendar(bankHolidaySet);
+      setHolidayCalculationEmployeeId(empRecord?.id || null);
 
       // ============================================================
       // 5) Next holiday + pending count (simple, based on mine)
@@ -473,6 +419,7 @@ export default function MePage() {
     user,
     currentYear,
     isBankHoliday,
+    bankHolidaySet,
     hydrateDashboardState,
   ]);
 
@@ -481,6 +428,7 @@ export default function MePage() {
   }, [loadPersonal]);
 
   const onRefresh = useCallback(async () => {
+    refreshHolidayCalendar();
     setRefreshing(true);
     try {
       await Promise.all([
@@ -493,6 +441,7 @@ export default function MePage() {
       setRefreshing(false);
     }
   }, [
+    refreshHolidayCalendar,
     refreshEmployeeTimesheetQueries,
     refreshEmployeeTimesheets,
     refreshEmployees,
@@ -752,6 +701,16 @@ export default function MePage() {
       setSavingNote(false);
     }
   };
+
+  const holidaySummaryMode = getHolidaySummaryMode({
+    historyComplete:isHolidayBalanceVerified(holidaysResource,currentYear), withheldCount:holidaysResource.withheldCount,
+    hasRecords:myHolidays.length > 0,
+    calculationReady:hasPersonalContent && holidayCalendar.ready && holidayCalculationCalendar === bankHolidaySet
+      && holidayCalculationEmployeeId === employee?.employeeId,
+    error:!!holidaysResource.error || !!employeesResource.error || !!personalError || !!holidayCalendar.error,
+    loading:holidaysResource.isInitialLoading,
+  });
+  const provisionalHolidayBalance = holidaySummaryMode === "provisional";
 
   return (
     <PageShell
@@ -1227,13 +1186,13 @@ export default function MePage() {
             <View
               style={[styles.sectionPanel, getCardSurfaceStyle(colors)]}
             >
-              {holidaysResource.isInitialLoading ? (
+              {holidaySummaryMode === "loading" ? (
                 <LoadingState label="Loading holiday history…" compact presentation="grouped" />
-              ) : !holidaysResource.historyComplete || holidaysResource.error || holidaysResource.withheldCount ? (
+              ) : holidaySummaryMode === "unavailable" ? (
                 <EmptyState
                   icon="alert-circle"
-                  title="Holiday history needs attention"
-                  message="Your balance is unavailable while historical leave is reviewed. Open Holidays for details."
+                  title={holidayCalendar.error ? "Calendar unavailable" : "Holiday history needs attention"}
+                  message={holidayCalendar.error ? "Refresh to load bank holidays before checking your balance." : "Your balance is unavailable while historical leave is reviewed. Open Holidays for details."}
                   actionLabel="Open Holidays"
                   onAction={() => router.push("/holidaypage")}
                   compact
@@ -1250,6 +1209,7 @@ export default function MePage() {
                 />
               ) : (
                 <>
+                  {provisionalHolidayBalance && <Banner tone="warning" title="Provisional balance">Based on your verified leave records. Older company records still need ownership review, so this balance may change.</Banner>}
                   <View style={styles.statRow}>
                     <View style={[styles.statCard, styles.flatStatCard]}>
                       <Text tone={"muted"} style={[styles.statLabel]}>Allowance</Text>
@@ -1267,7 +1227,7 @@ export default function MePage() {
                     </View>
 
                     <View style={[styles.statCard, styles.flatStatCard]}>
-                      <Text tone={"muted"} style={[styles.statLabel]}>Available</Text>
+                      <Text tone={"muted"} style={[styles.statLabel]}>{provisionalHolidayBalance ? "Provisional" : "Available"}</Text>
                       <Text
                         style={styles.statValue}
                         tone={holidayRemaining < 0 ? "danger" : "primary"}
@@ -1298,21 +1258,21 @@ export default function MePage() {
                       style={styles.holidayProgressText}
                       tone={holidayRemaining < 0 ? "danger" : "secondary"}
                     >
-                      {fmtHalf(holidayRemaining)} remaining
+                      {fmtHalf(holidayRemaining)} {provisionalHolidayBalance ? "days — provisional" : "remaining"}
                     </Text>
                   </View>
 
                   <View style={styles.cardRow}>
                     <Icon name="calendar" size={16} color={colors.textMuted} />
                     <Text tone={"primary"} style={[styles.cardRowText]}>
-                      Next: {formatHoliday(nextHoliday) || "—"}
+                      {provisionalHolidayBalance ? "Next verified:" : "Next:"} {formatHoliday(nextHoliday) || "—"}
                     </Text>
                   </View>
 
                   <View style={styles.cardRow}>
                     <Icon name="alert-circle" size={16} color={colors.textMuted} />
                     <Text tone={"primary"} style={[styles.cardRowText]}>
-                      Pending requests: {pendingHolidayCount}
+                      {provisionalHolidayBalance ? "Verified requests:" : "Pending requests:"} {pendingHolidayCount}
                     </Text>
                   </View>
 

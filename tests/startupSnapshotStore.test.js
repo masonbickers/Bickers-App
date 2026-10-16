@@ -58,3 +58,74 @@ test('a superseded verification cannot activate a snapshot after storage restora
   const pending=store.activate(identity,1000,()=>current);current=false;
   assert.equal(await pending,null);assert.equal(store.getActive(),null);
 });
+
+test('a partial schedule refresh retains saved jobs on other dates and replaces confirmed empty dates', async () => {
+  const f=setup(), store=f.make(); await store.restore();
+  const gen=await store.activate(identity,1000);
+  await store.save({...view,jobs:[...view.jobs,{id:'tomorrow',dateISO:'2026-10-17',title:'Saved tomorrow'}],completeDates:['2026-10-16','2026-10-17']},gen);
+  await store.save({...view,jobs:[],completeDates:['2026-10-16']},gen);
+  assert.deepEqual(store.getState().snapshot.jobs.map(job=>job.title),['Saved tomorrow']);
+  assert.deepEqual(store.getState().snapshot.completeDates,['2026-10-16','2026-10-17']);
+  const next=f.make(); await next.restore();
+  assert.deepEqual(next.getState().snapshot.jobs.map(job=>job.title),['Saved tomorrow']);
+  await next.save({...view,selectedDateISO:'2026-10-17',jobs:[],completeDates:['2026-10-17']},next.getActive().generation);
+  assert.deepEqual(next.getState().snapshot.jobs,[]);
+});
+test('partial or truncated responses cannot erase previously saved work', async () => {
+  const f=setup(),store=f.make();await store.restore();
+  const gen=await store.activate(identity,1000);await store.save(view,gen);
+  await store.save({...view,jobs:[],completeDates:[]},gen);
+  assert.equal(store.getState().snapshot.jobs[0].title,'Job');
+  await store.save({...view,jobs:[],truncated:true},gen);
+  assert.equal(store.getState().snapshot.jobs[0].title,'Job');
+  assert.deepEqual(store.getState().snapshot.completeDates,[]);
+});
+
+test('expired and different-account snapshots are never merged into new saved work', async () => {
+  for (const changeAccount of [false, true]) {
+    const f=setup(),store=f.make();await store.restore();
+    const gen=await store.activate(identity,1000);await store.save(view,gen);
+    if (!changeAccount) f.clock(86401000);
+    const next=await store.activate(changeAccount ? {...identity,uid:'other'} : identity,changeAccount ? 1000 : 86401000);
+    await store.save({...view,jobs:[],completeDates:['2026-10-17']},next);
+    assert.deepEqual(store.getState().snapshot.jobs,[]);
+    assert.deepEqual(store.getState().snapshot.completeDates,['2026-10-17']);
+  }
+});
+
+test('freshly loaded jobs take priority when retained dates fill the snapshot limit', async () => {
+  const f=setup(),store=f.make();await store.restore();const gen=await store.activate(identity,1000);
+  await store.save({...view,jobs:Array.from({length:200},(_,i)=>({id:`old-${i}`,dateISO:'2026-10-16',title:'Saved'}))},gen);
+  await store.save({...view,selectedDateISO:'2026-10-17',jobs:[{id:'fresh',dateISO:'2026-10-17',title:'Fresh'}],completeDates:['2026-10-17']},gen);
+  assert.equal(store.getState().snapshot.jobs[0].title,'Fresh');
+  assert.equal(store.getState().snapshot.jobs.length,200);
+});
+test('a completed refresh recovers confirmed-empty dates after a truncated response', async () => {
+  const f=setup(),store=f.make();await store.restore();const gen=await store.activate(identity,1000);
+  await store.save({...view,truncated:true},gen);
+  assert.equal(store.getState().snapshot.truncated,true);
+  await store.save({...view,jobs:[]},gen);
+  assert.equal(store.getState().snapshot.truncated,false);
+  assert.deepEqual(store.getState().snapshot.completeDates,['2026-10-16']);
+  assert.deepEqual(store.getState().snapshot.jobs,[]);
+});
+
+test('newly confirmed empty dates take priority over the saved date capacity', async () => {
+  const f=setup(),store=f.make();await store.restore();const gen=await store.activate(identity,1000);
+  const dates=Array.from({length:62},(_,i)=>new Date(Date.UTC(2026,0,i+1)).toISOString().slice(0,10));
+  await store.save({...view,jobs:[],completeDates:dates},gen);
+  await store.save({...view,jobs:[]},gen);
+  assert.equal(store.getState().snapshot.completeDates[0],'2026-10-16');
+  assert.equal(store.getState().snapshot.completeDates.length,62);
+});
+
+test('schedule refreshes preserve the saved Home presentation for the same account', async () => {
+  const f=setup(),store=f.make();await store.restore();const gen=await store.activate(identity,1000);
+  const home={name:'Saved Employee',userCode:'123',days:[{dateISO:'2026-10-16',label:'Yard Based'}]};
+  await store.save({...view,home},gen);
+  await store.save({...view,route:'schedule'},gen);
+  assert.deepEqual(store.getState().snapshot.home,home);
+  const next=f.make();await next.restore();assert.deepEqual(next.getState().snapshot.home,home);
+  const other=await next.activate({...identity,uid:'other'},1000);
+  await next.save(view,other);assert.equal(next.getState().snapshot.home,undefined);
+});

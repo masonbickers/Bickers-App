@@ -380,8 +380,12 @@ export default function PageShell<ItemT = unknown>({
         {standardBody}
       </ScrollView>
     );
+    // Native keyboard insets keep the scroll viewport stable. Do not also
+    // resize its centred content through a JS-driven layout animation.
+    const nativeKeyboardInsets = Platform.OS === "ios" &&
+      scrollProps?.automaticallyAdjustKeyboardInsets === true;
     body =
-      mode === "form" ? (
+      mode === "form" && !nativeKeyboardInsets ? (
         <KeyboardAvoidingView
           style={styles.body}
           behavior={Platform.OS === "ios" ? "padding" : undefined}

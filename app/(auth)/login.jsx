@@ -162,5 +162,9 @@ export default function LoginPage() {
     }
   };
 
-  return <PageShell mode="form" width="full"><BickersLoginForm {...{ clerk, employeeEmail, setEmployeeEmail, password, setPassword, passwordVisible, setPasswordVisible, code, setCode, loading, resetting, notification, setNotification, handleLogin, handlePasswordReset }} /></PageShell>;
+  return (
+    <PageShell mode="form" width="full" scrollProps={{ automaticallyAdjustKeyboardInsets: true }}>
+      <BickersLoginForm {...{ clerk, employeeEmail, setEmployeeEmail, password, setPassword, passwordVisible, setPasswordVisible, code, setCode, loading, resetting, notification, setNotification, handleLogin, handlePasswordReset }} />
+    </PageShell>
+  );
 }

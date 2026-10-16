@@ -549,7 +549,11 @@ export default function RecceFormScreen() {
         mode="form"
         width="form"
         header={{ variant: "compact", title: "Recce Form", onBack: router.back }}
-        state={{ loading: true, loadingLabel: "Loading Recce Form..." }}
+        state={{
+          resources: [{ isInitialLoading: loadingJob }],
+          hasContent: false,
+          loadingLabel: "Loading Recce Form...",
+        }}
       />
     );
   }

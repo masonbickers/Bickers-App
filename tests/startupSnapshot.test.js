@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const api = await import('../lib/startup/snapshot.js').catch(() => ({}));
@@ -30,4 +31,10 @@ test('bounded snapshots never claim complete empty work after truncation; invali
   assert.equal(view.selectedJobId,null);
   const empty = api.projectStartupSnapshot({...input,jobs:[],selectedJobId:null});
   assert.deepEqual(empty.completeDates,['2026-10-16']);
+});
+
+test('saved Home keeps only bounded visible header and day labels, excluding underlying account and leave records', () => {
+  const view=api.projectStartupSnapshot({...input,home:{name:'Saved employee',userCode:'123',email:'private',days:[{dateISO:'2026-10-16',label:'Yard Based',reason:'private'},{dateISO:'2026-10-17',label:'Off'},{dateISO:'bad',label:'Off'},{dateISO:'2026-10-18',label:'private text'}]}});
+  assert.deepEqual(view.home,{name:'Saved employee',userCode:'123',days:[{dateISO:'2026-10-16',label:'Yard Based'},{dateISO:'2026-10-17',label:'Off'}]});
+  assert.ok(api.validateSnapshot(view,{now:1200}));
 });

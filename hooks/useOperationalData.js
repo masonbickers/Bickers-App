@@ -70,7 +70,8 @@ export function useEquipment(options) {
 export function useHolidays(options) {
   const { employee, user, isAuthed, loading } = useAuth();
   const { mutate } = useDataCache();
-  const cacheKey = `holidays:employee:${employee?.uid || "unknown"}`;
+  // Version the response cache so pre-verification snapshots cannot mask annual review metadata.
+  const cacheKey = `holidays:employee:${employee?.uid || "unknown"}:balance-v1`;
   const resource = useCachedResource({
     key: cacheKey,
     enabled: !loading && isAuthed && !!employee?.userCode && (options?.enabled ?? true),
@@ -82,6 +83,7 @@ export function useHolidays(options) {
     data: Array.isArray(resource.data) ? resource.data : resource.data?.records || EMPTY_ROWS,
     withheldCount: resource.data?.withheldCount || 0,
     historyComplete: resource.data?.historyComplete === true,
+    balanceVerification: resource.data?.balanceVerification,
     upsertRow: row => mutate(cacheKey, current => updateHistoryCache(current, rows => upsertCollectionRow(rows, row))),
     removeRow: id => mutate(cacheKey, current => updateHistoryCache(current, rows => removeCollectionRow(rows, id))),
   };

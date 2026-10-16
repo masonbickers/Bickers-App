@@ -322,6 +322,7 @@ export function AppPressable({
   layoutStyle,
   activeOpacity = 0.72,
   disabled = false,
+  disabledAppearance = "dimmed",
   accessibilityState,
   ...props
 }) {
@@ -333,7 +334,7 @@ export function AppPressable({
       android_ripple={androidRipple(colors.pressed)}
       style={(state) => [
         styles.appPressable,
-        { opacity: disabled ? 0.5 : state.pressed ? activeOpacity : 1 },
+        { opacity: disabled ? (disabledAppearance === "preserve" ? 1 : 0.5) : state.pressed ? activeOpacity : 1 },
         typeof style === "function" ? style(state) : style,
         state.focused && styles.appPressableFocused,
         state.focused && { borderColor: colors.focusRing },

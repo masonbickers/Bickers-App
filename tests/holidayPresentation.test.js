@@ -58,3 +58,28 @@ test("verified rows cannot imply a complete balance when other leave is withheld
   assert.equal(getHolidayRowBalanceLabel(22 - 1, { historyComplete: true }), "21 days");
   assert.equal(getHolidayRowBalanceLabel(-0.5, { historyComplete: true }), "-0.5 days");
 });
+
+test("provisional balance is explicit and never implies approved availability", () => {
+  assert.deepEqual(getHolidayBalancePresentation(4, {historyComplete:false, provisional:true}), {
+    isOverbooked:false, balanceValue:4, balanceLabel:"Balance: 4 days — provisional",
+  });
+  assert.equal(getHolidayBalancePresentation(-2.5,{historyComplete:false,provisional:true}).balanceLabel,"Balance: -2.5 days — provisional");
+  assert.equal(getHolidayBalancePresentation(-2.5,{historyComplete:false,provisional:true}).isOverbooked,false);
+});
+
+test("a provisional summary requires loaded verified records, a valid calculation and no own withheld history", async () => {
+  const {getHolidaySummaryMode}=await import('../lib/holidayPresentation.js');
+  assert.equal(typeof getHolidaySummaryMode,'function');
+  const valid={historyComplete:false,withheldCount:0,hasRecords:true,calculationReady:true};
+  assert.equal(getHolidaySummaryMode(valid),'provisional');
+  assert.equal(getHolidaySummaryMode({...valid,historyComplete:true}),'verified');
+  for(const extra of [{withheldCount:1},{hasRecords:false},{error:true}])assert.equal(getHolidaySummaryMode({...valid,...extra}),'unavailable');
+  for(const extra of [{loading:true},{calculationReady:false}])assert.equal(getHolidaySummaryMode({...valid,...extra}),'loading');
+});
+
+test('personal annual review qualifies only its reviewed year, never a stale or absent review', async()=>{
+  const {isHolidayBalanceVerified}=await import('../lib/holidayPresentation.js');
+  assert.equal(typeof isHolidayBalanceVerified,'function');
+  assert.equal(isHolidayBalanceVerified({historyComplete:false,balanceVerification:{year:2026,complete:true}},2026),true);
+  for(const resource of [{historyComplete:false},{historyComplete:false,balanceVerification:{year:2025,complete:true}},{historyComplete:false,balanceVerification:{year:2026,complete:false}},{historyComplete:false,balanceVerification:{year:2026,complete:true},withheldCount:1}])assert.equal(isHolidayBalanceVerified(resource,2026),false);
+});

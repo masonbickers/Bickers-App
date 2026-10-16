@@ -19,7 +19,8 @@
     "test:visual:update": "npm run build:web:visual && playwright test --update-snapshots",
     "visual:serve": "serve -s dist -l 4173",
     "test:booking-visibility": "node --experimental-default-type=module --test tests/bookingVisibility.test.js",
-    "verify:ios-photo": "node scripts/verify-ios-photo-purpose.mjs"
+    "verify:ios-photo": "node scripts/verify-ios-photo-purpose.mjs",
+    "start:device-hub": "node scripts/start-device-hub.cjs"
   },
   "overrides": {
     "react-native-safe-area-context": "~5.6.0",

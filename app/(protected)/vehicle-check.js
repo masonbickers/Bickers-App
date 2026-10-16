@@ -456,7 +456,11 @@ export default function VehicleCheckPage() {
       <PageShell
         appearance="grouped" mode="form" width="form"
         header={{ variant: "compact", title: "Daily Vehicle Check", onBack: router.back }}
-        state={{ loading: true, loadingLabel: "Loading vehicle check…" }}
+        state={{
+          resources: [{ isInitialLoading: loadingDoc }],
+          hasContent: false,
+          loadingLabel: "Loading vehicle check…",
+        }}
       />
     );
   }

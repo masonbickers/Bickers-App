@@ -1,5 +1,8 @@
+import { useStartupSnapshot } from "../../../../providers/StartupSnapshotProvider";
+import HomeDayStatus from "../../../../components/home/HomeDayStatus";
+import { getHomeDayLabel } from "../../../../lib/homeDayStatus";
+import HomeDashboard from "../../../../components/home/HomeDashboard";
 import StartupContentMarker from "../../../../components/startup/StartupContentMarker";
-import { getCardSurfaceStyle } from "../../../../lib/design/cardSurface";
 import { routeColors } from "../../../../lib/design/routePresentation/main-tabs-screens-homescreen-js.js";
 import { styles } from "../../../../lib/design/screenStyles/main-tabs-screens-homescreen-js.js";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,8 +21,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { Image as ExpoImage } from "expo-image";
-import { SymbolView } from "expo-symbols";
 
 import {
   doc,
@@ -46,10 +47,8 @@ import {
   collapseLinkedJobsForDay,
   displayJobNumber,
 } from "../../../../lib/linkedBookingDays";
-import { createDashboardCardStyles } from "../../../../lib/design/dashboard";
 import { getDashboardGridColumns } from "../../../../lib/design/dashboardLayout";
 import { getStatusColors } from "../../../../lib/design/semantics";
-import { designTokens as t } from "../../../../lib/design/tokens";
 import {
   getBookingVehicleReferences,
   getVehicleDisplayList,
@@ -66,72 +65,16 @@ import { useAuth } from "../../../../providers/AuthProvider";
 import { useDataCache } from "../../../../providers/DataCacheProvider";
 import { useTheme } from "../../../../providers/ThemeProvider";
 import PageShell from "../../../../components/layout/PageShell";
-import DashboardSkeleton from "../../../../components/DashboardSkeleton";
-import AppleMaterialSurface from "../../../../components/ui/AppleMaterialSurface";
+import StartupHomeDashboard from "../../../../components/startup/StartupHomeDashboard";
 
 import {
   Image,
-  Platform,
-  StyleSheet,
   View } from "react-native";
 
 import Icon from "react-native-vector-icons/Feather";
 import { withAlpha } from "../../../../lib/design/color";
 
 const IMAGES_ONLY = ImagePicker.MediaTypeOptions.Images;
-
-const buttons = [
-  { label: "Schedule", shortDescription: "Call times", icon: "calendar", group: "Quick Actions" },
-  { label: "Vehicle Maintenance", shortLabel: "Maintenance", shortDescription: "Fleet checks", icon: "settings", group: "Quick Actions" },
-  { label: "Employee Contacts", shortLabel: "Contacts", shortDescription: "Crew phonebook", icon: "users", group: "Quick Actions" },
-  { label: "Time Sheet", shortDescription: "Weekly hours", icon: "clock", group: "Quick Actions" },
-  { label: "Holidays", icon: "briefcase", group: "More" },
-  { label: "Work Diary", icon: "clipboard", group: "More" },
-  { label: "Spec Sheets", icon: "file-text", group: "More" },
-  { label: "Insurance & Compliance", icon: "shield", group: "More" },
-];
-
-const pagePadding = 14;
-const gridGap = 10;
-
-const ACTION_DESCRIPTIONS = {
-  Schedule: "Call times & assignments",
-  "Work Diary": "Upcoming production diary",
-  "Vehicle Maintenance": "Fleet checks and issues",
-  "Employee Contacts": "Crew phonebook",
-  Holidays: "Leave and bank holidays",
-  "Time Sheet": "Weekly hours & approval",
-  "Spec Sheets": "Technical references",
-  "Insurance & Compliance": "Policies and certificates",
-  Settings: "Profile and app controls",
-};
-
-const ACTION_ROUTES = {
-  Schedule: "screens/schedule",
-  "Work Diary": "/work-diary",
-  "Employee Contacts": "/contacts",
-  Holidays: "/holidaypage",
-  "Time Sheet": "/timesheet",
-  "Vehicle Maintenance": "/maintenance",
-  Settings: "/settings",
-  "Spec Sheets": "/spec-sheets",
-  "Insurance & Compliance": "/insurance",
-};
-
-const HOME_LOGO = require("../../../../assets/images/bickers-action-logo.png");
-
-function actionTintForLabel(label, colors) {
-  if (label === "Schedule") return routeColors.hex_4f7dd9_7y5i3e;
-  if (label === "Work Diary") return routeColors.hex_2c95b8_6ski01;
-  if (label === "Vehicle Maintenance") return routeColors.hex_c56a33_6rjvd3;
-  if (label === "Employee Contacts") return routeColors.hex_2a8b86_6r8csh;
-  if (label === "Holidays") return routeColors.hex_3b9a58_9w528y;
-  if (label === "Time Sheet") return routeColors.hex_b1892d_7hs7ia;
-  if (label === "Spec Sheets") return routeColors.hex_7577d8_6e9zug;
-  if (label === "Insurance & Compliance") return routeColors.hex_667085_4l8fsc;
-  if (label === "Settings") return routeColors.hex_c94b58_6zw5s7;
-  return colors.accent;
-}
 
 /* ----------------------- shared helpers ----------------------- */
 
@@ -475,6 +418,7 @@ export default function HomeScreen() {
 
   const { signOutAccount, user, employee, reloadSession } = useAuth();
   const { invalidate } = useDataCache();
+  const { snapshot: savedHome } = useStartupSnapshot();
   const { colors, colorScheme } = useTheme();
   const reduceMotion = useReducedMotion();
   const responsive = useResponsiveLayout();
@@ -482,7 +426,6 @@ export default function HomeScreen() {
   const holidaysResource = useHolidays();
   const vehiclesResource = useVehicles();
 
-  const dashboardCards = useMemo(() => createDashboardCardStyles(colors, "grouped"), [colors]);
 
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [notificationItems, setNotificationItems] = useState([]);
@@ -574,13 +517,7 @@ export default function HomeScreen() {
     );
   }, [selectedDate]);
 
-  const groups = useMemo(() => {
-    return buttons.reduce((acc, item) => {
-      if (!acc[item.group]) acc[item.group] = [];
-      acc[item.group].push(item);
-      return acc;
-    }, {});
-  }, []);
+
 
   const firebaseUser = user ?? auth.currentUser;
   const isAnon = !!firebaseUser?.isAnonymous;
@@ -752,7 +689,8 @@ export default function HomeScreen() {
     }))
   ), [planningDates, buildJobsForDate, bookingsResource.data, bookingsResource.employees]);
   useStartupSnapshotCapture({ route: 'home', selectedDateISO: selectedISO, selectedJobId: selectedJob?.id, jobs: startupJobs, completeDates: planningDates,
-    enabled: !bookingsResource.isInitialLoading && !bookingsResource.error && !!bookingsResource.lastUpdatedAt });
+    home: { name: account.name, userCode: account.userCode, days: planningDates.map(dateISO => ({dateISO, label: getHomeDayLabel(pickHolidayInfoForDate(holidaysResource.data, employee, dateISO), new Date(`${dateISO}T12:00:00`))})) },
+    enabled: !holidaysResource.isInitialLoading && !holidaysResource.error && !!holidaysResource.lastUpdatedAt && !bookingsResource.isInitialLoading && !bookingsResource.error && !!bookingsResource.lastUpdatedAt });
 
   const holidayForDate = useCallback(
     (dateISO, source = planningDataRef.current) => {
@@ -1010,48 +948,8 @@ export default function HomeScreen() {
   };
 
   const renderStatusFallback = useCallback(
-    (holidayInfo, dateObj, { upcoming = false } = {}) => {
-      let label = "Yard Based";
-      let icon = "home";
-
-      if (holidayInfo?.kind === "personal") {
-        label = holidayInfo.pay === "Unpaid" ? "Holiday (Unpaid)" : "Holiday (Paid)";
-        icon = holidayInfo.pay === "Unpaid" ? "alert-triangle" : "sun";
-      } else if (holidayInfo?.kind === "bank") {
-        label = "Bank Holiday";
-        icon = "briefcase";
-      } else if (dateObj && [0, 6].includes(dateObj.getDay())) {
-        label = "Off";
-        icon = "moon";
-      }
-
-      return (
-        <View
-          accessibilityRole="summary"
-          style={[styles.statusSummary, getCardSurfaceStyle(colors)]}
-        >
-          <View
-            style={[
-              styles.statusSummaryIcon,
-              { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
-            ]}
-          >
-            <Icon name={icon} size={18} color={colors.textMuted} />
-          </View>
-          <View style={styles.statusSummaryCopy}>
-            <Text tone={"primary"} style={[styles.statusSummaryTitle]}>
-              {label}
-            </Text>
-            <Text tone={"muted"} style={[styles.statusSummaryText]}>
-              {upcoming
-                ? "No job assigned."
-                : "No assigned job details for today."}
-            </Text>
-          </View>
-        </View>
-      );
-    },
-    [colors]
+    (holidayInfo, dateObj, { upcoming = false } = {}) => <HomeDayStatus label={getHomeDayLabel(holidayInfo, dateObj)} upcoming={upcoming} />,
+    []
   );
 
   const renderJobCard = useCallback(
@@ -1225,178 +1123,6 @@ export default function HomeScreen() {
     [colorScheme, colors, openRecceFor, vehiclesText]
   );
 
-  const renderActionGroup = ([groupName, groupItems]) => {
-    const filteredItems = groupItems.filter((btn) => {
-      if (btn.label !== "Work Diary") return true;
-
-      return employee?.workDiaryAccess === true;
-    });
-
-    if (!filteredItems.length) return null;
-
-    if (groupName === "More") {
-      return (
-        <View key={groupName} style={styles.groupSection}>
-          <View style={styles.groupHeader}>
-            <Text tone={"primary"} style={[styles.groupTitle]}>
-              {groupName}
-            </Text>
-            <View
-              style={[
-                styles.groupDividerLine,
-                { backgroundColor: colors.border, opacity: 0.7 },
-              ]}
-            />
-          </View>
-
-          <SectionCard tone="grouped" layoutStyle={styles.moreList}>
-            {filteredItems.map((btn, index) => {
-              const actionTint = actionTintForLabel(btn.label, colors);
-              const actionDescription =
-                ACTION_DESCRIPTIONS[btn.label] || "Open section";
-              return (
-                <TouchableOpacity
-                  key={btn.label}
-                  style={[
-                    styles.moreActionRow,
-                    index < filteredItems.length - 1 && {
-                      borderBottomColor: colors.border,
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                    },
-                  ]}
-                  activeOpacity={0.86}
-                  onPress={() => {
-                    const route = ACTION_ROUTES[btn.label];
-                    if (route === "/timesheet") router.navigate(route);
-                    else if (route) router.push(route);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={btn.label}
-                  accessibilityHint={actionDescription}
-                >
-                  <View
-                    style={[
-                      styles.moreActionIcon,
-                      {
-                        backgroundColor: withAlpha(actionTint, 0.08),
-                        borderColor: withAlpha(actionTint, 0.24),
-                      },
-                    ]}
-                  >
-                    <Icon name={btn.icon} size={18} color={actionTint} />
-                  </View>
-                  <View style={styles.moreActionCopy}>
-                    <Text tone={"primary"} style={[styles.moreActionTitle]}>
-                      {btn.label}
-                    </Text>
-                    <Text
-                      tone={"muted"} style={[styles.moreActionMeta]}
-                      numberOfLines={1}
-                    >
-                      {actionDescription}
-                    </Text>
-                  </View>
-                  <Icon name="chevron-right" size={18} color={colors.textMuted} />
-                </TouchableOpacity>
-              );
-            })}
-          </SectionCard>
-        </View>
-      );
-    }
-
-    const quickActionColumns = Math.min(gridColumnCount, 2);
-    const colCount = Math.min(quickActionColumns, filteredItems.length);
-    const rows = [];
-
-    for (let i = 0; i < filteredItems.length; i += colCount) {
-      rows.push(filteredItems.slice(i, i + colCount));
-    }
-
-    return (
-      <View key={groupName} style={styles.groupSection}>
-        <View style={styles.groupHeader}>
-          <Text tone={"primary"} style={[styles.groupTitle]}>
-            {groupName}
-          </Text>
-
-          <View
-            style={[
-              styles.groupDividerLine,
-              {
-                backgroundColor: colors.border,
-                opacity: 0.7,
-              },
-            ]}
-          />
-        </View>
-
-        <View style={styles.grid}>
-          {rows.map((row, rowIndex) => (
-            <View
-              key={`${groupName}-row-${rowIndex}`}
-              style={[
-                styles.gridRow,
-                rowIndex === rows.length - 1 && styles.gridRowLast,
-              ]}
-            >
-              {row.map((btn, index) => {
-                const actionTint = actionTintForLabel(btn.label, colors);
-                const actionDescription =
-                  ACTION_DESCRIPTIONS[btn.label] || "Open section";
-                const isLastVisibleColumn = index === row.length - 1;
-
-                return (
-                  <TouchableOpacity
-                    key={`${btn.label}-${index}`}
-                    style={[
-                      styles.button,
-                      !isLastVisibleColumn && styles.gridItemSpacing,
-                      getCardSurfaceStyle(colors, { borderAccent: withAlpha(actionTint, 0.14) }),
-                    ]}
-                    activeOpacity={0.86}
-                    onPress={() => {
-                      const route = ACTION_ROUTES[btn.label];
-                      if (route === "/timesheet") router.navigate(route);
-                      else if (route) router.push(route);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={btn.label}
-                    accessibilityHint={actionDescription}
-                  >
-                    <View
-                      style={[
-                        styles.buttonIconWrap,
-                        {
-                          backgroundColor: withAlpha(actionTint, 0.06),
-                          borderColor: withAlpha(actionTint, 0.18),
-                        },
-                      ]}
-                    >
-                      <Icon name={btn.icon} size={20} color={actionTint} />
-                    </View>
-
-                    <View style={styles.buttonTextWrap}>
-                      <Text tone={"primary"} style={[styles.buttonText]}>
-                        {btn.shortLabel || btn.label}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        tone={"muted"} style={[styles.buttonMeta]}
-                      >
-                        {btn.shortDescription}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-
-            </View>
-          ))}
-        </View>
-      </View>
-    );
-  };
 
   return (
     <>
@@ -1410,270 +1136,24 @@ export default function HomeScreen() {
             bookingsResource.data.length > 0 || holidaysResource.data.length > 0,
           onRetry: onRefresh,
           loadingLabel: "Loading your dashboard…",
-          loadingContent: <DashboardSkeleton columns={gridColumnCount} />,
+          loadingContent: <StartupHomeDashboard snapshot={savedHome} account={account} />,
         }}
         scrollProps={{ showsVerticalScrollIndicator: false }}
       >
         <StartupContentMarker enabled={!bookingsResource.isInitialLoading && !bookingsResource.error} updatedAt={bookingsResource.lastUpdatedAt} />
-        <View
-          style={[
-            styles.heroCard,
-            dashboardCards.heroCard,
-          ]}
-        >
-          <View style={styles.headerRow}>
-            <View style={styles.heroIntro}>
-              <ExpoImage
-                source={HOME_LOGO}
-                style={styles.heroLogo}
-                contentFit="contain"
-                accessibilityLabel="Bickers Action logo"
-              />
-
-              <Text tone={"muted"} style={[styles.heroEyebrow]}>
-                {timeOfDay}
-              </Text>
-
-              <Text tone={"primary"} style={[styles.heroTitle]}>
-                {account.name}
-              </Text>
-
-              <Text tone={"muted"} style={[styles.heroSubtitle]}>
-                {fmtUK(new Date())}
-              </Text>
-            </View>
-
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={({ pressed }) => [
-                  styles.notificationButton,
-                  {
-                    backgroundColor: "transparent",
-                    borderColor: colors.glassBorder,
-                  },
-                  pressed && !reduceMotion && { transform: [{ scale: t.materials.pressScale }] },
-                ]}
-                onPress={() => router.push("/notifications")}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  notificationSummary.unread > 0
-                    ? `Open notifications, ${notificationSummary.unread} unread`
-                    : "Open notifications"
-                }
-              >
-                {({ pressed }) => (
-                  <>
-                    <AppleMaterialSurface pressed={pressed} style={styles.headerButtonMaterial} />
-                    {Platform.OS === "ios" ? (
-                      <SymbolView name="bell" size={20} weight="regular" tintColor={colors.text} />
-                    ) : (
-                      <Icon name="bell" size={19} color={colors.text} />
-                    )}
-                    {notificationSummary.unread > 0 ? (
-                      <View
-                        style={[
-                          styles.userNotificationBadge,
-                          {
-                            backgroundColor: colors.accent,
-                            borderColor: colors.background,
-                          },
-                        ]}
-                      >
-                        <Text style={styles.userNotificationBadgeText}>
-                          {notificationSummary.unread > 99 ? "99+" : notificationSummary.unread}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={({ pressed }) => [
-                  styles.userIcon,
-                  {
-                    backgroundColor: "transparent",
-                    borderColor: colors.glassBorder,
-                  },
-                  pressed && !reduceMotion && { transform: [{ scale: t.materials.pressScale }] },
-                ]}
-                onPress={() => {
-                  loadAccountNotifications();
-                  setShowAccountModal(true);
-                }}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Open my account"
-              >
-                {({ pressed }) => (
-                  <>
-                    <AppleMaterialSurface pressed={pressed} style={styles.headerButtonMaterial} />
-                    <Text tone={"primary"} style={[styles.userInitials]}> 
-                      {userInitials}
-                    </Text>
-
-                    <View
-                      style={[
-                        styles.userPresence,
-                        {
-                          backgroundColor: colors.success,
-                          borderColor: colors.background,
-                        },
-                      ]}
-                    />
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.heroMetaRow}>
-            <View
-              style={[
-                styles.heroMetaChip,
-                {
-                  backgroundColor: colors.surfaceAlt,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Icon name="hash" size={12} color={colors.textMuted} />
-              <Text tone={"primary"} style={[styles.heroMetaText]}>
-                Code {account.userCode}
-              </Text>
-            </View>
-
-            <View style={styles.heroUpdateStatus}>
-              <Icon name="refresh-cw" size={12} color={colors.textMuted} />
-              <Text tone={"muted"} style={[styles.heroUpdateText]}>
-                Updated {lastUpdatedAt.toLocaleTimeString("en-GB", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.dashboardBody}>
-        <View
-          style={[
-            styles.block,
-            styles.flatSectionBlock,
-            {
-              backgroundColor: "transparent",
-              borderColor: "transparent",
-            },
-          ]}
-        >
-          <View style={styles.blockHeadRow}>
-            <View style={styles.blockTitleWrap}>
-              <Text tone={"primary"} style={[styles.blockTitle]}>
-                Today&apos;s Work
-              </Text>
-
-              <Text tone={"muted"} style={[styles.blockSubTitle]}>
-                Assigned jobs and notes
-              </Text>
-            </View>
-
-            {todayJobs.length > 0 ? (
-              <View
-                style={[
-                  styles.countPill,
-                  {
-                    backgroundColor: withAlpha(colors.accent, 0.15),
-                    borderColor: withAlpha(colors.accent, 0.45),
-                  },
-                ]}
-              >
-                <Text style={[styles.countPillText, { color: colors.accent }]}>
-                  {todayJobs.length}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          {todayJobs.length > 0
-            ? todayJobs.map((job) => renderJobCard(job, todayISO))
-            : renderStatusFallback(todayHolidayInfo, new Date())}
-        </View>
-
-        <View
-          style={[
-            styles.block,
-            styles.flatSectionBlock,
-            {
-              backgroundColor: "transparent",
-              borderColor: "transparent",
-            },
-          ]}
-        >
-          <View style={styles.blockHeadRow}>
-            <View style={styles.blockTitleWrap}>
-              <Text tone={"primary"} style={[styles.blockTitle]}>
-                Plan Ahead
-              </Text>
-
-              <Text tone={"muted"} style={[styles.blockSubTitle]}>
-                {selectedDate.toLocaleDateString("en-GB", {
-                  weekday: "long",
-                  day: "2-digit",
-                  month: "short",
-                })}
-              </Text>
-            </View>
-
-            <View style={styles.dayHeader}>
-              <TouchableOpacity
-                style={[
-                  styles.dayNavBtn,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={goPrevDay}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Previous planning day"
-                hitSlop={4}
-              >
-                <Icon
-                  name="arrow-left"
-                  size={16}
-                  color={colors.text}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.dayNavBtn,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={goNextDay}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Next planning day"
-                hitSlop={4}
-              >
-                <Icon name="arrow-right" size={16} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {dayJobs.length > 0
-            ? dayJobs.map((job) => renderJobCard(job, selectedISO))
-            : renderStatusFallback(dayHolidayInfo, selectedDate, {
-                upcoming: true,
-              })}
-        </View>
-        {Object.entries(groups).map(renderActionGroup)}
-        </View>
+        <HomeDashboard
+          colors={colors} reduceMotion={reduceMotion} gridColumnCount={gridColumnCount}
+          account={account} timeOfDay={timeOfDay} dateLabel={fmtUK(new Date())}
+          userInitials={userInitials} notificationSummary={notificationSummary}
+          lastUpdatedAt={lastUpdatedAt} selectedDate={selectedDate} todayCount={todayJobs.length}
+          todayContent={todayJobs.length > 0 ? todayJobs.map(job => renderJobCard(job, todayISO)) : renderStatusFallback(todayHolidayInfo, new Date())}
+          planningContent={dayJobs.length > 0 ? dayJobs.map(job => renderJobCard(job, selectedISO)) : renderStatusFallback(dayHolidayInfo, selectedDate, {upcoming:true})}
+          goPrevDay={goPrevDay} goNextDay={goNextDay}
+          onOpenNotifications={() => router.push("/notifications")}
+          onOpenAccount={() => { loadAccountNotifications(); setShowAccountModal(true); }}
+          onAction={route => { if (route === "/timesheet") router.navigate(route); else if (route) router.push(route); }}
+          workDiaryAccess={employee?.workDiaryAccess === true}
+        />
       </PageShell>
 
       <JobDetailsModal

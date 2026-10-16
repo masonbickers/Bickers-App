@@ -7,7 +7,7 @@ import { captureStartupSnapshot } from '../lib/startup/capture';
 import { projectStartupSnapshot } from '../lib/startup/snapshot';
 
 /** Call only with the screen's already-filtered operational summaries. */
-export function useStartupSnapshotCapture({ route, selectedDateISO, selectedJobId = null, jobs, completeDates, enabled }) {
+export function useStartupSnapshotCapture({ route, selectedDateISO, selectedJobId = null, jobs, completeDates, home, enabled }) {
   const { store } = useStartupSnapshot();
   const { user, employee, loading, isAuthed, workingTermsAccepted, startupAccessStatus } = useAuth();
   const clerk = useClerkFirebase();
@@ -18,7 +18,7 @@ export function useStartupSnapshotCapture({ route, selectedDateISO, selectedJobI
   const visible = pathname === (route === 'schedule' ? '/screens/schedule' : '/screens/homescreen');
   const eligible = enabled && visible && !loading && isAuthed && workingTermsAccepted && startupAccessStatus === 'verified';
   // Projection makes the comparison small and prevents unrelated HR refreshes from rewriting disk.
-  const view = eligible && active ? projectStartupSnapshot({ identity, generation: active.generation, verifiedAt: active.verifiedAt, savedAt: active.verifiedAt, route, selectedDateISO, selectedJobId, jobs, completeDates }) : null;
+  const view = eligible && active ? projectStartupSnapshot({ identity, generation: active.generation, verifiedAt: active.verifiedAt, savedAt: active.verifiedAt, route, selectedDateISO, selectedJobId, jobs, completeDates, home }) : null;
   const serialized = view ? JSON.stringify(view) : null;
   useEffect(() => {
     if (!serialized || !store || serialized === lastSaved.current) return;

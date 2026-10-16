@@ -1,3 +1,4 @@
+import { useHolidayCalendar } from "../../hooks/useHolidayCalendar";
 import { cancelEmployeeHoliday } from "../../lib/hrHistoryApi";
 import { getCardSurfaceStyle } from "../../lib/design/cardSurface";
 import { routeColors } from "../../lib/design/routePresentation/holidaypage-js.js";
@@ -18,6 +19,8 @@ import { countHolidayDays } from "../../lib/holidayRequestParity";
 import { useHolidays } from "../../hooks/useOperationalData";
 import {
   getHolidayBalancePresentation,
+  getHolidaySummaryMode,
+  isHolidayBalanceVerified,
   getHolidayRowBalanceLabel,
   getHolidayLeaveType,
   getVisibleHolidayHistory,
@@ -313,9 +316,10 @@ export default function HolidayPage() {
   const { width, fontScale } = useWindowDimensions();
 
   const [employeeData, setEmployeeData] = useState(null);
-  const { data: holidays, error: historyLoadError, withheldCount, historyComplete, refresh: refreshHolidays } = useHolidays();
+  const { data: holidays, error: historyLoadError, isInitialLoading: historyLoading, withheldCount, historyComplete, balanceVerification, refresh: refreshHolidays } = useHolidays();
   const historyError = historyLoadError?.message || ((withheldCount || !historyComplete) ? "Some historical leave needs office ownership review." : null);
   const historyReliable = historyComplete && !historyLoadError && !withheldCount;
+  const personalBalanceVerified = isHolidayBalanceVerified({historyComplete, balanceVerification, withheldCount, error:historyLoadError},new Date().getFullYear());
   const [historyExpanded, setHistoryExpanded] = useState(false);
 
   // ✅ Lock to current year only (no selector UI)
@@ -323,57 +327,8 @@ export default function HolidayPage() {
   const selectedYear = currentYear;
 
   // ✅ Bank holidays (UK Gov JSON) for current year
-  const [bankHolidaySet, setBankHolidaySet] = useState(() => new Set());
-
-  const isBankHoliday = useMemo(() => {
-    return (d) => {
-      if (!d) return false;
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return bankHolidaySet.has(`${y}-${m}-${day}`);
-    };
-  }, [bankHolidaySet]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const loadBankHolidays = async () => {
-      try {
-        const REGION = "england-and-wales"; // "scotland" | "northern-ireland"
-        const res = await fetch("https://www.gov.uk/bank-holidays.json", {
-          signal: controller.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error(`Bank holidays fetch failed: ${res.status}`);
-        const json = await res.json();
-        const list = json?.[REGION]?.events || [];
-
-        const set = new Set(
-          list
-            .map((ev) => {
-              const d = parseYMD(ev?.date);
-              if (!d) return null;
-              if (d.getFullYear() !== Number(currentYear)) return null;
-              const y = d.getFullYear();
-              const m = String(d.getMonth() + 1).padStart(2, "0");
-              const day = String(d.getDate()).padStart(2, "0");
-              return `${y}-${m}-${day}`;
-            })
-            .filter(Boolean)
-        );
-
-        setBankHolidaySet(set);
-      } catch (e) {
-        if (e?.name === "AbortError") return;
-        console.warn("Bank holidays unavailable:", e);
-        setBankHolidaySet(new Set());
-      }
-    };
-
-    loadBankHolidays();
-    return () => controller.abort();
-  }, [currentYear]);
+  const holidayCalendar = useHolidayCalendar(currentYear);
+  const {dates:bankHolidaySet, isBankHoliday} = holidayCalendar;
 
   useEffect(() => {
     let mounted = true;
@@ -529,6 +484,14 @@ export default function HolidayPage() {
     };
   };
 
+  const summaryMode = getHolidaySummaryMode({
+    historyComplete: personalBalanceVerified, withheldCount, hasRecords:holidaysForYear.length > 0,
+    calculationReady:!!employeeData && holidayCalendar.ready,
+    error:!!historyLoadError || !!holidayCalendar.error, loading:historyLoading,
+  });
+  const showSummaryNumbers = summaryMode === "verified" || summaryMode === "provisional";
+  const provisionalBalance = summaryMode === "provisional";
+
   const requestedItems = requestedHolidays
     .slice()
     .sort((a, b) => getHolidayStart(a) - getHolidayStart(b))
@@ -541,7 +504,7 @@ export default function HolidayPage() {
     return toListItem(
       h,
       "Balance after",
-      getHolidayRowBalanceLabel(projectedBalance, { historyComplete: historyReliable })
+      getHolidayRowBalanceLabel(projectedBalance, { historyComplete: personalBalanceVerified && holidayCalendar.ready })
     );
   });
 
@@ -549,16 +512,17 @@ export default function HolidayPage() {
   const pastItems = pastConfirmed.map((h) => {
     const { displayType } = displayTypeAndColor(h);
     if (displayType === "Paid") pastBalance -= computeDays(h, isBankHoliday);
-    return toListItem(h, "Balance after", getHolidayRowBalanceLabel(pastBalance, { historyComplete: historyReliable }));
+    return toListItem(h, "Balance after", getHolidayRowBalanceLabel(pastBalance, { historyComplete: personalBalanceVerified && holidayCalendar.ready }));
   });
 
   const { isOverbooked, balanceValue, balanceLabel } =
-    getHolidayBalancePresentation(allowanceBalance, { historyComplete: historyReliable });
+    getHolidayBalancePresentation(allowanceBalance, { historyComplete: summaryMode === "verified", provisional: provisionalBalance });
   const visiblePastItems = getVisibleHolidayHistory(pastItems, historyExpanded);
   const stackHolidayRows = shouldStackHolidayRows(width, fontScale);
 
   return (
     <PageShell
+      refresh={{refreshing:historyLoading, onRefresh:() => { holidayCalendar.refresh(); return refreshHolidays(); }}}
       appearance="grouped"
       header={{
         variant: "compact",
@@ -611,7 +575,7 @@ export default function HolidayPage() {
       }}
     >
       <>
-        {historyError ? <Banner tone="warning" title="History needs attention">{historyError}</Banner> : null}
+        {holidayCalendar.error ? <Banner tone="warning" title="Calendar unavailable">Refresh to load bank holidays before checking your balance.</Banner> : historyError && !personalBalanceVerified ? <Banner tone="warning" title={provisionalBalance ? "Provisional balance" : "History needs attention"}>{provisionalBalance ? "Based on your verified leave records. Older company records still need ownership review, so this balance may change." : historyError}</Banner> : null}
 
         {employeeData && (
           <>
@@ -619,15 +583,15 @@ export default function HolidayPage() {
             <View style={styles.statsGrid}>
               <Stat
                 label="Paid used"
-                value={historyReliable ? Number(pastPaidUsed.toFixed(1)) : "—"}
+                value={showSummaryNumbers ? Number(pastPaidUsed.toFixed(1)) : "—"}
               />
               <Stat
                 label="Paid booked"
-                value={historyReliable ? Number(upcomingPaidBooked.toFixed(1)) : "—"}
+                value={showSummaryNumbers ? Number(upcomingPaidBooked.toFixed(1)) : "—"}
               />
               <Stat
                 label="Unpaid"
-                value={historyReliable ? Number(unpaid.toFixed(1)) : "—"}
+                value={showSummaryNumbers ? Number(unpaid.toFixed(1)) : "—"}
               />
             </View>
 

@@ -36,9 +36,9 @@ test("extracted screen styles declare the dependencies they evaluate", () => {
   assert.deepEqual(missingDependencies, []);
 });
 
-test("home screen imports StyleSheet for runtime row dividers", () => {
+test("shared Home presentation imports StyleSheet for runtime row dividers", () => {
   const source = fs.readFileSync(
-    path.resolve("app/(protected)/(main-tabs)/screens/homescreen.js"),
+    path.resolve("components/home/HomeDashboard.jsx"),
     "utf8"
   );
 

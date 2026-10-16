@@ -20,7 +20,7 @@ const { code } = transformSync(readFileSync(filename, 'utf8'), {
 
 // Execute the actual shell and state resolver. Native hosts and hook context
 // are substituted so the Node runner can inspect the composed element tree.
-function renderShell({ platform = 'ios', refreshing = true, mode = 'scroll', resources, refresh = true } = {}) {
+function renderShell({ platform = 'ios', refreshing = true, mode = 'scroll', resources, refresh = true, scrollProps } = {}) {
   const hooks = { ...React, useEffect() {}, useMemo: fn => fn(), useState: value => [value, () => {}] };
   const mocks = {
     react: { ...hooks, default: hooks, __esModule: true },
@@ -49,6 +49,7 @@ function renderShell({ platform = 'ios', refreshing = true, mode = 'scroll', res
   const onRefresh = () => {};
   const tree = module.exports.default({
     mode,
+    scrollProps,
     state: { resources: resources || [{ isRefreshing: true }], hasContent: true, onRetry: onRefresh },
     refresh: refresh ? { refreshing, onRefresh } : undefined,
     listProps: mode === 'list' ? { data: ['saved'], renderItem: () => null } : undefined,
@@ -65,6 +66,27 @@ function renderShell({ platform = 'ios', refreshing = true, mode = 'scroll', res
   }
   visit(tree);
   return { nodes, onRefresh };
+}
+
+test('an iOS form using native keyboard insets has only one keyboard avoidance owner', () => {
+  const { nodes } = renderShell({ mode: 'form', scrollProps: { automaticallyAdjustKeyboardInsets: true } });
+  const scroll = nodes.find(n => n.type === 'ScrollView');
+  assert.equal(scroll.props.automaticallyAdjustKeyboardInsets, true);
+  assert.equal(nodes.filter(n => n.type === 'KeyboardAvoidingView').length, 0);
+  assert.equal(scroll.props.keyboardShouldPersistTaps, 'handled');
+  assert.equal(scroll.props.keyboardDismissMode, 'interactive');
+  assert.equal(nodes.filter(n => n.type === 'SavedContent').length, 1);
+});
+
+for (const options of [
+  { platform: 'ios' },
+  { platform: 'ios', scrollProps: { automaticallyAdjustKeyboardInsets: false } },
+  { platform: 'android', scrollProps: { automaticallyAdjustKeyboardInsets: true } },
+]) {
+  test(`other forms retain their keyboard avoidance: ${JSON.stringify(options)}`, () => {
+    const { nodes } = renderShell({ mode: 'form', ...options });
+    assert.equal(nodes.filter(n => n.type === 'KeyboardAvoidingView').length, 1);
+  });
 }
 
 for (const platform of ['ios', 'android']) {

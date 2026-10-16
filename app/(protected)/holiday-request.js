@@ -643,6 +643,7 @@ export default function HolidayRequestPage() {
       });
       await Promise.all([
         invalidate("collection:holidays"),
+        invalidate("holidays:employee:"),
         invalidate("me-dashboard:"),
       ]);
 

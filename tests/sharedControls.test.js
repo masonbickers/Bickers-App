@@ -452,3 +452,18 @@ test("the shared card surface supports both themes and semantic exceptions witho
     }
   }
 });
+
+test('saved-page controls preserve normal contrast without enabling interaction', () => {
+  for (const platform of ['ios', 'android', 'web']) {
+    const { controls } = load(platform);
+    const saved = controls.AppPressable({disabled:true,disabledAppearance:'preserve'});
+    assert.equal(saved.props.disabled,true);
+    assert.equal(saved.props.accessibilityState.disabled,true);
+    assert.equal(flatten(saved.props.style({pressed:false})).opacity,1);
+    assert.equal(flatten(saved.props.style({pressed:true})).opacity,1);
+    const ordinary = controls.AppPressable({disabled:true});
+    assert.equal(flatten(ordinary.props.style({pressed:false})).opacity,0.5);
+    const enabled = controls.AppPressable({activeOpacity:0.7});
+    assert.equal(flatten(enabled.props.style({pressed:true})).opacity,0.7);
+  }
+});

@@ -82,3 +82,10 @@ test('eligible saved content replaces the waiting screen while protected routes 
   const nodes=render({startup:{enabled:true,restored:true,snapshot:cached}});
   assert.equal(nodes.filter(n=>n.type==='StartupPreview').length,1);assert.equal(routeContainer(nodes).props.style.display,'none');assert.equal(nodes.filter(n=>n.type==='Footer').length,0);
 });
+
+ test('shared account restoration opens the Home presentation without a full-screen checking loader', () => {
+  const nodes = render({startup:{enabled:true,restored:false,snapshot:null}});
+  assert.equal(nodes.filter(n=>n.type==='StartupPreview').length,1);
+  assert.equal(nodes.filter(n=>n.type==='LoadingState').length,0);
+  assert.equal(routeContainer(nodes).props.style.display,'none');
+});

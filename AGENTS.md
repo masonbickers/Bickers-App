@@ -65,3 +65,14 @@ handlers in the existing owning component; do not duplicate card surface,
 border colour, border width or corner radius locally. Preserve documented
 calendar/status/nested-control exceptions. Check affected native renders and
 report pending coverage; a source migration is not full visual verification.
+
+
+## Current Device Hub live checkout
+
+The native Clerk/cache-first app currently served to Device Hub is in
+`/Users/masonbickers/.codex/worktrees/saved-home-live/bickers-app-launch`.
+Use that checkout for requested native live edits and run `npm run start:device-hub`
+there. The launcher pins its own project root and the installed Clerk pilot
+configuration on localhost port 8081. Do not restart Metro from an older main
+checkout or a temporary build-source copy; verify the listener’s working directory
+and the connected app before reporting live updates.

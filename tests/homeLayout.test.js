@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { readRouteBundle } from "./helpers/routeSource.js";
 
-const homeSource = readRouteBundle("app/(protected)/(main-tabs)/screens/homescreen.js");
+const homeSource = readRouteBundle("app/(protected)/(main-tabs)/screens/homescreen.js") + readRouteBundle("components/home/HomeDashboard.jsx") + readRouteBundle("components/home/HomeDayStatus.jsx");
 
 test("home dashboard sections use one stack and inherit employee density", () => {
   assert.doesNotMatch(homeSource, /<PageShell\b[^>]*\bdensity=/);
@@ -17,11 +17,11 @@ test("home dashboard sections use one stack and inherit employee density", () =>
 
 test("home prioritises work and actions with compact status summaries", () => {
   assert.match(homeSource, /styles\.statusSummary/);
-  assert.match(homeSource, /Updated \{lastUpdatedAt\.toLocaleTimeString/);
+  assert.match(homeSource, /Updated \$\{lastUpdatedAt\.toLocaleTimeString/);
   assert.doesNotMatch(homeSource, />\s*Pull to refresh\s*</);
   assert.match(homeSource, /canSwitchToService=\{canSwitchToService\}/);
   assert.match(homeSource, /accessibilityLabel="Switch to Service workspace"/);
-  assert.match(homeSource, /\{todayJobs\.length > 0 \? \(/);
+  assert.match(homeSource, /\{todayCount > 0 \? \(/);
   assert.match(homeSource, /dashboardBody:\s*\{[^}]*paddingBottom: t\.spacing\.xl/);
 });
 
@@ -31,7 +31,7 @@ test("home starts planning on tomorrow and supports browsing both directions", (
   assert.doesNotMatch(homeSource, /toISODate\(nd\) < toISODate\(getTomorrow\(\)\)/);
   assert.match(homeSource, /const goPrevDay[\s\S]*nd\.setDate\(nd\.getDate\(\) - 1\);[\s\S]*return nd;/);
   assert.match(homeSource, /const quickActionColumns = Math\.min\(gridColumnCount, 2\)/);
-  assert.match(homeSource, /upcoming: true/);
+  assert.match(homeSource, /upcoming:\s*true/);
   assert.match(homeSource, /minHeight: t\.controls\.buttonHeightLg \+ t\.spacing\.lg/);
 });
 

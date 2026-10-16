@@ -66,6 +66,16 @@ unchanged. Schedule uses these shared treatments in both light and dark mode.
 radius. PageShell forwards its grouped appearance to the default loading state,
 keeping loading and settled surfaces consistent in both themes.
 
+Home's display-only startup preview uses `HomeDashboard savedAt` for a static
+"Saved HH:mm" header from the snapshot's actual timestamp, without a refresh
+spinner. `refreshingAccess` continues to disable protected actions until access
+is verified; it does not imply an animated loading treatment. Home uses
+`AppPressable disabledAppearance="preserve"` during that display-only state to
+retain normal contrast. This changes opacity only: native disabled behaviour and
+accessibility remain disabled. Other controls retain the default `"dimmed"`
+appearance. Missing snapshots
+show a neutral account-check label, and failed checks retain the retry treatment.
+
 Home uses the same grouped shell and neutral card surfaces in both themes.
 `SectionCard tone="grouped"` and `createDashboardCardStyles(colors, "grouped")`
 opt into that surface without changing other consumers. Action icons retain
@@ -179,6 +189,11 @@ keeps natural spacing. Weight expresses hierarchy without a heavy black face.
 
 - Use `PageShell` for safe areas, responsive gutters, width constraints,
   scrolling, keyboard avoidance, refresh, and asynchronous page states.
+- iOS form pages can opt into native keyboard insets through
+  `scrollProps={{ automaticallyAdjustKeyboardInsets: true }}`. `PageShell`
+  then uses the scroll view as the sole keyboard avoidance owner, keeping
+  centred content stable. Login uses this treatment; other forms retain
+  their existing keyboard avoidance, and Android behaviour is unchanged.
 - Use `PageSection` for continuous content. It may use a heading and divider,
   but has no surrounding card surface.
 - Use `FormStep` for numbered workflows. Its rail connects related fields
@@ -492,3 +507,20 @@ nested geometry when applicable. Neither option changes content or behaviour.
 `SettingsGroup outlined` adopts the same independent card border. Work-side
 record groups opt in; the default borderless inset-list contract is preserved
 for existing consumers, including Service-side screens.
+
+### Home during account restoration
+
+`HomeDashboard` owns the shared Home presentation for both startup and the verified Home route. During account restoration, `StartupHomeDashboard` renders that layout with a compact refresh indicator in the header, account-scoped saved job summaries when eligible, and neutral work placeholders otherwise. It never fetches protected data or enables navigation. Identity, terms, denial and expiry checks remain in the startup gate; Home actions become available only after verification. Do not reintroduce a separate saved-view page or full-page loading skeleton at this handoff.
+
+### Holiday balance confidence
+
+Me and Holidays may display a clearly labelled provisional balance from verified personal leave records when only the wider company history is incomplete. Use the shared holiday summary mode and a semantic warning Banner; never label that figure “Available” or clear the ownership warning. Hide numerical summaries when personal records are withheld, the profile/calculation is not ready, or loading fails. Both summaries use the same validated bank-holiday calendar; a missing calendar cannot count as zero holidays.
+
+A server-verified personal annual review may qualify that year’s holiday balance independently of company-wide history completeness. Consume only matching-year `balanceVerification` metadata through `isHolidayBalanceVerified`; continue rejecting withheld personal records and incomplete calculation inputs. The review never grants access to legacy records or alters their ownership.
+
+Home startup restores the last verified display header (name/code only) and
+per-day status labels alongside saved job summaries. `HomeDayStatus` renders the
+same card in saved and verified Home. Snapshot projection allows only the known
+status labels and bounded display strings; email, leave history/reasons, raw
+profile records, credentials and attachments are excluded. Saved presentation
+remains account-scoped, display-only and subject to the existing 24-hour limit.

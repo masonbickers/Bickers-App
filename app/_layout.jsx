@@ -118,7 +118,6 @@ function firstISOFromNotifData(data) {
 function ShellInner() {
   const startup = useStartupSnapshot();
   const clerk = useClerkFirebase();
-  const [previewSelection, setPreviewSelection] = useState(null);
   const lastPreview = useRef(null);
   const segments = useSegments();
   const router = useRouter();
@@ -158,8 +157,7 @@ function ShellInner() {
     (visualPreviewPath === "/design-system" || visualPreviewPath === "/service/design-system");
 
   const savedSnapshot = resolveStartupDisplay({ snapshot: startup.snapshot, enabled: startup.enabled, clerk, startupAccessStatus, loading, isAuthed, workingTermsAccepted, securityTransition, updateRequired });
-  const previewKey = savedSnapshot ? JSON.stringify([savedSnapshot.identity, savedSnapshot.generation]) : null;
-  const preview = savedSnapshot && previewSelection?.key === previewKey ? { ...savedSnapshot, selectedDateISO: previewSelection.date, selectedJobId: previewSelection.jobId } : savedSnapshot;
+  const preview = savedSnapshot;
   if (preview) lastPreview.current = { route: preview.route, date: preview.selectedDateISO };
   if (['signed-out', 'denied', 'terms-required'].includes(startupAccessStatus)) lastPreview.current = null;
   const unavailable = startup.enabled && startupAccessStatus === 'unavailable';
@@ -441,10 +439,9 @@ function ShellInner() {
         backgroundColor={shellBackground}
       />
 
-      {holdSessionRoute && (preview ? (
+      {holdSessionRoute && ((preview || (startup.enabled && loading && startupAccessStatus === "restoring")) ? (
         <View style={{ flex: 1 }} onLayout={() => startupTimings.mark("first-saved-layout")}><StartupPreview snapshot={preview} status={startupAccessStatus} onRetry={retryStartup}
-          onSelectDate={date => setPreviewSelection({ key: previewKey, date, jobId: null })}
-          onSelectJob={jobId => setPreviewSelection({ key: previewKey, date: preview.selectedDateISO, jobId })} /></View>
+          /></View>
       ) : (
         <View style={{ flex: 1, justifyContent: "center", padding: t.spacing.xl }}>
           {unavailable ? <><Text variant="body">Unable to check account access. Please retry.</Text><AppButton label="Retry" onPress={retryStartup} layoutStyle={{ marginTop: t.spacing.md }} /></> : <LoadingState label="Checking account access…" />}
