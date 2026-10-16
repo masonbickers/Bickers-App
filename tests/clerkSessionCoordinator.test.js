@@ -185,3 +185,17 @@ test('a suspended request that ignores abort cannot publish a late timeout after
   assert.deepEqual(state.blocked, []);
   assert.deepEqual(state.ready, ['uid_1']);
 });
+
+test('cold restoration prepares a matching account cache without deleting it, but still obtains fresh Firebase auth', async () => {
+  const {state,deps}=fixture(); state.uid='uid_1';
+  const coordinator=createClerkSessionCoordinator({...deps,prepareAccountCache:async args=>{assert.equal(args.uid,'uid_1');assert.deepEqual(args.clerkIdentity,state.identity);}});
+  await coordinator.reconcile();
+  assert.deepEqual(state.mutations,[['out'],['in','uid_1']]);
+});
+test('logout hides display synchronously and awaits durable invalidation before signing out', async () => {
+  const {state,deps}=fixture(); const gate=deferred(); let visible=true;
+  const coordinator=createClerkSessionCoordinator({...deps,invalidateDisplay:()=>{visible=false;return gate.promise;}});
+  const pending=coordinator.signOut(); assert.equal(visible,false);
+  await Promise.resolve();assert.deepEqual(state.mutations,[]);
+  gate.resolve();await pending;assert.deepEqual(state.mutations,[['clear'],['out'],['clerk-out']]);
+});

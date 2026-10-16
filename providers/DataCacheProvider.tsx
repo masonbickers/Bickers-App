@@ -124,7 +124,7 @@ export function isStorageValueExpired(
 }
 
 export function DataCacheProvider({ children }: { children: React.ReactNode }) {
-  const { user, employee, isAuthed, loading: authLoading } = useAuth();
+  const { user, employee, isAuthed, loading: authLoading, startupAccessStatus } = useAuth();
   const scope = useMemo(
     () =>
       buildCacheScope({
@@ -135,6 +135,11 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
       }),
     [employee?.companyId, employee?.employeeId, employee?.userCode, user?.uid]
   );
+  const scopeEpoch = useRef({ scope, generation: 0 });
+  if (scopeEpoch.current.scope !== scope) scopeEpoch.current = { scope, generation: scopeEpoch.current.generation + 1 };
+  const generation = scopeEpoch.current.generation;
+  const isCurrentScope = useCallback(() => scopeEpoch.current.generation === generation && scopeEpoch.current.scope === scope, [generation, scope]);
+  const writeTail = useRef<Promise<unknown>>(Promise.resolve());
   const inMemory = useRef<Map<string, CacheRecord>>(new Map());
   const requestDeduper = useRef(createRequestDeduper());
   const previousScope = useRef(scope);
@@ -160,6 +165,7 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
 
   const read = useCallback(
     async <T,>(key: string): Promise<CacheRecord<T> | null> => {
+      if (!isCurrentScope()) return null;
       const fullKey = scopedKey(key);
       const memory = inMemory.current.get(fullKey);
       if (memory) return memory as CacheRecord<T>;
@@ -168,34 +174,36 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
         const record = parseStoredRecord<T>(
           await AsyncStorage.getItem(toStorageKey(fullKey))
         );
+        if (!isCurrentScope()) return null;
         if (record) inMemory.current.set(fullKey, record);
         return record;
       } catch {
         return null;
       }
     },
-    [scopedKey]
+    [isCurrentScope, scopedKey]
   );
 
   const write = useCallback(
     async <T,>(key: string, data: T, ttlMs = DEFAULT_CACHE_TTL_MS) => {
-      const fullKey = scopedKey(key);
-      const record: CacheRecord<T> = {
-        data,
-        updatedAt: Date.now(),
-        ttlMs: normalizeCacheTtl(ttlMs),
+      const run = async () => {
+        if (!isCurrentScope()) return;
+        const fullKey = scopedKey(key);
+        const record: CacheRecord<T> = { data, updatedAt: Date.now(), ttlMs: normalizeCacheTtl(ttlMs) };
+        inMemory.current.set(fullKey, record);
+        try {
+          await AsyncStorage.setItem(toStorageKey(fullKey), JSON.stringify({ ...record, data: serializeForStorage(data) }));
+          if (!isCurrentScope()) {
+            inMemory.current.delete(fullKey);
+            await AsyncStorage.removeItem(toStorageKey(fullKey));
+          }
+        } catch { /* Memory caching remains available for the current scope. */ }
       };
-      inMemory.current.set(fullKey, record);
-      try {
-        await AsyncStorage.setItem(
-          toStorageKey(fullKey),
-          JSON.stringify({ ...record, data: serializeForStorage(data) })
-        );
-      } catch {
-        // Memory caching remains available if persistent storage is unavailable.
-      }
+      const pending = writeTail.current.then(run, run);
+      writeTail.current = pending.catch(() => {});
+      await pending;
     },
-    [scopedKey]
+    [isCurrentScope, scopedKey]
   );
 
   const isExpired = useCallback(
@@ -304,20 +312,21 @@ export function DataCacheProvider({ children }: { children: React.ReactNode }) {
     requestDeduper.current.clear();
     await clearScope(scope);
     setRefreshSignal((value) => value + 1);
-  }, [clearScope, scope]);
+  }, [authLoading, clearScope, scope, startupAccessStatus]);
 
   useEffect(() => {
+    if (authLoading || startupAccessStatus === "restoring" || startupAccessStatus === "unavailable") return;
     if (previousScope.current === scope) return;
     const oldScope = previousScope.current;
     previousScope.current = scope;
     requestDeduper.current.clear();
     clearScope(oldScope).catch(() => {});
-  }, [clearScope, scope]);
+  }, [authLoading, clearScope, scope, startupAccessStatus]);
 
   useEffect(() => {
-    if (authLoading || isAuthed) return;
+    if (authLoading || isAuthed || startupAccessStatus === "restoring" || startupAccessStatus === "unavailable") return;
     clear().catch(() => {});
-  }, [authLoading, clear, isAuthed]);
+  }, [authLoading, clear, isAuthed, startupAccessStatus]);
 
   useEffect(() => {
     if (!isAuthed) return undefined;

@@ -6,6 +6,8 @@ import { useHostedAuth } from '@clerk/expo/hosted-auth';
 import { onIdTokenChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Linking } from 'react-native';
+import { useStartupSnapshot } from './StartupSnapshotProvider';
+import { createStartupCacheLifecycle } from '../lib/startup/cacheLifecycle';
 import { auth } from '../firebaseConfig';
 import { clearAccountSessionCache } from '../lib/accountSessionCache';
 import { clerkClientConfig, createClerkBridgeClient } from '../lib/clerkBridgeClient';
@@ -28,6 +30,7 @@ const legacy = {
  * @property {boolean} loading
  * @property {string|null} error
  * @property {string|null} uid
+ * @property {string} [sessionStatus]
  * @property {number} revision
  * @property {string|null} [clerkUserId]
  * @property {string|null} [clerkSessionId]
@@ -61,6 +64,7 @@ export function ClerkFirebaseProvider({ children }) {
 }
 
 function ClerkRuntime({ config, children }) {
+  const { store: startupStore } = useStartupSnapshot();
   const { isLoaded, isSignedIn, userId, sessionId, getToken } = useClerkAuth();
   const clerk = useClerk();
   const { signIn } = useSignIn();
@@ -71,7 +75,7 @@ function ClerkRuntime({ config, children }) {
   const coordinator = useRef(null);
   const mounted = useRef(true);
   const permit = useRef(null);
-  const [bridge, setBridge] = useState({ uid: null, error: null, revision: 0 });
+  const [bridge, setBridge] = useState({ uid: null, error: null, revision: 0, sessionStatus: 'restoring' });
   const [flowState, setFlowState] = useState(emptyFlow);
   const flow = useRef(null);
   if (!flow.current) flow.current = createClerkSignInFlow({
@@ -87,13 +91,20 @@ function ClerkRuntime({ config, children }) {
 
   useEffect(() => {
     mounted.current = true;
-    const invalidate = error => {
+    const invalidate = (error, sessionStatus = 'restoring') => {
       permit.current = null;
       bindSyncIdentity(null);
       global.employee = null;
-      if (mounted.current) setBridge(current => ({ ...current, uid: null, error: error === undefined ? current.error : error }));
+      if (mounted.current) setBridge(current => ({ ...current, uid: null, sessionStatus, error: error === undefined ? current.error : error }));
     };
+    const clearCache = async () => {
+      bindSyncIdentity(null); global.employee = null; clearLiveResourcePrefix();
+      await clearAccountSessionCache(AsyncStorage);
+    };
+    const lifecycle = startupStore ? createStartupCacheLifecycle({ store: startupStore, clear: clearCache }) : {};
     const next = createClerkSessionCoordinator({
+      ...lifecycle,
+      invalidateDisplay: () => startupStore?.invalidate('signed-out'),
       getClerkIdentity: identity,
       getClerkToken: () => sdk.current.getToken({ skipCache: true }),
       exchangeToken: createClerkBridgeClient({ origin: config.origin }),
@@ -107,18 +118,13 @@ function ClerkRuntime({ config, children }) {
       },
       signOutFirebase: () => signOut(auth),
       signOutClerk: options => clerk.signOut(options),
-      clearAccountCache: async () => {
-        bindSyncIdentity(null);
-        global.employee = null;
-        clearLiveResourcePrefix();
-        await clearAccountSessionCache(AsyncStorage);
-      },
+      clearAccountCache: clearCache,
       onPending: () => invalidate(),
-      onBlocked: (error, context) => invalidate(describeClerkSessionFailure(error, { ...context, diagnostic: config.deploymentRole === 'pilot' })),
-      onSignedOut: () => invalidate(),
+      onBlocked: (error, context) => invalidate(describeClerkSessionFailure(error, { ...context, diagnostic: config.deploymentRole === 'pilot' }), [401, 403].includes(error?.status) ? 'denied' : 'unavailable'),
+      onSignedOut: () => invalidate(undefined, 'signed-out'),
       onReady: response => {
         permit.current = { ...identity(), uid: response.uid };
-        if (mounted.current) setBridge(current => ({ uid: response.uid, error: null, revision: current.revision + 1 }));
+        if (mounted.current) setBridge(current => ({ uid: response.uid, error: null, revision: current.revision + 1, sessionStatus: 'verified' }));
       },
     });
     coordinator.current = next;
@@ -145,7 +151,7 @@ function ClerkRuntime({ config, children }) {
       void flow.current.cancel();
       if (coordinator.current === next) coordinator.current = null;
     };
-  }, [clerk, config.origin, config.deploymentRole, identity]); // SDK methods/identity are read from the current ref.
+  }, [clerk, config.origin, config.deploymentRole, identity, startupStore]); // SDK methods/identity are read from the current ref.
 
   useEffect(() => {
     if (isLoaded) {
@@ -168,6 +174,7 @@ function ClerkRuntime({ config, children }) {
     <ClerkFirebaseContext.Provider value={{
       enabled: true, ready: isReady(), loading: !isLoaded,
       uid: bridge.uid, clerkUserId: userId, clerkSessionId: sessionId, hasClerkSession: isSignedIn === true,
+      sessionStatus: !isLoaded ? 'restoring' : !isSignedIn ? 'signed-out' : bridge.sessionStatus,
       revision: bridge.revision, error: bridge.error, isReady,
       flow: flow.current, flowState, passwordEnabled: user?.passwordEnabled === true,
       startPasswordSignIn: async (email, password) => {
@@ -177,6 +184,8 @@ function ClerkRuntime({ config, children }) {
       reconcile: options => coordinator.current?.reconcile(options),
       signOutAccount: async () => {
         setBridge(current => ({ ...current, error: null }));
+        const invalidation = startupStore?.invalidate('signed-out');
+        await invalidation;
         await flow.current.cancel();
         if (coordinator.current) await coordinator.current.signOut();
         else { await signOut(auth); await clerk.signOut(); }
