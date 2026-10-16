@@ -1,5 +1,5 @@
 import { withErrorMonitoring } from "../lib/errorMonitoring";
-import { AppText as Text } from "../components/ui/AppPrimitives";
+import { AppText as Text, AppButton } from "../components/ui/AppPrimitives";
 // app/_layout.jsx
 import {
   Slot,
@@ -51,7 +51,10 @@ import {
 } from "../lib/timesheetNotification";
 import { useReceiptSync } from "../hooks/useReceiptSync";
 import { getReceiptNotificationHref, isReceiptNotification } from "../lib/receipts/navigation";
-import { ClerkFirebaseProvider } from "../providers/ClerkFirebaseProvider";
+import StartupPreview from "../components/startup/StartupPreview";
+import { resolveStartupDisplay } from "../lib/startup/display";
+import { StartupSnapshotProvider, useStartupSnapshot } from "../providers/StartupSnapshotProvider";
+import { ClerkFirebaseProvider, useClerkFirebase } from "../providers/ClerkFirebaseProvider";
 import { AuthProvider, useAuth } from "../providers/AuthProvider";
 import { DataCacheProvider } from "../providers/DataCacheProvider";
 import { NotificationPreferencesProvider } from "../providers/NotificationPreferencesProvider";
@@ -112,6 +115,10 @@ function firstISOFromNotifData(data) {
   return toISODate(s);
 }
 function ShellInner() {
+  const startup = useStartupSnapshot();
+  const clerk = useClerkFirebase();
+  const [previewSelection, setPreviewSelection] = useState(null);
+  const lastPreview = useRef(null);
   const segments = useSegments();
   const router = useRouter();
   const pathname = usePathname(); // 👈 NEW
@@ -131,6 +138,8 @@ function ShellInner() {
     employee,
     workingTermsAccepted,
     securityTransition,
+    startupAccessStatus,
+    reloadSession,
   } = useAuth() ?? {};
   const loading = typeof ctxLoading === "boolean" ? ctxLoading : user === undefined;
   const workspaceAccess = resolveWorkspaceAccess(employee);
@@ -147,6 +156,14 @@ function ShellInner() {
     process.env.EXPO_PUBLIC_VISUAL_TEST_MODE === "1" &&
     (visualPreviewPath === "/design-system" || visualPreviewPath === "/service/design-system");
 
+  const savedSnapshot = resolveStartupDisplay({ snapshot: startup.snapshot, enabled: startup.enabled, clerk, startupAccessStatus, loading, isAuthed, workingTermsAccepted, securityTransition, updateRequired });
+  const previewKey = savedSnapshot ? JSON.stringify([savedSnapshot.identity, savedSnapshot.generation]) : null;
+  const preview = savedSnapshot && previewSelection?.key === previewKey ? { ...savedSnapshot, selectedDateISO: previewSelection.date, selectedJobId: previewSelection.jobId } : savedSnapshot;
+  if (preview) lastPreview.current = { route: preview.route, date: preview.selectedDateISO };
+  if (['signed-out', 'denied', 'terms-required'].includes(startupAccessStatus)) lastPreview.current = null;
+  const unavailable = startup.enabled && startupAccessStatus === 'unavailable';
+  const retryStartup = async () => { if (clerk.ready) await reloadSession(); else await clerk.reconcile?.({ requireFresh: true }); };
+
   // 👇 any route starting with "/service" uses the Service footer
   // e.g. /service, /service/pages/..., /service/whatever
   const isServiceRoute = pathname?.startsWith("/service");
@@ -155,7 +172,7 @@ function ShellInner() {
   // Route replacement runs after render. Keep the Slot mounted, but do not
   // expose Login (or protected content) while identity restoration is pending.
   const holdSessionRoute = !visualTestRoute && !securityTransition &&
-    (loading || (isAuthed ? inAuthGroup : !inAuthGroup));
+    (!!preview || unavailable || loading || (isAuthed ? inAuthGroup : !inAuthGroup));
   const showFooter = appChrome.tabsVisible && !visualTestRoute && !securityTransition && !holdSessionRoute;
 
   useEffect(() => {
@@ -213,15 +230,20 @@ function ShellInner() {
 
   // Hide splash when ready
   useEffect(() => {
-    if (!loading) SplashScreen.hideAsync().catch(() => {});
-  }, [loading]);
+    if (!loading || (startup.enabled && startup.restored)) SplashScreen.hideAsync().catch(() => {});
+  }, [loading, startup.enabled, startup.restored]);
 
   // Auth gate
   useEffect(() => {
     if (securityTransition) return;
     if (updateRequired) return;
-    if (loading) return;
+    if (loading || preview || unavailable) return;
     if (visualTestRoute) return;
+    if (isAuthed && workingTermsAccepted && lastPreview.current && !isServiceOnlyUser) {
+      const saved = lastPreview.current; lastPreview.current = null;
+      router.replace({ pathname: saved.route === "schedule" ? "/(protected)/screens/schedule" : "/(protected)/screens/homescreen", params: { date: saved.date } });
+      return;
+    }
 
     // Not logged in and not in (auth) group -> kick to login
     if (!isAuthed && !inAuthGroup) {
@@ -246,6 +268,8 @@ function ShellInner() {
       }
     }
   }, [
+    preview,
+    unavailable,
     loading,
     isAuthed,
     inAuthGroup,
@@ -416,11 +440,15 @@ function ShellInner() {
         backgroundColor={shellBackground}
       />
 
-      {holdSessionRoute && (
+      {holdSessionRoute && (preview ? (
+        <StartupPreview snapshot={preview} status={startupAccessStatus} onRetry={retryStartup}
+          onSelectDate={date => setPreviewSelection({ key: previewKey, date, jobId: null })}
+          onSelectJob={jobId => setPreviewSelection({ key: previewKey, date: preview.selectedDateISO, jobId })} />
+      ) : (
         <View style={{ flex: 1, justifyContent: "center", padding: t.spacing.xl }}>
-          <LoadingState label="Checking account access…" />
+          {unavailable ? <><Text variant="body">Unable to check account access. Please retry.</Text><AppButton label="Retry" onPress={retryStartup} layoutStyle={{ marginTop: t.spacing.md }} /></> : <LoadingState label="Checking account access…" />}
         </View>
-      )}
+      ))}
       <View
         testID={visualTestRoute ? "visual-test-shell" : undefined}
         accessibilityElementsHidden={holdSessionRoute}
@@ -453,6 +481,7 @@ function RootLayout() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <WebMetadata />
+      <StartupSnapshotProvider>
       <ClerkFirebaseProvider>
       <AuthProvider>
         <ThemeProvider>
@@ -466,6 +495,7 @@ function RootLayout() {
         </ThemeProvider>
       </AuthProvider>
       </ClerkFirebaseProvider>
+      </StartupSnapshotProvider>
     </SafeAreaProvider>
   );
 }

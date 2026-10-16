@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import test from 'node:test';
+const display = await import('../lib/startup/display.js').catch(()=>({}));
 const require = createRequire(import.meta.url);
 const React = require('react');
 const { transformSync } = require('@babel/core');
@@ -11,7 +12,7 @@ const { code } = transformSync(readFileSync(filename, 'utf8') + '\nexport { Shel
   filename, configFile: false, babelrc: false,
   plugins: ['@babel/plugin-transform-react-jsx', '@babel/plugin-transform-modules-commonjs'],
 });
-function render({ loading = true, isAuthed = false, group = '(auth)', securityTransition = null } = {}) {
+function render({ loading = true, isAuthed = false, group = '(auth)', securityTransition = null, startup = {enabled:false,restored:true,snapshot:null}, startupAccessStatus = 'restoring' } = {}) {
   const hooks = { ...React, useEffect() {}, useState: initial => [initial, () => {}], useRef: value => ({ current: value }) };
   const mocks = {
     react: { ...hooks, default: hooks, __esModule: true },
@@ -19,7 +20,11 @@ function render({ loading = true, isAuthed = false, group = '(auth)', securityTr
     'react-native': { View: 'View', Platform: { OS: 'ios' } },
     'expo-splash-screen': { preventAutoHideAsync: async () => {} },
     'expo-status-bar': { StatusBar: 'StatusBar' },
-    '../providers/AuthProvider': { useAuth: () => ({ loading, isAuthed, employee: {}, workingTermsAccepted: true, securityTransition }) },
+    '../providers/StartupSnapshotProvider': {useStartupSnapshot:()=>startup},
+    '../providers/ClerkFirebaseProvider': {useClerkFirebase:()=>({enabled:startup.enabled,loading:true})},
+    '../lib/startup/display': display,
+    '../components/startup/StartupPreview':{default:'StartupPreview',__esModule:true},
+    '../providers/AuthProvider': { useAuth: () => ({ loading, isAuthed, startupAccessStatus, employee: {}, workingTermsAccepted: true, securityTransition }) },
     '../providers/ThemeProvider': { useTheme: () => ({ colors: { background: 'black' }, colorScheme: 'dark' }) },
     '../lib/access': { resolveWorkspaceAccess: () => ({ user: true }) },
     '../lib/appChrome': { resolveAppChrome: () => ({ tabsVisible: true }) },
@@ -70,3 +75,9 @@ for (const options of [
     assert.equal(nodes.filter(n => n.type === 'LoadingState').length, 0);
   });
 }
+
+test('eligible saved content replaces the waiting screen while protected routes and footer stay hidden',()=>{
+  const now=Date.now();const cached={version:1,identity:{clerkUserId:'u',clerkSessionId:'s',uid:'f',companyId:'c',employeeId:'e'},generation:1,verifiedAt:now,savedAt:now,route:'home',selectedDateISO:'2026-10-16',selectedJobId:null,jobs:[],completeDates:['2026-10-16'],truncated:false};
+  const nodes=render({startup:{enabled:true,restored:true,snapshot:cached}});
+  assert.equal(nodes.filter(n=>n.type==='StartupPreview').length,1);assert.equal(routeContainer(nodes).props.style.display,'none');assert.equal(nodes.filter(n=>n.type==='Footer').length,0);
+});
