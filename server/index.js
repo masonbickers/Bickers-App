@@ -1,6 +1,7 @@
 import { createHrHistoryProxy } from './hrHistoryProxy.js';
 import { createSessionGate } from "./sessionGate.js";
 import { createWorkshopSubmissionHandler } from "./workshopSubmission.js";
+import { createTimesheetDefaultsHandler } from "./timesheetDefaultsCommand.js";
 import axios from "axios";
 import { Buffer } from "node:buffer";
 import cors from "cors";
@@ -108,6 +109,8 @@ app.use(async (req, res, next) => {
     return next();
   } catch { return res.status(401).json({ error: "Sign in again.", code: "SIGN_IN_REQUIRED" }); }
 });
+
+app.post("/timesheets/defaults", createTimesheetDefaultsHandler({ db, auth: admin.auth() }));
 
 app.use("/hr", createHrHistoryProxy());
 app.post("/workshop/submissions", createWorkshopSubmissionHandler({ db, verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked) }));
