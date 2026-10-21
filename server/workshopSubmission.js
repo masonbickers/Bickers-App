@@ -1,4 +1,4 @@
-import { planWorkshopMaintenanceCompletion } from "./maintenanceRuntime.mjs";
+import { planWorkshopMaintenanceCompletion, planServiceCompletionSchedule, isCoreServiceType } from "./maintenanceRuntime.mjs";
 import { createHash } from 'node:crypto';
 import { classifyIdentitySession } from './identitySession.js';
 import { sharedBusinessSessionAllowed } from './sharedBusinessSession.mjs';
@@ -26,9 +26,21 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
     if (!allowedFields.has(key)) throw fail(`Unsupported workshop field: ${key}.`);
     record[key] = value;
   }
+  const rawRecord = {...record};
+  // Existing full-service forms and offline queues use DD/MM/YYYY. Normalize
+  // strict calendar dates before scheduling while retaining replay hashes.
+  const normalDate = value => {
+    if (date(value)) return value;
+    const match = typeof value === 'string' && value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    const iso = match ? `${match[3]}-${match[2]}-${match[1]}` : '';
+    return date(iso) ? iso : value;
+  };
+  for (const key of ['serviceDateOnly','nextServiceDate','precheckDateOnly']) if (record[key]) record[key] = normalDate(record[key]);
   const repair = record.serviceType === 'General repair';
+  const coreService = !mot && !standaloneDefect && isCoreServiceType(record.serviceType);
   if (!mot && !standaloneDefect && (!serviceTypes.has(record.serviceType) || repair !== (record.recordType === 'repair') && record.recordType)) throw fail('Unsupported workshop record type.');
   if (!standaloneDefect && (!date(mot ? record.precheckDateOnly : record.serviceDateOnly) || record.nextServiceDate && !date(record.nextServiceDate))) throw fail('Invalid service date.');
+  if (coreService && record.nextServiceDate && record.nextServiceDate <= record.serviceDateOnly) throw fail('Next service date must be after completion.');
   if (record.odometer != null && (typeof record.odometer !== 'number' || !Number.isFinite(record.odometer) || record.odometer < 0)) throw fail('Invalid odometer.');
   if (record.vehicleId != null && !id(record.vehicleId)) throw fail('Invalid vehicle ID.');
   const assetType = record.assetType || 'vehicle';
@@ -67,7 +79,8 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
       previous = existing.data();
       // Retain pre-upgrade hashes as-is, accepting both historical encodings.
       // Actor authorization above is required even for a replay acknowledgement.
-      const compatibleHashes = new Set([hash, hashRecord(record), hashRecord({ ...neutralRecord, companyId })]);
+      const rawNeutral = {...rawRecord}; delete rawNeutral.companyId;
+      const compatibleHashes = new Set([hash, hashRecord(record), hashRecord({ ...neutralRecord, companyId }), hashRecord(rawRecord), hashRecord(rawNeutral), hashRecord({...rawNeutral,companyId})]);
       if (previous.companyId === companyId && previous.submittedByUid === uid && compatibleHashes.has(previous.submissionHash)) return { recordId: body.recordId, replayed: true, record: previous };
       const unsigned = !previous.signedBy && !previous.signedAt && !previous.signature && !previous.signatureSvgPath && !['complete', 'completed', 'closed', 'cancelled', 'archived', 'submitted'].includes(text(previous.status).toLowerCase());
       if ((mot || standaloneDefect || body.mode !== 'update') || previous.companyId !== companyId || !unsigned || previous.submissionHash) throw fail('This record is already saved and immutable. Open a new form for further work.', 409);
@@ -119,21 +132,27 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
         vehiclePatch.repairHistory = [...(Array.isArray(vehicle.repairHistory) ? vehicle.repairHistory : []), { ...history, type: 'General repair', repairRecordId: body.recordId, completedBy: saved.signedBy }];
         if (!vehicle.lastRepair?.date || vehicle.lastRepair.date <= record.serviceDateOnly) vehiclePatch.lastRepair = { date: record.serviceDateOnly, summary: record.repairSummary || record.workSummary, serviceRecordId: body.recordId };
       } else {
-        vehiclePatch.serviceHistory = [...(Array.isArray(vehicle.serviceHistory) ? vehicle.serviceHistory : []), { ...history, serviceFormNumber: record.serviceFormNumber || '' }];
-        const latestService = [vehicle.lastService, vehicle.lastServiceDate].map(value => text(value).slice(0, 10)).filter(date).sort().at(-1);
-        if (!latestService || latestService <= record.serviceDateOnly) {
-          Object.assign(vehiclePatch, { lastService: record.serviceDateOnly, lastServiceDate: record.serviceDateOnly });
-          if (record.nextServiceDate) Object.assign(vehiclePatch, { nextService: record.nextServiceDate, nextServiceDate: record.nextServiceDate, serviceDueDate: record.nextServiceDate });
-        }
+        vehiclePatch.serviceHistory = [...(Array.isArray(vehicle.serviceHistory) ? vehicle.serviceHistory : []), { ...history, type: record.serviceType, serviceType: record.serviceType, maintenanceTypeId: coreService ? 'service' : 'work', serviceFormNumber: record.serviceFormNumber || '' }];
+
       }
       const oldOdo = Math.max(0, ...[vehicle.odometer, vehicle.mileage, vehicle.serviceOdometer].map(Number).filter(Number.isFinite));
       if (!equipment && record.odometer != null && (!Number.isFinite(oldOdo) || record.odometer >= oldOdo)) Object.assign(vehiclePatch, { odometer: record.odometer, mileage: record.odometer, serviceOdometer: record.odometer });
       if (defectWrites.length) vehiclePatch.defects = [...(Array.isArray(vehicle.defects) ? vehicle.defects : []), ...defectWrites.map(d => ({ ...d.data, defectReportId: d.ref.id }))];
     }
-    const maintenanceWrites = request?.sourceMaintenanceBookingId
+    let maintenanceWrites = request?.sourceMaintenanceBookingId
       ? await planWorkshopMaintenanceCompletion({ db, tx, request, requestId: record.workshopRequestId,
           record: saved, recordId: body.recordId, formCollection: collection, uid, user, now, vehiclePatch })
       : [];
+    if (coreService && vehicleRef && !request?.sourceMaintenanceBookingId) {
+      const snapshot = await tx.get(db.collection('maintenanceBookings').where('companyId','==',companyId));
+      const bookings = snapshot.docs.map(doc=>({id:doc.id,data:doc.data()})).filter(row=>row.data.vehicleId===record.vehicleId);
+      const schedule = planServiceCompletionSchedule({vehicle,vehicleId:record.vehicleId,companyId,completedDate:record.serviceDateOnly,nextDueDate:record.nextServiceDate||'',sourceRecordId:body.recordId,bookings,at:now});
+      Object.assign(vehiclePatch,schedule.vehiclePatch);
+      for(const write of schedule.writes) {
+        if(write.exists===false && (await tx.get(db.collection(write.collection).doc(write.documentId))).exists) throw fail('Service schedule changed. Refresh and retry.',409);
+      }
+      maintenanceWrites = schedule.writes;
+    }
     // All reads, including recurrence/counters, finish before the first write.
     tx.set(recordRef, saved);
     for (const defect of defectWrites) tx.set(defect.ref, defect.data);

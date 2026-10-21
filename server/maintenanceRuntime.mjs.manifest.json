@@ -1,24 +1,27 @@
 {
   "generatedBy": "scripts/build-workshop-maintenance-runtime.mjs",
   "inputs": {
-    "src/app/api/maintenance/bookings/_service.js": "42d8fd9efc0180742a0ddf8ec01641f3f16ef0c5d6d661be17a430f217a470c1",
-    "src/app/api/maintenance/bookings/workshopCompletion.js": "be555887dfbd4d865a64004191b74b52b76633b3adb81a59a8875493e9f04a29",
+    "src/app/api/maintenance/bookings/_service.js": "ada46ba7cf2cc3101d0c1577d945fabbf6baac768baf9d7759ab3fc8638cf2cf",
+    "src/app/api/maintenance/bookings/workshopCompletion.js": "c568f282ffa1bc66e65de0790a6fd60517803a8b4a8f22102c2a493938ebaa41",
     "src/app/utils/additionalMaintenanceCompletion.js": "1d2651fd350d4a47c00d8a0c1fc2682c16c08fc414cf6a4dd75354e3e3824bdb",
+    "src/app/utils/coreServiceType.js": "7c6da7ec6872b7285aaa290811ca89e6834aba77c893fb50e2caab27248f9ff1",
     "src/app/utils/hgvCompliance.js": "6a062b14b1feb97149581be9340aad818dc39ab9ee9a7b702b289f6fe65fcffd",
     "src/app/utils/maintenanceArchiveRebuild.js": "3c93baf2b0b093c88491e18f862b8975d7656ec39b831104ff42c2c87048af5d",
     "src/app/utils/maintenanceDocuments.js": "4da019722a816dd2eec9985d182adfa05b2045753b7109625fb4312c07060cfb",
     "src/app/utils/maintenanceForecast.js": "d5261dbf18b1ae8201b451a68b021d2c12f13b4a3fad141dca5d95d6d7265fd3",
     "src/app/utils/maintenanceMutationPolicy.js": "7e8b0b139c7c2bbf3c53e0263c59790bfb8fc9566a9ceed599bc74adcc6a8b77",
-    "src/app/utils/maintenanceRecord.js": "9b83ce0e12939e7c18169599af4bdef8c1219b5de99f4a5165d7c286b3610435",
+    "src/app/utils/maintenanceRecord.js": "fe86ac777f634672e0ba523ccd7a65734aab2c5e4d64fded2c766be817c5001e",
     "src/app/utils/maintenanceSchema.js": "4b4aabab7010c9eef814b1e9ff6455cce759c76f59a1af008c66c1e9e982490e",
     "src/app/utils/maintenanceTransport.js": "745dfaffdbf274ee76f8a3ff014403a2774e3a85156242528a305ab729c40868",
     "src/app/utils/maintenanceVersion.js": "ccfa9fe38aef6c2e48d89eb2853c33a7201818f4f4f7ce00915f0638bb9b86f8",
     "src/app/utils/maintenanceWorkshopLink.js": "635453c78407932e64aa0d6b57b9800d0fbcd1bfcaf91e45949fa1838918ec2f",
     "src/app/utils/motExpiry.js": "fedadcc1bee327548fb87e2b8cfa395ff2c87426c9edc30fb825de5aa46ebed9",
+    "src/app/utils/serviceCompletionSchedule.js": "f426d15e3b9f019309c94b185abbbc6ccca08383ff6e7379f3a344163c85c907",
+    "src/app/utils/serviceRecordCompat.js": "cb77d649a5da7554dbf102a7932264d8da8ddf91d1334f1b11b843970ca4714c",
     "src/app/utils/vehicleEditorSave.js": "6345394453454645054d0b5deec3fb133a87e91038b08ee1a107f4d9aac1d7bb",
     "src/app/utils/vehicleVorRecovery.js": "b8ad984f728ab340ec0d815de22749e84a0bf9ccae2d01da666e7807c871293b",
     "src/app/utils/vorBookingPolicy.js": "9b41141a6d14bfb5d9bb8e3bddb75c6e0ebf9256edfcd5dd0846cd7ed4ad52be",
     "src/app/utils/vorPeriods.js": "247648a41481293d88b3b3bc03d638ad53dfbd92cb9bcb646a6d099446ce0c75"
   },
-  "outputSha256": "b9b0a2aee67aac0c5d1a50363845c792e033c6b5321b7c316617f3c1824b679f"
+  "outputSha256": "518a772b98bb474420730ad1590796c8c0f1fad45aa2f17684b4c02ab2a3bddf"
 }
