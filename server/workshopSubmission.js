@@ -1,8 +1,9 @@
+import { planWorkshopMaintenanceCompletion } from "./maintenanceRuntime.mjs";
 import { createHash } from 'node:crypto';
 import { classifyIdentitySession } from './identitySession.js';
 import { sharedBusinessSessionAllowed } from './sharedBusinessSession.mjs';
 
-const fields = new Set(('companyId assetType equipmentId equipmentName serialNumber vehicleId vehicleName registration manufacturer model serviceType recordType serviceDate serviceDateOnly serviceTime completedDate odometer workSummary repairSummary repairReason partsUsed extraNotes signedBy completedBy nextServiceDate nextService serviceFormNumber serviceFormNumberValue checks checkRatings checkNA checkNotes wheelInspection monitorReport serviceDefectActions checkPhotoURIs checkPhotoURLs photoURIs photoURLs workshopRequestId workshopWorkType').split(' '));
+const fields = new Set(('companyId assetType equipmentId equipmentName serialNumber vehicleId vehicleName registration manufacturer model serviceType recordType serviceDate serviceDateOnly serviceTime completedDate odometer workSummary repairSummary repairReason partsUsed extraNotes signedBy completedBy nextServiceDate nextService serviceFormNumber serviceFormNumberValue checks checkRatings checkNA checkNotes wheelInspection monitorReport serviceDefectActions checkPhotoURIs checkPhotoURLs photoURIs photoURLs workshopRequestId workshopWorkType workshopBookingVersion').split(' '));
 const serviceTypes = new Set(['Full service', 'Interim service', 'Interim / minor service', 'Oil & filter change', 'Inspection only', 'Other', 'General repair']);
 const admins = new Set(['admin', 'companyadmin', 'company admin', 'platformadmin', 'platform admin', 'superadmin', 'super admin']);
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -18,7 +19,7 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
   if (!['service', 'minor', 'mot', 'defect'].includes(kind)) throw fail('Unsupported workshop submission.');
   const mot = kind === 'mot';
   const standaloneDefect = kind === 'defect';
-  const allowedFields = mot ? new Set('companyId vehicleId vehicleName registration manufacturer model precheckDateTime precheckDateOnly precheckTime odometer status summary faultsFound workRecommended checks checkRatings checkNA signedBy workshopRequestId workshopWorkType'.split(' ')) : standaloneDefect ? new Set('companyId assetType equipmentId equipmentName serialNumber vehicleId vehicleName registration location description severity priority offRoad reportedBy notes status photoURIs photoURLs'.split(' ')) : fields;
+  const allowedFields = mot ? new Set('companyId vehicleId vehicleName registration manufacturer model precheckDateTime precheckDateOnly precheckTime odometer status summary faultsFound workRecommended checks checkRatings checkNA signedBy workshopRequestId workshopWorkType workshopBookingVersion'.split(' ')) : standaloneDefect ? new Set('companyId assetType equipmentId equipmentName serialNumber vehicleId vehicleName registration location description severity priority offRoad reportedBy notes status photoURIs photoURLs'.split(' ')) : fields;
   const record = {};
   for (const [key, value] of Object.entries(body.record)) {
     if (['createdAt', 'updatedAt'].includes(key)) continue;
@@ -77,7 +78,7 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
     const requestRef = record.workshopRequestId ? db.collection('workshopRequests').doc(record.workshopRequestId) : null;
     const request = requestRef ? (await tx.get(requestRef)).data() : null;
     const workType = mot ? 'mot_precheck' : kind === 'minor' ? 'minor_service' : repair ? 'general_repair' : 'full_service';
-    if (requestRef && (!request || request.companyId !== companyId || request.status !== 'open' || request.assetId !== assetId || (request.assetType || 'vehicle') !== assetType || request.workType !== workType || record.workshopWorkType !== workType || workType === 'full_service' && record.serviceType !== 'Full service')) throw fail('Workshop request is not open for this vehicle and form.', 409);
+    if (requestRef && (!request || request.companyId !== companyId || request.status !== 'open' || String(request.assetId || '') !== String(assetId || '') || (request.assetType || 'vehicle') !== assetType || request.workType !== workType || record.workshopWorkType !== workType || workType === 'full_service' && record.serviceType !== 'Full service')) throw fail('Workshop request is not open for this vehicle and form.', 409);
     const defectWrites = [];
     for (const defect of defects) {
       const ref = db.collection('defectReports').doc(defect.id);
@@ -101,8 +102,6 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
       delete saved.signedBy;
       Object.assign(saved, { description: text(record.description), status: 'open', reporterUid: uid, priority: record.severity === 'Immediate' ? 'high' : 'medium', offRoad: record.offRoad === true, reportedBy: text(record.reportedBy) || text(user.displayName || user.name) || uid });
     }
-    tx.set(recordRef, saved);
-    for (const defect of defectWrites) tx.set(defect.ref, defect.data);
     let vehiclePatch = null;
     if (vehicleRef) {
       vehiclePatch = {};
@@ -130,10 +129,24 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
       const oldOdo = Math.max(0, ...[vehicle.odometer, vehicle.mileage, vehicle.serviceOdometer].map(Number).filter(Number.isFinite));
       if (!equipment && record.odometer != null && (!Number.isFinite(oldOdo) || record.odometer >= oldOdo)) Object.assign(vehiclePatch, { odometer: record.odometer, mileage: record.odometer, serviceOdometer: record.odometer });
       if (defectWrites.length) vehiclePatch.defects = [...(Array.isArray(vehicle.defects) ? vehicle.defects : []), ...defectWrites.map(d => ({ ...d.data, defectReportId: d.ref.id }))];
-      if (Object.keys(vehiclePatch).length) tx.update(vehicleRef, vehiclePatch);
+    }
+    const maintenanceWrites = request?.sourceMaintenanceBookingId
+      ? await planWorkshopMaintenanceCompletion({ db, tx, request, requestId: record.workshopRequestId,
+          record: saved, recordId: body.recordId, formCollection: collection, uid, user, now, vehiclePatch })
+      : [];
+    // All reads, including recurrence/counters, finish before the first write.
+    tx.set(recordRef, saved);
+    for (const defect of defectWrites) tx.set(defect.ref, defect.data);
+    if (vehicleRef && vehiclePatch && Object.keys(vehiclePatch).length) tx.update(vehicleRef, vehiclePatch);
+    for (const write of maintenanceWrites) {
+      const ref = db.collection(write.collection).doc(write.documentId);
+      if (write.exists === false) tx.create(ref, write.patch);
+      else tx.update(ref, write.patch);
     }
     if (requestRef) tx.update(requestRef, { status: 'completed', formCollection: collection, formRecordId: body.recordId, completedBy: saved.signedBy, completedAt: now, updatedAt: now });
-    return { recordId: body.recordId, replayed: false, record: saved, vehiclePatch: equipment ? null : vehiclePatch, assetPatch: vehiclePatch };
+    const canonicalVehiclePatch = maintenanceWrites.find(write => write.collection === 'vehicles' && write.documentId === record.vehicleId)?.patch;
+    const finalAssetPatch = { ...vehiclePatch, ...canonicalVehiclePatch };
+    return { recordId: body.recordId, replayed: false, record: saved, vehiclePatch: equipment ? null : finalAssetPatch, assetPatch: finalAssetPatch };
   });
 }
 
