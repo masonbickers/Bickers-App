@@ -1,3 +1,7 @@
+// src/app/utils/coreServiceType.js
+var isCoreServiceType = (type) => ["Full service", "Interim service", "Interim / minor service", "Oil & filter change"].includes(type);
+var isCoreServiceHistory = (row) => row?.maintenanceTypeId ? row.maintenanceTypeId === "service" : row?.serviceType || row?.type ? isCoreServiceType(row.serviceType || row.type) : true;
+
 // src/app/utils/maintenanceWorkshopLink.js
 import crypto from "node:crypto";
 
@@ -498,15 +502,18 @@ var buildNextRequestedMaintenanceRecords = ({
   canonicalRecord,
   completedTypeIds = [],
   completionDateISO = "",
-  vehicle = {}
+  vehicle = {},
+  recordedServiceNextDueDate = ""
 } = {}) => {
   const selected = new Set(safeArray(completedTypeIds).map(normalizeMaintenanceTypeId));
   const completedDate = maintenanceDateOnly(completionDateISO);
   if (!canonicalRecord || !completedDate || !selected.size) return [];
   const nextItems = safeArray(canonicalRecord.items).filter((item) => selected.has(item.maintenanceTypeId)).map((item) => {
     if (item.maintenanceTypeId === "mot") return null;
+    if (item.maintenanceTypeId === "service" && [vehicle.lastService, vehicle.lastServiceDate, ...safeArray(vehicle.serviceHistory).filter(isCoreServiceHistory).map((row) => row.completedDate)].map(maintenanceDateOnly).filter(Boolean).some((date) => date > completedDate)) return null;
     const recurrence = recurrenceInputForType(item.maintenanceTypeId, vehicle);
-    const nextDueDateISO = calculateNextMaintenanceDue({
+    const explicitServiceDate = item.maintenanceTypeId === "service" ? maintenanceDateOnly(recordedServiceNextDueDate) : "";
+    const nextDueDateISO = (explicitServiceDate > completedDate ? explicitServiceDate : "") || calculateNextMaintenanceDue({
       maintenanceTypeId: item.maintenanceTypeId,
       completedDate,
       dvsaExpiryDate: recurrence.dvsaExpiryDate,
@@ -2860,6 +2867,7 @@ var syncWorkshopMutation = async ({ actor, companyId }) => {
   }
   const rows = await maintenanceIO().adminListDocuments("maintenanceBookings");
   let synced = 0;
+  const skipped = [];
   for (const row of rows) {
     if (!await workshopRecordOwned(row.data, companyId, "maintenanceBookings", row.id)) continue;
     const snapshot = await maintenanceIO().adminReadDocumentWithMetadata("maintenanceBookings", row.id);
@@ -2869,7 +2877,13 @@ var syncWorkshopMutation = async ({ actor, companyId }) => {
     if (!request && !projectMaintenanceWorkshopRequest({ ...snapshot.data, companyId }, row.id)) continue;
     if (snapshot.data.vehicleId) {
       const vehicle = await maintenanceIO().adminReadDocument("vehicles", snapshot.data.vehicleId);
-      if (!vehicle || !await workshopRecordOwned(vehicle, companyId, "vehicles", snapshot.data.vehicleId)) continue;
+      if (!vehicle || !await workshopRecordOwned(vehicle, companyId, "vehicles", snapshot.data.vehicleId)) {
+        const projected = projectMaintenanceWorkshopRequest({ ...snapshot.data, companyId }, row.id, request);
+        if (projected?.status === "open") {
+          skipped.push({ bookingId: row.id, reason: "vehicle_unavailable" });
+          continue;
+        }
+      }
     }
     await commitMaintenanceWrites([{
       collection: "maintenanceBookings",
@@ -2879,7 +2893,7 @@ var syncWorkshopMutation = async ({ actor, companyId }) => {
     }], companyId);
     synced += 1;
   }
-  return { synced };
+  return { synced, skipped };
 };
 var nowISO = () => (/* @__PURE__ */ new Date()).toISOString();
 var titleStatus = (status) => ({
@@ -3223,7 +3237,7 @@ var rescheduleMutation = async ({ payload, actor, companyId }) => {
   await commitMaintenanceWrites(writes, companyId);
   return { id: booking.id, ...booking, ...patch, vehiclePatch: writes[1]?.patch || null };
 };
-var completionVehiclePatch = ({ booking, vehicle, typeIds, completedDate, documentsByType, actor, allCompleted }) => {
+var completionVehiclePatch = ({ booking, vehicle, typeIds, completedDate, documentsByType, actor, allCompleted, recordedServiceNextDueDate = "" }) => {
   if (!vehicle) return null;
   const timestamp = nowISO();
   const patch = { ...allCompleted ? clearSummary(vehicle, booking.id) : {}, updatedAt: timestamp };
@@ -3282,11 +3296,11 @@ var completionVehiclePatch = ({ booking, vehicle, typeIds, completedDate, docume
     const newerServiceDate = [
       vehicle.lastService,
       vehicle.lastServiceDate,
-      ...safeArray3(vehicle.serviceHistory).map((item) => item?.completedDate)
+      ...safeArray3(vehicle.serviceHistory).filter(isCoreServiceHistory).map((item) => item?.completedDate)
     ].map(maintenanceDateOnly).filter(Boolean).sort().at(-1) || "";
     const backdated = newerServiceDate > completedDate;
     const frequencyWeeks = getConfiguredMaintenanceFrequencyWeeks(vehicle, "service");
-    const nextDueDate = backdated ? "" : calculateNextMaintenanceDue({
+    const nextDueDate = backdated ? "" : recordedServiceNextDueDate || calculateNextMaintenanceDue({
       maintenanceTypeId: "service",
       completedDate,
       frequencyWeeks
@@ -3422,6 +3436,8 @@ var completeMutation = async ({ payload, actor, companyId, selectedOnly }) => {
   const { booking, bookingUpdateTime, vehicle, vehicleUpdateTime } = await readContext(text10(payload.bookingId), companyId, { expectedUpdatedAt: payload.expectedUpdatedAt });
   const completedDate = maintenanceDateOnly(payload.completedISO);
   if (!completedDate) throw new Error("Enter the actual completion date.");
+  const recordedServiceNextDueDate = maintenanceDateOnly(payload.recordedServiceNextDueDate);
+  if (payload.recordedServiceNextDueDate && (payload.recordedServiceNextDueDate !== recordedServiceNextDueDate || !recordedServiceNextDueDate || !Number.isFinite(Date.parse(recordedServiceNextDueDate)) || new Date(recordedServiceNextDueDate).toISOString().slice(0, 10) !== recordedServiceNextDueDate || recordedServiceNextDueDate <= completedDate)) throw new Error("Next service date must be after completion.");
   const canonical = normalizeMaintenanceRecord(booking, { id: booking.id });
   if (canonical.status === "completed") {
     const sameCompletion = canonical.items.filter((item) => !selectedOnly || safeArray3(payload.maintenanceTypeIds).map(normalizeMaintenanceTypeId).includes(item.maintenanceTypeId)).every((item) => item.status === "completed" && item.completionDateISO === completedDate);
@@ -3505,11 +3521,11 @@ var completeMutation = async ({ payload, actor, companyId, selectedOnly }) => {
       ...available.map((id) => `${id}: completed on ${completedDate}`)
     ], timestamp)]
   };
-  const vehiclePatch = completionVehiclePatch({ booking, vehicle, typeIds: available, completedDate, documentsByType: payload.documentsByType || {}, actor, allCompleted: completed.allCompleted });
+  const vehiclePatch = completionVehiclePatch({ booking, vehicle, typeIds: available, completedDate, documentsByType: payload.documentsByType || {}, actor, allCompleted: completed.allCompleted, recordedServiceNextDueDate });
   const writes = [{ collection: "maintenanceBookings", documentId: booking.id, patch: bookingPatch, updateTime: bookingUpdateTime }];
   if (vehiclePatch) writes.push({ collection: "vehicles", documentId: vehicle.id, patch: vehiclePatch, updateTime: vehicleUpdateTime });
   const recurrenceTypes = provenRecurrenceTypes(available, vehiclePatch, booking.id);
-  const recurrence = buildNextRequestedMaintenanceRecords({ canonicalRecord: canonical, completedTypeIds: recurrenceTypes, completionDateISO: completedDate, vehicle: { ...vehicle, ...vehiclePatch } });
+  const recurrence = buildNextRequestedMaintenanceRecords({ canonicalRecord: canonical, completedTypeIds: recurrenceTypes, completionDateISO: completedDate, vehicle: { ...vehicle, ...vehiclePatch }, recordedServiceNextDueDate });
   const createdIds = [], readChecks = [];
   const readSuccessor = async (id) => {
     const snapshot = await maintenanceIO().adminReadDocumentWithMetadata("maintenanceBookings", id);
@@ -4448,6 +4464,91 @@ var mutateMaintenanceBooking = async ({ operation, payload = {}, actor, companyI
   throw new Error("Unsupported maintenance mutation operation.");
 };
 
+// src/app/utils/serviceRecordCompat.js
+function toDateLike(value) {
+  if (!value) return null;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "object" && typeof value.seconds === "number") {
+    const d2 = new Date(value.seconds * 1e3);
+    return Number.isNaN(d2.getTime()) ? null : d2;
+  }
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return null;
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const [, y, m, d2] = match;
+      const date = new Date(Number(y), Number(m) - 1, Number(d2));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const ukMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+    if (ukMatch) {
+      const [, d2, m, y, hh = "0", mm = "0"] = ukMatch;
+      const date = new Date(Number(y), Number(m) - 1, Number(d2), Number(hh), Number(mm));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function dateOnlyString(value) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  const parsed = toDateLike(value);
+  if (!parsed) return "";
+  const yyyy = parsed.getFullYear();
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// src/app/utils/serviceCompletionSchedule.js
+function planServiceCompletionSchedule({ vehicle, vehicleId, companyId, completedDate, nextDueDate = "", sourceRecordId, bookings = [], at }) {
+  if (!companyId || vehicle?.companyId !== companyId || !sourceRecordId) throw Error("Service schedule ownership/evidence required");
+  const completed = dateOnlyString(completedDate), explicit = dateOnlyString(nextDueDate);
+  if (typeof completedDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(completedDate) || nextDueDate && (typeof nextDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(nextDueDate))) throw Error("Expected canonical service dates");
+  const valid = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  if (!valid(completed) || nextDueDate && (!valid(explicit) || explicit <= completed)) throw Error("Invalid completed/next service date");
+  const latest = [vehicle.lastService, vehicle.lastServiceDate, ...(vehicle.serviceHistory || []).filter(isCoreServiceHistory).map((h) => h.completedDate)].map(dateOnlyString).filter(Boolean).sort().at(-1);
+  if (latest && latest > completed) return { vehiclePatch: {}, writes: [], supersededByNewerService: true };
+  const next = explicit || calculateNextMaintenanceDue({ maintenanceTypeId: "service", completedDate: completed, frequencyWeeks: getConfiguredMaintenanceFrequencyWeeks(vehicle, "service") });
+  const priorDates = new Set([vehicle.nextService, vehicle.nextServiceDate, vehicle.serviceDueDate].map(dateOnlyString).filter(Boolean));
+  const audit = { sourceRecordId, completedDate: completed, nextDueDate: next, recordedAt: at };
+  const vehiclePatch = { lastService: completed, lastServiceDate: completed, nextService: next, nextServiceDate: next, serviceDueDate: next, serviceISOWeek: next ? maintenanceIsoWeekLabel(next) : "", serviceScheduleNeedsReview: !next, updatedAt: at };
+  const writes = [];
+  for (const row of bookings) {
+    const b = row.data || row, id = row.id;
+    if (b.companyId !== companyId || b.vehicleId !== vehicleId) throw Error("Foreign service requirement");
+    const c = normalizeMaintenanceRecord(b, { id });
+    if (c.items.length !== 1 || c.items[0].maintenanceTypeId !== "service" || !["requested", "booked", "in_progress", "deferred"].includes(c.status)) continue;
+    if (!["vehicle_maintenance_schedule", "automatic_schedule", "completion_recurrence", "service_record_reconciliation"].includes(b.origin?.source) || b.provider || b.workshop || b.scheduleManuallyAdjusted || b.workshopCompletion) continue;
+    const due = c.items[0].legalDueDateISO;
+    const safeHistory = (b.history || []).every((h) => ["Booked", "Due item created", "Recurring due item created"].includes(h.action));
+    if (!safeHistory || c.schedule.bookingDates.some((date) => date > completed)) continue;
+    const fulfilled = due && (due <= completed || latest && latest < completed && next && due < next && priorDates.has(due));
+    if (!fulfilled) continue;
+    const done = completeCanonicalMaintenanceItems(c, ["service"], completed);
+    writes.push({ collection: "maintenanceBookings", documentId: id, patch: { status: "Completed", completedAtISO: completed, items: done.items.map((i) => ({ ...i, nextDueDateISO: next })), completionServiceRecordId: sourceRecordId, serviceScheduleCompletion: audit, updatedAt: at, history: [...b.history || [], { action: "Fulfilled by signed service form", timestamp: at, sourceRecordId, changes: [`Service completed ${completed}; next due ${next || "requires scheduling"}.`] }] } });
+  }
+  if (next) {
+    const existing = bookings.find((row) => {
+      const b = row.data || row, c = normalizeMaintenanceRecord(b, { id: row.id });
+      return ["requested", "booked", "in_progress", "deferred"].includes(c.status) && c.items.some((i) => i.maintenanceTypeId === "service" && i.legalDueDateISO === next) && !writes.some((w) => w.documentId === row.id);
+    });
+    if (!existing) {
+      const successor = buildRequestedMaintenanceRecord({ companyId, vehicleId, vehicleLabel: vehicle.name || vehicle.vehicleName || "", items: [{ maintenanceTypeId: "service", legalDueDateISO: next }], source: "service_record_reconciliation", sourceId: sourceRecordId });
+      const id = maintenanceRequirementDocumentId(successor.requirementKey);
+      const collision = bookings.find((b) => b.id === id);
+      if (collision) throw Error("Service successor identity already exists; review required");
+      writes.push({ collection: "maintenanceBookings", documentId: id, exists: false, patch: { ...successor, createdAt: at, updatedAt: at } });
+    }
+  }
+  return { vehiclePatch, writes, supersededByNewerService: false };
+}
+
 // src/app/api/maintenance/bookings/workshopCompletion.js
 var fail = (message) => Object.assign(new Error(message), { status: 409 });
 async function planWorkshopMaintenanceCompletion({
@@ -4550,7 +4651,7 @@ async function planWorkshopMaintenanceCompletion({
       operation: "complete",
       companyId,
       actor: { uid, email: user.email || uid, role: user.role || "user" },
-      payload: { bookingId, expectedUpdatedAt: booking.updatedAt ?? null, completedISO: record.serviceDateOnly }
+      payload: { bookingId, expectedUpdatedAt: booking.updatedAt ?? null, completedISO: record.serviceDateOnly, recordedServiceNextDueDate: record.nextServiceDate || "" }
     }));
     const sourceWrite = planned.find((write) => write.collection === "maintenanceBookings" && write.documentId === bookingId);
     sourceWrite.patch.workshopCompletion = completion;
@@ -4558,5 +4659,7 @@ async function planWorkshopMaintenanceCompletion({
   return planned.filter((write) => !(write.collection === "workshopRequests" && write.documentId === requestId));
 }
 export {
+  isCoreServiceType,
+  planServiceCompletionSchedule,
   planWorkshopMaintenanceCompletion
 };
