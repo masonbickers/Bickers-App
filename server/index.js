@@ -1,3 +1,4 @@
+import { createPrivateHistoryHandler, createHistorySnapshotRunner } from "./privateHistory.js";
 import { createWorkshopSubmissionHandler } from "./workshopSubmission.js";
 import axios from "axios";
 import { Buffer } from "node:buffer";
@@ -83,6 +84,8 @@ const db = admin.firestore(adminApp);
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "bickers-api" });
 });
+
+app.get("/hr/history", createPrivateHistoryHandler({ verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked), withSnapshot: createHistorySnapshotRunner(db) }));
 
 app.post("/workshop/submissions", createWorkshopSubmissionHandler({ db, verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked) }));
 
