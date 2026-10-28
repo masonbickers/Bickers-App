@@ -15,6 +15,7 @@ export function assertLifecyclePolicy(user, employee) {
       own(employee,'freelanceAccess') && (!map(canonical) || ['timesheets','expenses'].some(k => typeof canonical[k] !== 'boolean')) ||
       own(user,'freelanceAccess') && (!map(mirror) || ['timesheets','expenses'].some(k => typeof mirror[k] !== 'boolean')) ||
       restricted !== (user.jobOnlyAccess === true) ||
+      !restricted && (mirror?.timesheets === false || mirror?.expenses === false) ||
       ['timesheets','expenses'].some(k => canonical?.[k] !== mirror?.[k]) || title(employee) && (canonical?.timesheets === false || canonical?.expenses === false) && !restricted) throw fail();
   return restricted;
 }
