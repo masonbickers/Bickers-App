@@ -1,3 +1,4 @@
+import { assertTransactionBusinessPolicy } from './jobOnlyBusiness.js';
 import { planWorkshopMaintenanceCompletion, planServiceCompletionSchedule, isCoreServiceType } from "./maintenanceRuntime.mjs";
 import { createHash } from 'node:crypto';
 import { classifyIdentitySession } from './identitySession.js';
@@ -72,6 +73,7 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
     const companyId = text(user.companyId);
     if (token?.uid !== uid || classifyIdentitySession(token, user) === 'denied' || !sharedBusinessSessionAllowed(token, user)) throw fail('Sign in again and complete any required password recovery.', 401);
     if (!companyId || user.isEnabled !== true || user.disabled === true || user.active === false || user.appDisabled === true || user.archived === true || user.isArchived === true || user.featureFlags?.service === false || user.appPasswordSetupRequired === true || !(user.appAccess?.service === true || admins.has(text(user.role).toLowerCase()))) throw fail('Service workspace access is required.', 403);
+    await assertTransactionBusinessPolicy({ tx, db, user, uid, token });
     if (record.companyId && record.companyId !== companyId) throw fail('Record belongs to another company.', 403);
     const existing = await tx.get(recordRef);
     let previous = null;

@@ -1,3 +1,4 @@
+import { assertBusinessPolicy } from './jobOnlyBusiness.js';
 import { mobilePasswordAccessAllowed } from './appPasswordSetup.js';
 import { sharedBusinessSessionAllowed } from './sharedBusinessSession.mjs';
 
@@ -51,6 +52,7 @@ export function createTimesheetDefaultsCommand({ db, auth, sessionOptions = {} }
           || employee.auth?.email && email(employee.auth.email) !== verifiedEmail)) {
         throw fail(403, 'The approved employee identity could not be verified.');
       }
+      assertBusinessPolicy(user, employee);
       // Dot paths preserve every other mode and unrelated employee field.
       transaction.update(employeeRef, {
         timesheetDefaultType: mode,
