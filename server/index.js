@@ -1,3 +1,4 @@
+import { createJobOnlyBusinessGate, assertLifecyclePolicy, assertLegacyEmployeeProvisionAllowed, projectLifecycleResponse, assertDeviceRegistrationPolicy } from "./jobOnlyBusiness.js";
 import { createPrivateHistoryHandler, createHistorySnapshotRunner } from "./privateHistory.js";
 import { createWorkshopSubmissionHandler } from "./workshopSubmission.js";
 import axios from "axios";
@@ -84,6 +85,12 @@ const db = admin.firestore(adminApp);
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "bickers-api" });
 });
+
+// Default-deny business authorization. Lifecycle routes retain their existing auth.
+app.use(createJobOnlyBusinessGate({
+  verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked),
+  readCurrentUser: async uid => (await db.collection("users").doc(uid).get()).data(),
+}));
 
 app.get("/hr/history", createPrivateHistoryHandler({ verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked), withSnapshot: createHistorySnapshotRunner(db) }));
 
@@ -666,6 +673,7 @@ app.post("/device-tokens", async (req, res) => {
       return res.status(403).json({ error: "Your account is not active." });
     }
 
+    assertDeviceRegistrationPolicy({ user, employee, uid: decoded.uid, registrationUid, isAnonymous, userExists: userSnap.exists });
     const now = admin.firestore.FieldValue.serverTimestamp();
     const deviceRef = db
       .collection("deviceTokens")
@@ -737,7 +745,7 @@ app.post("/device-tokens", async (req, res) => {
     res.json({ ok: true, id: deviceTokenId(token), uid: registrationUid });
   } catch (error) {
     console.error("Device token registration error:", error);
-    res.status(500).json({ error: "Unable to register this device for notifications." });
+    res.status(error.status || 500).json({ error: error.status ? error.message : "Unable to register this device for notifications." });
   }
 });
 
@@ -780,6 +788,8 @@ app.post("/auth/employee-setup-lookup", async (req, res) => {
     // document. Legacy records may contain a shared uid, so reusing those
     // aliases can sign several employees into the same Firebase account.
     const authUid = codeLoginUidForEmployee(employee.id);
+    const legacyUser = (await db.collection("users").doc(authUid).get()).data() || {};
+    assertLegacyEmployeeProvisionAllowed(employee, legacyUser);
     const firebaseCustomToken = await admin.auth().createCustomToken(authUid, {
       employeeId: employee.id,
       employeeCode: codeStr,
@@ -856,7 +866,7 @@ app.post("/auth/employee-setup-lookup", async (req, res) => {
     });
   } catch (err) {
     console.error("Employee setup lookup error:", err);
-    res.status(500).json({ error: "Unable to check employee setup." });
+    res.status(err.status || 500).json({ error: err.status ? err.message : "Unable to check employee setup." });
   }
 });
 
@@ -956,6 +966,7 @@ async function syncApprovedEmployeeAuth(idToken) {
     );
   }
 
+  assertLifecyclePolicy(userData, employee);
   const sessionData = buildSessionData(
     employee,
     normaliseCode(employee.userCode || ""),
@@ -1003,7 +1014,7 @@ async function syncApprovedEmployeeAuth(idToken) {
   );
   await batch.commit();
 
-  return {
+  return projectLifecycleResponse({
     employee: {
       ...employee,
       uid: decoded.uid,
@@ -1017,7 +1028,7 @@ async function syncApprovedEmployeeAuth(idToken) {
       },
     },
     sessionData,
-  };
+  }, userData, employee);
 }
 
 
@@ -1087,6 +1098,8 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
       return res.status(403).json({ error: "This email does not match the employee record." });
     }
 
+    const legacyUser = (await db.collection("users").doc(decoded.uid).get()).data() || {};
+    assertLegacyEmployeeProvisionAllowed(employee, legacyUser);
     const sessionData = buildSessionData(
       employee,
       normaliseCode(employee.userCode || ""),
@@ -1143,7 +1156,7 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
     });
   } catch (err) {
     console.error("Employee auth sync error:", err);
-    res.status(500).json({ error: "Unable to finish employee login." });
+    res.status(err.status || 500).json({ error: err.status ? err.message : "Unable to finish employee login." });
   }
 });
 
