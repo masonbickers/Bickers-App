@@ -10,7 +10,7 @@ export function assertLifecyclePolicy(user, employee) {
   if (!map(user) || !map(employee)) throw fail();
   const canonical = employee.freelanceAccess;
   const mirror = user.freelanceAccess;
-  const restricted = title(employee) && canonical?.timesheets === false && canonical?.expenses === false;
+  const restricted = title(employee) && (canonical?.timesheets === false || canonical?.expenses === false);
   if (own(user,'jobOnlyAccess') && typeof user.jobOnlyAccess !== 'boolean' ||
       own(employee,'freelanceAccess') && (!map(canonical) || ['timesheets','expenses'].some(k => typeof canonical[k] !== 'boolean')) ||
       own(user,'freelanceAccess') && (!map(mirror) || ['timesheets','expenses'].some(k => typeof mirror[k] !== 'boolean')) ||
@@ -96,11 +96,11 @@ export function projectLifecycleResponse(payload, user, employee) {
   const allowed = ['id','companyId','uid','authUid','name','displayName','email','userCode','jobTitle','isEnabled','active','disabled','archived','isArchived','appDisabled'];
   const safe = Object.fromEntries(allowed.filter(k => ['string','boolean'].includes(typeof source[k]) || k === 'jobTitle' && Array.isArray(source[k]) && source[k].every(v => typeof v === 'string')).map(k => [k,source[k]]));
   safe.jobOnlyAccess = true;
-  safe.freelanceAccess = {timesheets:false,expenses:false};
+  safe.freelanceAccess = {timesheets:employee.freelanceAccess.timesheets,expenses:employee.freelanceAccess.expenses};
   safe.mobileAccess = Object.fromEntries(['status','approvedEmail'].filter(k => typeof source.mobileAccess?.[k] === 'string').map(k => [k,source.mobileAccess[k]]));
   const session = payload.sessionData || {};
   const safeSession = Object.fromEntries(['uid','companyId','employeeId','displayName','email','userCode'].filter(k => typeof session[k] === 'string').map(k => [k,session[k]]));
-  return {employee:safe,sessionData:{...safeSession,jobOnlyAccess:true,freelanceAccess:{timesheets:false,expenses:false},appAccess:{user:true,service:false},isService:false,role:'user'}};
+  return {employee:safe,sessionData:{...safeSession,jobOnlyAccess:true,freelanceAccess:{...safe.freelanceAccess},appAccess:{user:true,service:false},isService:false,role:'user'}};
 }
 
 export function assertDeviceRegistrationPolicy({ user, employee, uid, registrationUid, isAnonymous, userExists }) {
