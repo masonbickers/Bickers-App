@@ -1,3 +1,4 @@
+import { assertTransactionBusinessPolicy } from './jobOnlyBusiness.js';
 import { planWorkshopMaintenanceCompletion, planServiceCompletionSchedule, isCoreServiceType } from "./maintenanceRuntime.mjs";
 import { createHash } from 'node:crypto';
 
@@ -65,6 +66,7 @@ export async function submitWorkshopRecord({ db, uid, token, body, now = new Dat
     const cutoff = Math.max(Number(user.sessionValidAfter) || 0, Date.parse(user.sessionsRevokedAt || '') / 1000 || 0, Number(user.appPasswordSessionAfter) || 0);
     if (token?.uid !== uid || token.firebase?.sign_in_provider !== 'password' || Number(token.auth_time || 0) <= cutoff || user.uid && user.uid !== uid || user.passwordResetRequired === true || user.firebasePasswordResetAfter) throw fail('Sign in again and complete any required password recovery.', 401);
     if (!companyId || user.isEnabled !== true || user.disabled === true || user.active === false || user.appDisabled === true || user.archived === true || user.isArchived === true || user.featureFlags?.service === false || user.appPasswordSetupRequired === true || !(user.appAccess?.service === true || admins.has(text(user.role).toLowerCase()))) throw fail('Service workspace access is required.', 403);
+    await assertTransactionBusinessPolicy({ tx, db, user, uid, token });
     if (record.companyId && record.companyId !== companyId) throw fail('Record belongs to another company.', 403);
     const existing = await tx.get(recordRef);
     let previous = null;
