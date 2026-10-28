@@ -51,3 +51,19 @@ test('business summary routing prefers explicit job-only office origin without c
  let passed=false;await gate(request(),response(),()=>passed=true);assert.equal(passed,true);assert.equal(target,'https://booking.bickers.co.uk/api/mobile/session');assert.equal(process.env.AUTH_WEB_ORIGIN,'https://pilot.bickers.co.uk');assert.equal(process.env.RECEIPTS_WEB_ORIGIN,'https://receipts.example.test');
  }finally{for(const [k,v]of Object.entries(before)){if(v===undefined)delete process.env[k];else process.env[k]=v;}}
 });
+
+test('PC429 transaction rejects restrictive user mirrors for non-freelance canonical titles',()=>{
+ for(const flags of [{timesheets:false,expenses:false},{timesheets:false,expenses:true},{timesheets:true,expenses:false}])for(const jobTitle of ['Employee','Service','Manager']){
+  const user={jobOnlyAccess:false,freelanceAccess:flags},employee={jobTitle,freelanceAccess:flags};
+  assert.throws(()=>assertBusinessPolicy(user,employee),{status:403});
+  assert.throws(()=>module.assertLifecyclePolicy(user,employee),{status:403});
+ }
+});
+test('PC429 restrictive-mirror correction preserves full actors and canonical job-only lifecycle',()=>{
+ for(const jobTitle of ['Employee','Service','Freelancer']){
+  assert.doesNotThrow(()=>assertBusinessPolicy({}, {jobTitle}));
+  const flags={timesheets:true,expenses:true};assert.doesNotThrow(()=>assertBusinessPolicy({jobOnlyAccess:false,freelanceAccess:flags},{jobTitle,freelanceAccess:flags}));
+ }
+ const flags={timesheets:false,expenses:false},user={jobOnlyAccess:true,freelanceAccess:flags},employee={jobTitle:'Freelancer',freelanceAccess:flags};
+ assert.throws(()=>assertBusinessPolicy(user,employee),{status:403});assert.equal(module.assertLifecyclePolicy(user,employee),true);
+});
