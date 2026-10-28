@@ -1,3 +1,4 @@
+import { createJobOnlyBusinessGate, assertLifecyclePolicy, assertLegacyEmployeeProvisionAllowed, projectLifecycleResponse, assertDeviceRegistrationPolicy } from "./jobOnlyBusiness.js";
 import { createHrHistoryProxy } from './hrHistoryProxy.js';
 import { createSessionGate } from "./sessionGate.js";
 import { createWorkshopSubmissionHandler } from "./workshopSubmission.js";
@@ -109,6 +110,12 @@ app.use(async (req, res, next) => {
     return next();
   } catch { return res.status(401).json({ error: "Sign in again.", code: "SIGN_IN_REQUIRED" }); }
 });
+
+// Default-deny business authorization. Lifecycle routes retain their existing auth.
+app.use(createJobOnlyBusinessGate({
+  verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked),
+  readCurrentUser: async uid => (await db.collection("users").doc(uid).get()).data(),
+}));
 
 app.post("/timesheets/defaults", createTimesheetDefaultsHandler({ db, auth: admin.auth() }));
 
@@ -545,6 +552,7 @@ app.post("/device-tokens", async (req, res) => {
       return res.status(403).json({ error: "Your account is not active." });
     }
 
+    assertDeviceRegistrationPolicy({ user, employee, uid: decoded.uid, registrationUid, isAnonymous, userExists: userSnap.exists });
     const now = admin.firestore.FieldValue.serverTimestamp();
     const deviceRef = db
       .collection("deviceTokens")
@@ -616,7 +624,7 @@ app.post("/device-tokens", async (req, res) => {
     res.json({ ok: true, id: deviceTokenId(token), uid: registrationUid });
   } catch (error) {
     console.error("Device token registration error:", error);
-    res.status(500).json({ error: "Unable to register this device for notifications." });
+    res.status(error.status || 500).json({ error: error.status ? error.message : "Unable to register this device for notifications." });
   }
 });
 
@@ -684,6 +692,7 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
       return res.status(403).json({ error: "The approved employee identity could not be verified." });
     }
 
+    assertLifecyclePolicy(userData, employee);
     const legacySessionData = buildSessionData(
       employee,
       normaliseCode(employee.userCode || ""),
@@ -740,7 +749,7 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
     );
     await batch.commit();
 
-    res.json({
+    res.json(projectLifecycleResponse({
       employee: {
         ...employee,
         uid: decoded.uid,
@@ -757,15 +766,15 @@ app.post("/auth/sync-employee-auth", async (req, res) => {
         },
       },
       sessionData,
-    });
+    }, userData, employee));
   } catch (err) {
     console.error("Employee auth sync error:", err);
     const authFailure =
       String(err?.code || "").startsWith("auth/") ||
       /token|credential/i.test(String(err?.message || ""));
     res
-      .status(authFailure ? 401 : 500)
-      .json({ error: authFailure ? "The sign-in session is invalid." : "Unable to finish employee login." });
+      .status(err.status || (authFailure ? 401 : 500))
+      .json({ error: err.status ? err.message : authFailure ? "The sign-in session is invalid." : "Unable to finish employee login." });
   }
 });
 
