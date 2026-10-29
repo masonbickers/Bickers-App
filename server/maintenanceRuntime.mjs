@@ -1,3 +1,4 @@
+import { planMotPrepBookings, assignServiceWorkshopEmployee } from "./maintenanceAssignments.mjs";
 // src/app/utils/coreServiceType.js
 var isCoreServiceType = (type) => ["Full service", "Interim service", "Interim / minor service", "Oil & filter change"].includes(type);
 var isCoreServiceHistory = (row) => row?.maintenanceTypeId ? row.maintenanceTypeId === "service" : row?.serviceType || row?.type ? isCoreServiceType(row.serviceType || row.type) : true;
@@ -618,13 +619,17 @@ var text2 = (value) => String(value || "").trim();
 var maintenanceWorkshopRequestId = (bookingId) => `maintenance_${crypto.createHash("sha256").update(text2(bookingId)).digest("hex").slice(0, 40)}`;
 function projectMaintenanceWorkshopRequest(booking, bookingId, existing = null) {
   const canonical = normalizeMaintenanceRecord(booking, { id: bookingId });
-  const inHouse = text2(booking.provider).toUpperCase() === "BICKERS";
+  const typeIds = canonical.items.map(item => item.maintenanceTypeId);
+  const service = typeIds.length === 1 && typeIds[0] === "service";
+  const assignedService = service && booking.serviceAssignee === "liam" && Boolean(text2(booking.assignedEmployeeId));
+  const inHouse = text2(booking.provider).toUpperCase() === "BICKERS" || assignedService;
   const active = ["booked", "in_progress", "deferred"].includes(canonical.status);
   const dates = canonical.schedule.bookingDates;
   if ((!inHouse || !active || !dates.length) && !existing) return null;
-  const typeIds = canonical.items.map((item) => item.maintenanceTypeId);
-  const service = typeIds.length === 1 && typeIds[0] === "service";
-  const status = canonical.status === "completed" ? "completed" : !inHouse || !active || !dates.length ? "cancelled" : existing?.status === "completed" ? "completed" : "open";
+  const motPrep = booking.type === "WORK" && Boolean(booking.motPrepForBookingId);
+  const status = canonical.status === "completed" ? "completed"
+    : !inHouse || !active || !dates.length ? "cancelled"
+    : existing?.status === "completed" ? "completed" : "open";
   const label = text2(booking.vehicleLabel || booking.workshop?.assetLabel || booking.title) || "Workshop work";
   return {
     companyId: canonical.companyId,
@@ -636,14 +641,15 @@ function projectMaintenanceWorkshopRequest(booking, bookingId, existing = null) 
     assetType: "vehicle",
     assetId: text2(booking.vehicleId),
     assetLabel: label,
-    workType: service && text2(booking.vehicleId) ? "full_service" : "general_repair",
+    workType: motPrep ? "mot_precheck" : service && text2(booking.vehicleId) ? "full_service" : "general_repair",
+    ...(motPrep || service ? { assignedEmployeeId: text2(booking.assignedEmployeeId), assignedToName: text2(booking.assignedToName),
+      assignedUserId: text2(booking.assignedUserId) } : {}),
+    ...(motPrep ? { sourceMotBookingId: text2(booking.motPrepForBookingId) } : {}),
     maintenanceLabel: text2(booking.title) || (service ? "Service" : typeIds.join(" + ").replaceAll("_", " ")),
-    description: [
-      text2(booking.title) || typeIds.join(" + ").replaceAll("_", " "),
-      text2(booking.notes),
+    description: [text2(booking.title) || typeIds.join(" + ").replaceAll("_", " "), text2(booking.notes),
+      assignedService ? `Assigned to ${text2(booking.assignedToName)}` : "",
       text2(booking.location) ? `Location: ${text2(booking.location)}` : "",
-      text2(booking.bookingRef) ? `Garage reference: ${text2(booking.bookingRef)}` : ""
-    ].filter(Boolean).join("\n"),
+      text2(booking.bookingRef) ? `Garage reference: ${text2(booking.bookingRef)}` : ""].filter(Boolean).join("\n"),
     priority: "high",
     dueDate: dates[0] || "",
     appointmentTime: text2(booking.appointmentTime),
@@ -656,9 +662,10 @@ function projectMaintenanceWorkshopRequest(booking, bookingId, existing = null) 
     formCollection: existing?.formCollection || "",
     formRecordId: existing?.formRecordId || "",
     completedAt: status === "completed" ? existing?.completedAt || booking.completedAtISO || booking.updatedAt || "" : "",
-    completedBy: status === "completed" ? existing?.completedBy || booking.lastEditedBy || "office" : ""
+    completedBy: status === "completed" ? existing?.completedBy || booking.lastEditedBy || "office" : "",
   };
 }
+
 
 // src/app/utils/maintenanceTransport.js
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -2790,9 +2797,12 @@ var withBickersReference = (record, id) => ({
 });
 var commitMaintenanceWrites = async (writes, companyId = "", readChecks = [], queryChecks = []) => {
   try {
-    return await commitMaintenanceWritesUnchecked(await linkWorkshopWrites(writes, companyId), companyId, readChecks, queryChecks);
+    const assignmentReads = await assignServiceWorkshopEmployee(writes, { io: maintenanceIO(), companyId });
+    const prep = await planMotPrepBookings(writes, { io: maintenanceIO(), companyId });
+    return await commitMaintenanceWritesUnchecked(await linkWorkshopWrites(prep.writes, companyId), companyId,
+      [...readChecks, ...assignmentReads, ...prep.readChecks], queryChecks);
   } catch (error) {
-    if (/FAILED_PRECONDITION|ABORTED/.test(String(error?.message || ""))) {
+    if (/FAILED_PRECONDITION|ABORTED|ALREADY_EXISTS|commit failed: (?:409|412)/i.test(String(error?.message || ""))) {
       const conflict = new Error("Maintenance changed during saving. Refresh before retrying.");
       conflict.status = 409;
       conflict.code = "maintenance_conflict";
@@ -4617,6 +4627,7 @@ async function planWorkshopMaintenanceCompletion({
   const projection = projectMaintenanceWorkshopRequest(booking, bookingId, request);
   if (!projection || projection.status !== "open" || projection.workType !== request.workType || request.sourceBookingUpdatedAt !== String(booking.updatedAt || "").trim() || String(record.workshopBookingVersion ?? "") !== request.sourceBookingUpdatedAt) throw fail("Maintenance booking changed. Refresh the workshop task.");
   const canonical = normalizeMaintenanceRecord(booking, { id: bookingId });
+  const completedDate = booking.motPrepForBookingId ? record.precheckDateOnly : record.serviceDateOnly;
   const types = canonical.items.filter((item) => item.status !== "completed").map((item) => item.maintenanceTypeId);
   const completion = {
     status: "completed",
@@ -4625,7 +4636,7 @@ async function planWorkshopMaintenanceCompletion({
     completedBy: record.signedBy || user.displayName || uid,
     completedByUid: uid,
     completedAt: now,
-    completedDateISO: record.serviceDateOnly
+    completedDateISO: completedDate
   };
   const regulated = types.some((type) => !["service", "work", "repair", "other"].includes(type));
   const needsEvidence = regulated || maintenanceCompletionEvidenceIssues(canonical, types).length > 0;
@@ -4651,7 +4662,7 @@ async function planWorkshopMaintenanceCompletion({
       operation: "complete",
       companyId,
       actor: { uid, email: user.email || uid, role: user.role || "user" },
-      payload: { bookingId, expectedUpdatedAt: booking.updatedAt ?? null, completedISO: record.serviceDateOnly, recordedServiceNextDueDate: record.nextServiceDate || "" }
+      payload: { bookingId, expectedUpdatedAt: booking.updatedAt ?? null, completedISO: completedDate, recordedServiceNextDueDate: record.nextServiceDate || "" }
     }));
     const sourceWrite = planned.find((write) => write.collection === "maintenanceBookings" && write.documentId === bookingId);
     sourceWrite.patch.workshopCompletion = completion;
