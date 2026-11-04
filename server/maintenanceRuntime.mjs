@@ -2799,8 +2799,9 @@ var commitMaintenanceWrites = async (writes, companyId = "", readChecks = [], qu
   try {
     const assignmentReads = await assignServiceWorkshopEmployee(writes, { io: maintenanceIO(), companyId });
     const prep = await planMotPrepBookings(writes, { io: maintenanceIO(), companyId });
-    return await commitMaintenanceWritesUnchecked(await linkWorkshopWrites(prep.writes, companyId), companyId,
-      [...readChecks, ...assignmentReads, ...prep.readChecks], queryChecks);
+    const checkedReads = [...readChecks, ...assignmentReads, ...prep.readChecks];
+    const linkedWrites = await linkWorkshopWrites(prep.writes, companyId, checkedReads);
+    return await commitMaintenanceWritesUnchecked(linkedWrites, companyId, checkedReads, queryChecks);
   } catch (error) {
     if (/FAILED_PRECONDITION|ABORTED|ALREADY_EXISTS|commit failed: (?:409|412)/i.test(String(error?.message || ""))) {
       const conflict = new Error("Maintenance changed during saving. Refresh before retrying.");
@@ -2837,7 +2838,7 @@ var commitMaintenanceWritesUnchecked = (writes, companyId = "", readChecks = [],
     })
   });
 };
-var linkWorkshopWrites = async (writes, companyId) => {
+var linkWorkshopWrites = async (writes, companyId, readChecks) => {
   const linked = [];
   for (const write of writes) {
     if (write.collection !== "maintenanceBookings" || write.deleteDocument) continue;
@@ -2857,6 +2858,31 @@ var linkWorkshopWrites = async (writes, companyId) => {
       throw error;
     }
     const patch = projectMaintenanceWorkshopRequest(booking, write.documentId, request?.data);
+    const completed = previous && normalizeMaintenanceRecordStatus(write.patch.status) === "completed" &&
+      normalizeMaintenanceRecordStatus(previous.data.status) !== "completed";
+    const assignment = completed && projectMaintenanceWorkshopRequest(previous.data, write.documentId, request?.data);
+    if (assignment?.status === "open" && assignment.assignedEmployeeId &&
+      (previous.data.serviceAssignee === "liam" || assignment.workType === "mot_precheck")) {
+      const employeeId = assignment.assignedEmployeeId;
+      const employee = await maintenanceIO().adminReadDocumentWithMetadata("employees", employeeId);
+      if (employee?.updateTime && employee.data.companyId === companyId) {
+        if (!write.updateTime) write.updateTime = previous.updateTime;
+        readChecks.push({ collection: "employees", documentId: employeeId, updateTime: employee.updateTime });
+        linked.push({
+          collection: "employeeNotifications",
+            documentId: `workshop_completed_${requestId}_${crypto.createHash("sha256").update(previous.updateTime).digest("hex").slice(0, 16)}`,
+          exists: false,
+          patch: {
+            uid: text10(employee.data.userId), employeeId, companyId,
+            type: "workshop-completed", category: "fleet", severity: "info",
+            title: "Workshop work completed",
+            body: `${assignment.maintenanceLabel} for ${assignment.assetLabel} was marked complete.`,
+            source: "web", createdAt: booking.updatedAt,
+            data: { maintenanceBookingId: write.documentId, recipientEmployeeId: employeeId },
+          },
+        });
+      }
+    }
     if (!patch) continue;
     if (previous && !write.updateTime) write.updateTime = previous.updateTime;
     write.patch = { ...write.patch, workshopRequestId: requestId };
