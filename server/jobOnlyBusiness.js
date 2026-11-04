@@ -52,6 +52,8 @@ export function createJobOnlyBusinessGate({ origin = process.env.JOB_ONLY_OFFICE
       const session = await upstream.json();
       if (session?.version !== 1 || !map(session.identity) || typeof session.identity.uid !== 'string' || !session.identity.uid || typeof session.capabilities?.jobOnlyAccess !== 'boolean' || session.jobOnlyAccess !== session.capabilities.jobOnlyAccess || session.identity.uid !== decoded.uid || session.identity.companyId !== currentUser.companyId || (session.identity.employeeId || '') !== (currentUser.employeeId || '')) throw new Error();
       if (session.capabilities.jobOnlyAccess) return res.status(403).json({error:'Only assigned work is available for this account.',code:'JOB_ONLY_ACCESS'});
+      res.locals ??= {};
+      res.locals.businessIdentity = session.identity;
       return next();
     } catch { return res.status(503).json({error:'Business authorization is temporarily unavailable.',code:'SESSION_SERVICE_UNAVAILABLE'}); }
   };

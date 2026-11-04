@@ -1,3 +1,4 @@
+import { createWorkshopScheduleHandler } from "./workshopSchedule.js";
 import { createJobOnlyBusinessGate, assertLifecyclePolicy, assertLegacyEmployeeProvisionAllowed, projectLifecycleResponse, assertDeviceRegistrationPolicy } from "./jobOnlyBusiness.js";
 import { createPrivateHistoryHandler, createHistorySnapshotRunner } from "./privateHistory.js";
 import { createWorkshopSubmissionHandler } from "./workshopSubmission.js";
@@ -91,6 +92,8 @@ app.use(createJobOnlyBusinessGate({
   verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked),
   readCurrentUser: async uid => (await db.collection("users").doc(uid).get()).data(),
 }));
+
+app.get("/workshop/schedule", createWorkshopScheduleHandler(db));
 
 app.get("/hr/history", createPrivateHistoryHandler({ verifyIdToken: (token, revoked) => admin.auth().verifyIdToken(token, revoked), withSnapshot: createHistorySnapshotRunner(db) }));
 
