@@ -9,6 +9,38 @@ const blocked = (data) => !data || data.isEnabled === false ||
   data.active === false || data.disabled === true || data.appDisabled === true ||
   data.archived === true || data.isArchived === true;
 
+// Firebase verifies the token; the existing read-only authority verifies the
+// current Clerk lease, revocation/recovery state and canonical mobile identity.
+async function verifyCurrentClerkAccess(idToken, decoded, user, fetchImpl) {
+  if (decoded.authMethod !== "clerk" || decoded.verifiedClerkEmail !== true ||
+    decoded.identityLinkVersion !== 2 || !clean(decoded.clerkUserId) || !clean(decoded.clerkSessionId) ||
+    !user || user.uid !== decoded.uid || decoded.identityCompanyId !== user.companyId ||
+    decoded.identityEmployeeId !== user.employeeId) {
+    throw fail(403, "The approved Clerk identity could not be verified.");
+  }
+  let response, session;
+  try {
+    response = await fetchImpl("https://booking.bickers.co.uk/api/security/session", {
+      method: "GET", headers: { Authorization: `Bearer ${idToken}`, Accept: "application/json" },
+      redirect: "error", credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(10000),
+    });
+  } catch { throw fail(503, "Current app session verification is temporarily unavailable."); }
+  if (!response.ok) {
+    throw fail([401, 403].includes(response.status) ? response.status : 503,
+      "Your current app session could not be verified. Please retry.");
+  }
+  try { session = await response.json(); }
+  catch { throw fail(503, "Current app session verification is temporarily unavailable."); }
+  if (session?.version !== 1 || !clean(session.identity?.uid) ||
+    !clean(session.identity?.companyId) || !clean(session.identity?.employeeId)) {
+    throw fail(503, "Current app session verification is temporarily unavailable.");
+  }
+  if (session.identity.uid !== decoded.uid || session.identity.companyId !== user.companyId ||
+    session.identity.employeeId !== user.employeeId) {
+    throw fail(403, "The approved Clerk identity could not be verified.");
+  }
+}
+
 function validAcceptance(data, uid, employee) {
   return data?.accepted === true &&
     data.documentVersion === CURRENT_VERSION &&
@@ -26,15 +58,18 @@ function validAcceptance(data, uid, employee) {
 
 export function createWorkingTermsResolver({
   db, auth, findEmployeeForApprovedUid, employeeIsBlocked, employeeEmailMatches,
+  fetchImpl = globalThis.fetch,
 }) {
   return async function resolveWorkingTerms(idToken) {
     if (!idToken) throw fail(401, "Sign in to check your Working Terms.");
     const decoded = await auth.verifyIdToken(idToken, true);
-    if (decoded.firebase?.sign_in_provider !== "password" || !decoded.uid) {
-      throw fail(403, "An approved password account is required.");
+    const provider = decoded.firebase?.sign_in_provider;
+    if (!["password", "custom"].includes(provider) || !decoded.uid) {
+      throw fail(403, "An approved account is required.");
     }
     const account = await db.collection("users").doc(decoded.uid).get();
     const user = account.exists ? account.data() : null;
+    if (provider === "custom") await verifyCurrentClerkAccess(idToken, decoded, user, fetchImpl);
     const employee = await findEmployeeForApprovedUid(decoded.uid);
     if (blocked(user) || user.mobileAccessStatus !== "active" ||
       !employee || blocked(employee) || employeeIsBlocked(employee) ||

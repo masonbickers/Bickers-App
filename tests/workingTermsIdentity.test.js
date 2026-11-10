@@ -43,6 +43,80 @@ function fixture() {
   return { employee, records, decoded, deps, resolve: (token = "token") => createWorkingTermsResolver(deps)(token) };
 }
 
+function clerkFixture({ status = 200, body, failure } = {}) {
+  const f = fixture();
+  Object.assign(f.decoded, { auth_time: 100, firebase: { sign_in_provider: 'custom' },
+    authMethod: 'clerk', verifiedClerkEmail: true, identityLinkVersion: 2,
+    clerkUserId: 'clerk-user', clerkSessionId: 'clerk-session',
+    identityCompanyId: 'company-1', identityEmployeeId: 'employee-1' });
+  f.records.get('users/new').uid = 'new';
+  f.deps.fetchImpl = async (url, init) => {
+    assert.equal(url, 'https://booking.bickers.co.uk/api/security/session');
+    assert.equal(init.headers.Authorization, 'Bearer token');
+    assert.equal(init.redirect, 'error');
+    assert.ok(init.signal instanceof AbortSignal);
+    if (failure) throw failure;
+    return new Response(JSON.stringify(body ?? { version: 1,
+      identity: { uid: 'new', companyId: 'company-1', employeeId: 'employee-1' } }), { status });
+  };
+  return f;
+}
+
+test('an approved current Clerk session reads its explicitly linked historical signature without writes', async () => {
+  const f = clerkFixture(), before = JSON.stringify([...f.records]);
+  const result = await f.resolve();
+  assert.equal(result.userId, 'old');
+  assert.equal(result.employeeId, 'employee-1');
+  assert.equal(result.sourcePath, 'workingTermsAcceptances/old/versions/1.1');
+  assert.equal(result.signatureSvgPath, undefined);
+  assert.equal(JSON.stringify([...f.records]), before);
+});
+
+test('current Clerk authority denial is preserved and cannot fall back to password approval', async () => {
+  for (const status of [401, 403]) {
+    await assert.rejects(clerkFixture({ status }).resolve(), { status });
+  }
+});
+
+test('unreachable, redirected, malformed or failing Clerk authority never grants signature access', async () => {
+  for (const options of [{ status: 500 }, { status: 302 }, { failure: new TypeError('network') },
+    { body: {} }, { body: { version: 1, identity: { uid: 'new' } } }]) {
+    await assert.rejects(clerkFixture(options).resolve(), { status: 503 });
+  }
+});
+
+test('a successful authority response for a different canonical identity is rejected', async () => {
+  for (const patch of [{ uid: 'other' }, { employeeId: 'other' }, { companyId: 'other' }]) {
+    const body = { version: 1, identity: { uid: 'new', employeeId: 'employee-1', companyId: 'company-1', ...patch } };
+    await assert.rejects(clerkFixture({ body }).resolve(), { status: 403 });
+  }
+});
+
+test('incomplete or conflicting Clerk claims cannot retrieve a historical signature', async () => {
+  for (const patch of [{ authMethod: 'other' }, { verifiedClerkEmail: false }, { identityLinkVersion: 1 },
+    { clerkUserId: '' }, { clerkSessionId: '' }, { identityCompanyId: 'other' }, { identityEmployeeId: 'other' }]) {
+    const f = clerkFixture(); Object.assign(f.decoded, patch);
+    await assert.rejects(f.resolve(), { status: 403 });
+  }
+});
+
+test('Clerk callers retain approved email, active mobile and immutable legacy-signature requirements', async () => {
+  for (const mutate of [
+    f => { f.employee.mobileAccess.approvedEmail = 'other@example.com'; },
+    f => { f.records.get('users/new').mobileAccessStatus = 'disabled'; },
+    f => { f.employee.disabled = true; },
+  ]) { const f = clerkFixture(); mutate(f); await assert.rejects(f.resolve(), { status: 403 }); }
+  const invalid = clerkFixture();
+  invalid.records.get('workingTermsAcceptances/old/versions/1.1').signatureSvgPath = '';
+  await assert.rejects(invalid.resolve(), { status: 409 });
+});
+
+test('existing approved password sessions do not depend on the new Clerk authority request', async () => {
+  const f = fixture();
+  f.deps.fetchImpl = async () => { throw new Error('Clerk authority must not be called for password sessions'); };
+  assert.equal((await f.resolve()).userId, 'old');
+});
+
 test("recognises a retired identity's exact current-version signature without modifying any record", async () => {
   const f = fixture(), before = JSON.stringify([...f.records]);
   const result = await f.resolve();
